@@ -7,6 +7,9 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
+.bolt
+Bissell-Network-Optimization
+Network-Optimization
 dist
 dist-ssr
 .vite
