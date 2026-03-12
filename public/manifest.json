@@ -1,0 +1,15 @@
+{
+  "name": "Network Optimization UI",
+  "version": "1.0.0",
+  "size": {
+    "width": 4,
+    "height": 3
+  },
+  "fileName": "manifest.json",
+  "allowPopups": true,
+  "datasetsMapping": [],
+  "packagesMapping": [],
+  "collectionsMapping": [],
+  "id": "b1d8ec18-091f-4277-b817-4ccc45cae882",
+  "proxyId": "b92e0c87-66de-403e-b245-995a203b1bd1"
+}

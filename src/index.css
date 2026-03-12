@@ -1,0 +1,50 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Sora:wght@400;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-ink: #0f172a;
+  --bg-sky: #e2e8f0;
+  --bg-mist: #f8fafc;
+  --accent: #2563eb;
+  --accent-2: #0ea5e9;
+  --accent-warm: #f59e0b;
+  --surface: #ffffff;
+  --surface-muted: rgba(255, 255, 255, 0.75);
+  --border: #e2e8f0;
+  --shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  font-family: "Space Grotesk", "Sora", sans-serif;
+  color: var(--bg-ink);
+  background:
+    radial-gradient(1200px 600px at 10% -10%, rgba(37, 99, 235, 0.12), transparent 55%),
+    radial-gradient(900px 500px at 90% 0%, rgba(14, 165, 233, 0.12), transparent 50%),
+    linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
+}
+
+::selection {
+  background: rgba(37, 99, 235, 0.2);
+}
+
+.fade-in {
+  animation: fade-in 240ms ease-out;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

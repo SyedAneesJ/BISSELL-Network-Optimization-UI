@@ -1,0 +1,15 @@
+{
+  "name": "BISSELL Network Optimization UI",
+  "version": "1.0.0",
+  "size": {
+    "width": 4,
+    "height": 3
+  },
+  "fileName": "manifest.json.disabled",
+  "allowPopups": true,
+  "datasetsMapping": [],
+  "packagesMapping": [],
+  "collectionsMapping": [],
+  "id": "d2b37a99-19db-4d9a-bdd7-db831d5206d5",
+  "proxyId": "8303c6ef-4ae5-4814-a1d5-19e89eb8a5dc"
+}
