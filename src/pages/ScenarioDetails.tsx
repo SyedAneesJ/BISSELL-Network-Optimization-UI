@@ -56,6 +56,10 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = ({
   const [overrideNewDC, setOverrideNewDC] = useState('');
   const [overrideReason, setOverrideReason] = useState<ScenarioOverride['ReasonCode']>('Capacity');
   const [overrideComment, setOverrideComment] = useState('');
+  const [networkView, setNetworkView] = useState<'current' | 'baseline' | 'difference'>('current');
+  const [laneChannelFilter, setLaneChannelFilter] = useState('All');
+  const [laneTermsFilter, setLaneTermsFilter] = useState('All');
+  const [laneFlagFilter, setLaneFlagFilter] = useState('All');
 
   const scenario = scenarioRunHeaders.find(s => s.ScenarioRunID === scenarioId);
   const scenarioConfig = scenarioRunConfigs.find(c => c.ScenarioRunID === scenarioId);
@@ -76,6 +80,102 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = ({
     acc[lane.AssignedDC] = (acc[lane.AssignedDC] || 0) + 1;
     return acc;
   }, {});
+
+  const getBaselineScenario = () => {
+    const candidates = scenarioRunHeaders.filter(
+      (s) => s.Region === scenario.Region && s.ScenarioType === 'Baseline'
+    );
+    if (candidates.length === 0) return null;
+    const sorted = [...candidates].sort(
+      (a, b) => new Date(b.LastUpdatedAt).getTime() - new Date(a.LastUpdatedAt).getTime()
+    );
+    return sorted[0];
+  };
+
+  const baselineScenario = scenario ? getBaselineScenario() : null;
+  const baselineScenarioId = baselineScenario?.ScenarioRunID;
+  const baselineDcResults = baselineScenarioId
+    ? scenarioRunResultsDC.filter((dc) => dc.ScenarioRunID === baselineScenarioId)
+    : [];
+  const baselineLaneResults = baselineScenarioId
+    ? scenarioRunResultsLanes.filter((lane) => lane.ScenarioRunID === baselineScenarioId)
+    : [];
+
+  const baselineLanesByDC = baselineLaneResults.reduce<Record<string, number>>((acc, lane) => {
+    acc[lane.AssignedDC] = (acc[lane.AssignedDC] || 0) + 1;
+    return acc;
+  }, {});
+
+  const channelOptions = Array.from(new Set(laneResults.map((lane) => lane.Channel))).sort();
+  const termsOptions = Array.from(new Set(laneResults.map((lane) => lane.Terms))).sort();
+
+  const filteredLanes = laneResults.filter((lane) => {
+    if (laneChannelFilter !== 'All' && lane.Channel !== laneChannelFilter) return false;
+    if (laneTermsFilter !== 'All' && lane.Terms !== laneTermsFilter) return false;
+    if (laneFlagFilter === 'SLA Breaches Only') return lane.SLABreachFlag === 'Y';
+    if (laneFlagFilter === 'Excluded by SLA') return lane.ExcludedBySLAFlag === 'Y';
+    if (laneFlagFilter === 'Overrides Only') return lane.OverrideAppliedFlag === 'Y';
+    if (laneFlagFilter === 'Flagged Lanes') return lane.NotesFlag === 'Y';
+    return true;
+  });
+
+  const networkLaneEntries = (() => {
+    if (networkView === 'difference') {
+      const dcs = new Set([...Object.keys(lanesByDC), ...Object.keys(baselineLanesByDC)]);
+      return Array.from(dcs).map((dc) => ({
+        dc,
+        count: (lanesByDC[dc] || 0) - (baselineLanesByDC[dc] || 0),
+      }));
+    }
+    const source = networkView === 'baseline' ? baselineLanesByDC : lanesByDC;
+    return Object.entries(source).map(([dc, count]) => ({ dc, count }));
+  })();
+
+  const networkDcVolumeRowsDiff = (() => {
+    const dcs = new Set([
+      ...dcResults.map((dc) => dc.DCName),
+      ...baselineDcResults.map((dc) => dc.DCName),
+    ]);
+    const rows = Array.from(dcs).map((dcName) => {
+      const current = dcResults.find((dc) => dc.DCName === dcName);
+      const base = baselineDcResults.find((dc) => dc.DCName === dcName);
+      return {
+        dcName,
+        delta: (current?.VolumeUnits || 0) - (base?.VolumeUnits || 0),
+        current,
+        base,
+      };
+    });
+    return rows.filter((row) => (row.current?.IsSuppressed ?? 'N') === 'N' || (row.base?.IsSuppressed ?? 'N') === 'N');
+  })();
+
+  const networkDcVolumeRowsBase = (() => {
+    const source = networkView === 'baseline' ? baselineDcResults : dcResults;
+    return source.filter((dc) => dc.IsSuppressed === 'N').map((dc) => ({ dcName: dc.DCName, value: dc.VolumeUnits }));
+  })();
+
+  const networkAvgDaysRowsDiff = (() => {
+    const dcs = new Set([
+      ...dcResults.map((dc) => dc.DCName),
+      ...baselineDcResults.map((dc) => dc.DCName),
+    ]);
+    const rows = Array.from(dcs).map((dcName) => {
+      const current = dcResults.find((dc) => dc.DCName === dcName);
+      const base = baselineDcResults.find((dc) => dc.DCName === dcName);
+      return {
+        dcName,
+        delta: (current?.AvgDays || 0) - (base?.AvgDays || 0),
+        current,
+        base,
+      };
+    });
+    return rows.filter((row) => (row.current?.IsSuppressed ?? 'N') === 'N' || (row.base?.IsSuppressed ?? 'N') === 'N');
+  })();
+
+  const networkAvgDaysRowsBase = (() => {
+    const source = networkView === 'baseline' ? baselineDcResults : dcResults;
+    return source.filter((dc) => dc.IsSuppressed === 'N').map((dc) => ({ dcName: dc.DCName, value: dc.AvgDays }));
+  })();
 
   const topFootprintLanes = [...laneResults]
     .sort((a, b) => b.FootprintContribution - a.FootprintContribution)
@@ -508,20 +608,42 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = ({
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-slate-900">Network Map</h3>
               <div className="flex gap-2">
-                <Button variant="secondary" size="small">Show Baseline</Button>
-                <Button variant="secondary" size="small">Show Difference</Button>
+                <Button
+                  variant="secondary"
+                  size="small"
+                  disabled={!baselineScenarioId}
+                  onClick={() => setNetworkView(networkView === 'baseline' ? 'current' : 'baseline')}
+                  className={networkView === 'baseline' ? 'bg-amber-100 text-amber-800' : ''}
+                >
+                  {networkView === 'baseline' ? 'Showing Baseline' : 'Show Baseline'}
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="small"
+                  disabled={!baselineScenarioId}
+                  onClick={() => setNetworkView(networkView === 'difference' ? 'current' : 'difference')}
+                  className={networkView === 'difference' ? 'bg-amber-100 text-amber-800' : ''}
+                >
+                  {networkView === 'difference' ? 'Showing Difference' : 'Show Difference'}
+                </Button>
               </div>
             </div>
 
             <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
               <div className="grid grid-cols-3 gap-4 text-sm">
-                {Object.entries(lanesByDC).map(([dc, count]) => (
-                  <div key={dc} className="flex items-center justify-between p-3 bg-white rounded border border-slate-200">
-                    <span className="text-slate-700">{dc}</span>
-                    <span className="font-semibold text-slate-900">{count} lanes</span>
+                {networkLaneEntries.map((entry) => (
+                  <div key={entry.dc} className="flex items-center justify-between p-3 bg-white rounded border border-slate-200">
+                    <span className="text-slate-700">{entry.dc}</span>
+                    {networkView === 'difference' ? (
+                      <span className={`font-semibold ${entry.count >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {entry.count >= 0 ? '+' : ''}{entry.count} lanes
+                      </span>
+                    ) : (
+                      <span className="font-semibold text-slate-900">{entry.count} lanes</span>
+                    )}
                   </div>
                 ))}
-                {Object.keys(lanesByDC).length === 0 && (
+                {networkLaneEntries.length === 0 && (
                   <div className="text-slate-500">No lane assignments available for this scenario.</div>
                 )}
               </div>
@@ -532,42 +654,86 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = ({
             <div className="bg-white border border-slate-200 rounded-lg p-4">
               <h3 className="text-lg font-semibold text-slate-900 mb-4">DC Volume Share</h3>
               <div className="space-y-3">
-                {dcResults.filter(dc => dc.IsSuppressed === 'N').map((dc) => (
-                  <div key={dc.DCName}>
-                    <div className="flex justify-between text-sm mb-1">
-                      <span className="text-slate-700">{dc.DCName}</span>
-                      <span className="font-medium">{dc.VolumeUnits.toLocaleString()} units</span>
+                {networkView === 'difference' ? (() => {
+                  const maxAbs = Math.max(1, ...networkDcVolumeRowsDiff.map((row) => Math.abs(row.delta)));
+                  return networkDcVolumeRowsDiff.map((row) => (
+                    <div key={row.dcName}>
+                      <div className="flex justify-between text-sm mb-1">
+                        <span className="text-slate-700">{row.dcName}</span>
+                        <span className={`font-medium ${row.delta >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          {row.delta >= 0 ? '+' : ''}{row.delta.toLocaleString()} units
+                        </span>
+                      </div>
+                      <div className="w-full bg-slate-200 rounded-full h-2">
+                        <div
+                          className={`h-2 rounded-full ${row.delta >= 0 ? 'bg-green-600' : 'bg-red-600'}`}
+                          style={{ width: `${(Math.abs(row.delta) / maxAbs) * 100}%` }}
+                        />
+                      </div>
                     </div>
-                    <div className="w-full bg-slate-200 rounded-full h-2">
-                      <div
-                        className="bg-blue-600 h-2 rounded-full"
-                        style={{
-                          width: `${(dc.VolumeUnits / dcResults.reduce((sum, d) => sum + d.VolumeUnits, 0)) * 100}%`
-                        }}
-                      />
-                    </div>
-                  </div>
-                ))}
+                  ));
+                })() : (
+                  (() => {
+                    const total = Math.max(1, networkDcVolumeRowsBase.reduce((sum, row) => sum + (row.value || 0), 0));
+                    return networkDcVolumeRowsBase.map((row) => (
+                      <div key={row.dcName}>
+                        <div className="flex justify-between text-sm mb-1">
+                          <span className="text-slate-700">{row.dcName}</span>
+                          <span className="font-medium">{(row.value || 0).toLocaleString()} units</span>
+                        </div>
+                        <div className="w-full bg-slate-200 rounded-full h-2">
+                          <div
+                            className="bg-blue-600 h-2 rounded-full"
+                            style={{ width: `${((row.value || 0) / total) * 100}%` }}
+                          />
+                        </div>
+                      </div>
+                    ));
+                  })()
+                )}
               </div>
             </div>
 
             <div className="bg-white border border-slate-200 rounded-lg p-4">
               <h3 className="text-lg font-semibold text-slate-900 mb-4">Avg Days by DC</h3>
               <div className="space-y-3">
-                {dcResults.filter(dc => dc.IsSuppressed === 'N').map((dc) => (
-                  <div key={dc.DCName}>
-                    <div className="flex justify-between text-sm mb-1">
-                      <span className="text-slate-700">{dc.DCName}</span>
-                      <span className="font-medium">{dc.AvgDays.toFixed(1)} days</span>
+                {networkView === 'difference' ? (() => {
+                  const maxAbs = Math.max(1, ...networkAvgDaysRowsDiff.map((row) => Math.abs(row.delta)));
+                  return networkAvgDaysRowsDiff.map((row) => (
+                    <div key={row.dcName}>
+                      <div className="flex justify-between text-sm mb-1">
+                        <span className="text-slate-700">{row.dcName}</span>
+                        <span className={`font-medium ${row.delta >= 0 ? 'text-red-600' : 'text-green-600'}`}>
+                          {row.delta >= 0 ? '+' : ''}{row.delta.toFixed(1)} days
+                        </span>
+                      </div>
+                      <div className="w-full bg-slate-200 rounded-full h-2">
+                        <div
+                          className={`h-2 rounded-full ${row.delta >= 0 ? 'bg-red-600' : 'bg-green-600'}`}
+                          style={{ width: `${(Math.abs(row.delta) / maxAbs) * 100}%` }}
+                        />
+                      </div>
                     </div>
-                    <div className="w-full bg-slate-200 rounded-full h-2">
-                      <div
-                        className="bg-green-600 h-2 rounded-full"
-                        style={{ width: `${(dc.AvgDays / 10) * 100}%` }}
-                      />
-                    </div>
-                  </div>
-                ))}
+                  ));
+                })() : (
+                  (() => {
+                    const maxDays = Math.max(10, ...networkAvgDaysRowsBase.map((row) => row.value || 0));
+                    return networkAvgDaysRowsBase.map((row) => (
+                      <div key={row.dcName}>
+                        <div className="flex justify-between text-sm mb-1">
+                          <span className="text-slate-700">{row.dcName}</span>
+                          <span className="font-medium">{(row.value || 0).toFixed(1)} days</span>
+                        </div>
+                        <div className="w-full bg-slate-200 rounded-full h-2">
+                          <div
+                            className="bg-green-600 h-2 rounded-full"
+                            style={{ width: `${((row.value || 0) / maxDays) * 100}%` }}
+                          />
+                        </div>
+                      </div>
+                    ));
+                  })()
+                )}
               </div>
             </div>
           </div>
@@ -601,31 +767,44 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = ({
       content: (
         <div className="space-y-4">
           <div className="flex gap-2">
-            <select className="px-3 py-2 border border-slate-300 rounded-lg text-sm">
-              <option>All Channels</option>
-              <option>B2C</option>
-              <option>B2B</option>
-              <option>D2C</option>
+            <select
+              className="px-3 py-2 border border-slate-300 rounded-lg text-sm"
+              value={laneChannelFilter}
+              onChange={(e) => setLaneChannelFilter(e.target.value)}
+            >
+              <option value="All">All Channels</option>
+              {channelOptions.map((channel) => (
+                <option key={channel} value={channel}>{channel}</option>
+              ))}
             </select>
 
-            <select className="px-3 py-2 border border-slate-300 rounded-lg text-sm">
-              <option>All Terms</option>
-              <option>Collect</option>
-              <option>Prepaid</option>
+            <select
+              className="px-3 py-2 border border-slate-300 rounded-lg text-sm"
+              value={laneTermsFilter}
+              onChange={(e) => setLaneTermsFilter(e.target.value)}
+            >
+              <option value="All">All Terms</option>
+              {termsOptions.map((term) => (
+                <option key={term} value={term}>{term}</option>
+              ))}
             </select>
 
-            <select className="px-3 py-2 border border-slate-300 rounded-lg text-sm">
-              <option>All Lanes</option>
-              <option>SLA Breaches Only</option>
-              <option>Excluded by SLA</option>
-              <option>Overrides Only</option>
-              <option>Flagged Lanes</option>
+            <select
+              className="px-3 py-2 border border-slate-300 rounded-lg text-sm"
+              value={laneFlagFilter}
+              onChange={(e) => setLaneFlagFilter(e.target.value)}
+            >
+              <option value="All">All Lanes</option>
+              <option value="SLA Breaches Only">SLA Breaches Only</option>
+              <option value="Excluded by SLA">Excluded by SLA</option>
+              <option value="Overrides Only">Overrides Only</option>
+              <option value="Flagged Lanes">Flagged Lanes</option>
             </select>
           </div>
 
           <DataTable
             columns={laneColumns}
-            data={laneResults}
+            data={filteredLanes}
             maxHeight="600px"
             onRowClick={(row) => setSelectedLane(row)}
           />

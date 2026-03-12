@@ -604,7 +604,7 @@ export const Home: React.FC<HomeProps> = ({
       <div className="bg-white border-b border-slate-200 shadow-sm">
         <div className="max-w-[1920px] mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-6">
+            <div className="flex items-center gap-4 mx-2">
               <h1 className="text-2xl font-semibold text-slate-900">
                 BISSELL Network Optimization
               </h1>
