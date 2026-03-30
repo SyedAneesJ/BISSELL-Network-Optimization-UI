@@ -131,7 +131,7 @@ export const ComparisonDetails: React.FC<ComparisonDetailsProps> = ({
         Cost_Delta: (laneB?.LaneCost || 0) - (laneA?.LaneCost || 0),
         Days_A: laneA?.DeliveryDays || 0,
         Days_B: laneB?.DeliveryDays || 0,
-        Days_Delta: (laneB?.DeliveryDays || 0) - (laneA?.DeliveryDays || 0),
+        Days_Delta: Math.round(((laneB?.DeliveryDays || 0) - (laneA?.DeliveryDays || 0)) * 100) / 100,
         UtilImpact_A: laneA?.UtilImpactPct || 0,
         UtilImpact_B: laneB?.UtilImpactPct || 0,
         Flags: flags.join(','),
@@ -257,13 +257,13 @@ export const ComparisonDetails: React.FC<ComparisonDetailsProps> = ({
       key: 'Util_A',
       header: 'Util A',
       sortable: true,
-      render: (row) => `${row.Util_A}%`,
+      render: (row) => `${row.Util_A.toFixed(2)}%`,
     },
     {
       key: 'Util_B',
       header: 'Util B',
       sortable: true,
-      render: (row) => `${row.Util_B}%`,
+      render: (row) => `${row.Util_B.toFixed(2)}%`,
     },
     {
       key: 'Util_Delta',
@@ -271,7 +271,7 @@ export const ComparisonDetails: React.FC<ComparisonDetailsProps> = ({
       sortable: true,
       render: (row) => (
         <span className={row.Util_Delta > 0 ? 'text-amber-600' : row.Util_Delta < 0 ? 'text-green-600' : ''}>
-          {row.Util_Delta > 0 ? '+' : ''}{row.Util_Delta}%
+          {row.Util_Delta > 0 ? '+' : ''}{row.Util_Delta.toFixed(2)}%
         </span>
       ),
     },

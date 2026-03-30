@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { Home } from './pages/Home';
 import { ScenarioDetails } from './pages/ScenarioDetails';
 import { ComparisonDetails } from './pages/ComparisonDetails';
@@ -14,17 +14,16 @@ import {
   ScenarioRunHeader,
   ScenarioRunResultsDC,
   ScenarioRunResultsLane,
-  dcCapacityReference,
   getDataHealthSnapshot,
-  comparisonDetailDC as mockComparisonDetailDC,
-  comparisonDetailLanes as mockComparisonDetailLanes,
-  comparisonHeaders as mockComparisonHeaders,
-  scenarioOverrides as mockScenarioOverrides,
-  scenarioRunConfigs as mockScenarioRunConfigs,
-  scenarioRunHeaders as mockScenarioRunHeaders,
-  scenarioRunResultsDC as mockScenarioRunResultsDC,
-  scenarioRunResultsLanes as mockScenarioRunResultsLanes,
 } from './data/mockData';
+import {
+  buildScenarioHeaderFromRows,
+  buildDataHealthSnapshotFromRows,
+  buildDatasetOptionSets,
+  fetchDomoDcDatasetRows,
+  getEntityOrder,
+  mapDcResultsFromRows,
+} from './helpers/domoDataset';
 
 type Page = 'home' | 'scenario' | 'comparison';
 
@@ -54,11 +53,11 @@ const COMPARISON_STORAGE_KEY = 'bno_comparisons_v1';
 const loadScenarioState = (): ScenarioState => {
   if (typeof window === 'undefined') {
     return {
-      headers: mockScenarioRunHeaders,
-      configs: mockScenarioRunConfigs,
-      resultsDC: mockScenarioRunResultsDC,
-      resultsLanes: mockScenarioRunResultsLanes,
-      overrides: mockScenarioOverrides,
+      headers: [],
+      configs: [],
+      resultsDC: [],
+      resultsLanes: [],
+      overrides: [],
     };
   }
 
@@ -66,69 +65,138 @@ const loadScenarioState = (): ScenarioState => {
     const raw = window.localStorage.getItem(SCENARIO_STORAGE_KEY);
     if (!raw) {
       return {
-        headers: mockScenarioRunHeaders,
-        configs: mockScenarioRunConfigs,
-        resultsDC: mockScenarioRunResultsDC,
-        resultsLanes: mockScenarioRunResultsLanes,
-        overrides: mockScenarioOverrides,
+        headers: [],
+        configs: [],
+        resultsDC: [],
+        resultsLanes: [],
+        overrides: [],
       };
     }
     const parsed = JSON.parse(raw) as ScenarioState;
     return {
-      headers: parsed.headers ?? mockScenarioRunHeaders,
-      configs: parsed.configs ?? mockScenarioRunConfigs,
-      resultsDC: parsed.resultsDC ?? mockScenarioRunResultsDC,
-      resultsLanes: parsed.resultsLanes ?? mockScenarioRunResultsLanes,
-      overrides: parsed.overrides ?? mockScenarioOverrides,
+      headers: parsed.headers ?? [],
+      configs: parsed.configs ?? [],
+      resultsDC: parsed.resultsDC ?? [],
+      resultsLanes: parsed.resultsLanes ?? [],
+      overrides: parsed.overrides ?? [],
     };
   } catch {
     return {
-      headers: mockScenarioRunHeaders,
-      configs: mockScenarioRunConfigs,
-      resultsDC: mockScenarioRunResultsDC,
-      resultsLanes: mockScenarioRunResultsLanes,
-      overrides: mockScenarioOverrides,
+      headers: [],
+      configs: [],
+      resultsDC: [],
+      resultsLanes: [],
+      overrides: [],
     };
   }
 };
 
 const loadComparisonState = (): ComparisonState => {
   if (typeof window === 'undefined') {
-    return {
-      headers: mockComparisonHeaders,
-      detailDC: mockComparisonDetailDC,
-      detailLanes: mockComparisonDetailLanes,
-    };
+    return { headers: [], detailDC: [], detailLanes: [] };
   }
 
   try {
     const raw = window.localStorage.getItem(COMPARISON_STORAGE_KEY);
-    if (!raw) {
-      return {
-        headers: mockComparisonHeaders,
-        detailDC: mockComparisonDetailDC,
-        detailLanes: mockComparisonDetailLanes,
-      };
-    }
+    if (!raw) return { headers: [], detailDC: [], detailLanes: [] };
     const parsed = JSON.parse(raw) as ComparisonState;
     return {
-      headers: parsed.headers ?? mockComparisonHeaders,
-      detailDC: parsed.detailDC ?? mockComparisonDetailDC,
-      detailLanes: parsed.detailLanes ?? mockComparisonDetailLanes,
+      headers: parsed.headers ?? [],
+      detailDC: parsed.detailDC ?? [],
+      detailLanes: parsed.detailLanes ?? [],
     };
   } catch {
-    return {
-      headers: mockComparisonHeaders,
-      detailDC: mockComparisonDetailDC,
-      detailLanes: mockComparisonDetailLanes,
-    };
+    return { headers: [], detailDC: [], detailLanes: [] };
   }
+};
+
+const readLocalScenarioState = (): ScenarioState => loadScenarioState();
+const readLocalComparisonState = (): ComparisonState => loadComparisonState();
+
+const mergeScenarioStates = (base: ScenarioState, local: ScenarioState): ScenarioState => {
+  const baseHeaders = new Map(base.headers.map((h) => [h.ScenarioRunID, h]));
+  const localHeaders = new Map(local.headers.map((h) => [h.ScenarioRunID, h]));
+
+  const mergedHeaders: ScenarioRunHeader[] = [];
+  baseHeaders.forEach((baseHeader, id) => {
+    const localHeader = localHeaders.get(id);
+    if (!localHeader) {
+      mergedHeaders.push(baseHeader);
+      return;
+    }
+    mergedHeaders.push({
+      ...baseHeader,
+      Status: localHeader.Status ?? baseHeader.Status,
+      ApprovedBy: localHeader.ApprovedBy ?? baseHeader.ApprovedBy,
+      ApprovedAt: localHeader.ApprovedAt ?? baseHeader.ApprovedAt,
+      LatestComment: localHeader.LatestComment ?? baseHeader.LatestComment,
+      Tags: localHeader.Tags ?? baseHeader.Tags,
+      CreatedBy: localHeader.CreatedBy ?? baseHeader.CreatedBy,
+      CreatedAt: localHeader.CreatedAt ?? baseHeader.CreatedAt,
+      LastUpdatedAt: localHeader.LastUpdatedAt ?? baseHeader.LastUpdatedAt,
+      OverrideCount: localHeader.OverrideCount ?? baseHeader.OverrideCount,
+      Notes: (localHeader as any).Notes ?? (baseHeader as any).Notes,
+    });
+  });
+  localHeaders.forEach((localHeader, id) => {
+    if (!baseHeaders.has(id)) mergedHeaders.push(localHeader);
+  });
+
+  const mergeRowsByScenarioId = <T extends { ScenarioRunID: string }>(
+    baseRows: T[],
+    localRows: T[]
+  ): T[] => {
+    const localIds = new Set(localRows.map((r) => r.ScenarioRunID));
+    const baseFiltered = baseRows.filter((r) => !localIds.has(r.ScenarioRunID));
+    return [...baseFiltered, ...localRows];
+  };
+
+  const mergedConfigs = mergeRowsByScenarioId(base.configs, local.configs);
+  const mergedResultsDC = mergeRowsByScenarioId(base.resultsDC, local.resultsDC);
+  const mergedResultsLanes = mergeRowsByScenarioId(base.resultsLanes, local.resultsLanes);
+  const mergedOverrides = mergeRowsByScenarioId(base.overrides, local.overrides);
+
+  return {
+    headers: mergedHeaders,
+    configs: mergedConfigs,
+    resultsDC: mergedResultsDC,
+    resultsLanes: mergedResultsLanes,
+    overrides: mergedOverrides,
+  };
+};
+
+const mergeComparisonStates = (base: ComparisonState, local: ComparisonState): ComparisonState => {
+  const byId = (rows: { ComparisonID: string }[]) => new Map(rows.map((r) => [r.ComparisonID, r]));
+  const baseHeaders = byId(base.headers);
+  const localHeaders = byId(local.headers);
+  const mergedHeaders: ComparisonHeader[] = [];
+  baseHeaders.forEach((b, id) => {
+    const l = localHeaders.get(id);
+    mergedHeaders.push(l ? { ...b, ...l } : b);
+  });
+  localHeaders.forEach((l, id) => {
+    if (!baseHeaders.has(id)) mergedHeaders.push(l as ComparisonHeader);
+  });
+
+  const mergeRows = <T extends { ComparisonID: string }>(baseRows: T[], localRows: T[]): T[] => {
+    const localIds = new Set(localRows.map((r) => r.ComparisonID));
+    const baseFiltered = baseRows.filter((r) => !localIds.has(r.ComparisonID));
+    return [...baseFiltered, ...localRows];
+  };
+
+  return {
+    headers: mergedHeaders,
+    detailDC: mergeRows(base.detailDC, local.detailDC),
+    detailLanes: mergeRows(base.detailLanes, local.detailLanes),
+  };
 };
 
 function App() {
   const [workspace, setWorkspace] = useState<'All' | 'US' | 'Canada'>('All');
   const [scenarioState, setScenarioState] = useState<ScenarioState>(() => loadScenarioState());
   const [comparisonState, setComparisonState] = useState<ComparisonState>(() => loadComparisonState());
+  const [domoDcLoaded, setDomoDcLoaded] = useState(false);
+  const [dataHealthSnapshot, setDataHealthSnapshot] = useState(() => getDataHealthSnapshot('All'));
   const [preselectedRuns, setPreselectedRuns] = useState<{ a?: string; b?: string }>({});
   const [archivedScenarioPrevStatus, setArchivedScenarioPrevStatus] = useState<Record<string, ScenarioRunHeader['Status']>>({});
   const [archivedComparisonPrevStatus, setArchivedComparisonPrevStatus] = useState<Record<string, ComparisonHeader['Status']>>({});
@@ -141,6 +209,69 @@ function App() {
   const [showNewScenario, setShowNewScenario] = useState(false);
   const [showNewComparison, setShowNewComparison] = useState(false);
   const [showDataHealth, setShowDataHealth] = useState(false);
+
+  const [datasetOptions, setDatasetOptions] = useState(() => ({
+    scenarioTypes: [],
+    channelScopes: [],
+    termsScopes: [],
+    tags: [],
+    footprintModes: [],
+    utilCaps: [],
+    levelLoadModes: [],
+    leadTimeCaps: [],
+    excludeBeyondCap: [],
+    costVsServiceWeights: [],
+    fuelSurchargeModes: [],
+    accessorialFlags: [],
+    allowRelocationPrepaid: [],
+    allowRelocationCollect: [],
+    bcvRuleSets: [],
+    allowManualOverride: [],
+  }));
+
+  const datasetContext = useMemo(() => {
+    const regions = Array.from(new Set(scenarioState.headers.map((h) => h.Region))) as Array<'US' | 'Canada'>;
+    const entities = new Set<string>();
+    scenarioState.headers.forEach((h) => {
+      h.EntityScope?.split('/').forEach((e) => {
+        const trimmed = e.trim();
+        if (trimmed) entities.add(trimmed);
+      });
+    });
+    const scenarioRegionById = new Map(scenarioState.headers.map((h) => [h.ScenarioRunID, h.Region]));
+    const dcsByRegion: Record<string, string[]> = {};
+    scenarioState.resultsDC.forEach((dc) => {
+      const region = scenarioRegionById.get(dc.ScenarioRunID) || 'US';
+      dcsByRegion[region] = dcsByRegion[region] || [];
+      if (!dcsByRegion[region].includes(dc.DCName)) {
+        dcsByRegion[region].push(dc.DCName);
+      }
+    });
+    const dcCapacityByName: Record<string, number> = {};
+    scenarioState.resultsDC.forEach((dc) => {
+      if (dcCapacityByName[dc.DCName] === undefined) {
+        dcCapacityByName[dc.DCName] = dc.SpaceRequired;
+      }
+    });
+
+    const scenarioTypes = datasetOptions.scenarioTypes.length > 0
+      ? datasetOptions.scenarioTypes
+      : Array.from(new Set(scenarioState.headers.map((h) => h.ScenarioType).filter(Boolean)));
+
+    const missingDataReasons: string[] = [];
+    if (scenarioState.configs.length === 0) missingDataReasons.push('Scenario configuration');
+    if (scenarioState.resultsLanes.length === 0) missingDataReasons.push('Lane results');
+    if (scenarioState.overrides.length === 0) missingDataReasons.push('Overrides');
+
+    return {
+      regions: regions.length > 0 ? regions : (['US'] as Array<'US' | 'Canada'>),
+      entities: Array.from(entities),
+      dcsByRegion,
+      dcCapacityByName,
+      scenarioTypes,
+      missingDataReasons,
+    };
+  }, [scenarioState, datasetOptions]);
 
   const navigateToHome = () => {
     setAppState({
@@ -189,6 +320,68 @@ function App() {
     window.localStorage.setItem(COMPARISON_STORAGE_KEY, JSON.stringify(comparisonState));
   }, [comparisonState]);
 
+  const loadDomoDc = useCallback(async () => {
+    try {
+      const result = await fetchDomoDcDatasetRows();
+
+      console.log('Domo dataset details:', result.dataset);
+      console.log('Domo dataset CSV (sample):', result.rawCsv.slice(0, 1000));
+      console.log('Domo dataset rows (sample):', result.rows.slice(0, 10));
+
+      if (result.rows.length === 0) {
+        setDomoDcLoaded(true);
+        return;
+      }
+
+      const rowsByRegion = result.rows.reduce<Record<string, typeof result.rows>>((acc, row) => {
+        const region = String(row['DC_region'] ?? '').trim() || 'US';
+        acc[region] = acc[region] || [];
+        acc[region].push(row);
+        return acc;
+      }, {});
+
+      const globalEntityOrder = getEntityOrder(result.rows);
+      const scenarioPayloads = Object.entries(rowsByRegion).map(([region, rows]) => {
+        const scenarioId = `SR_DOMO_${region.toUpperCase()}`;
+        const header = buildScenarioHeaderFromRows(rows, scenarioId, globalEntityOrder);
+        const dcResults = mapDcResultsFromRows(rows, scenarioId, globalEntityOrder);
+        return { header, dcResults };
+      });
+
+      setDatasetOptions(buildDatasetOptionSets(result.rows));
+      setDataHealthSnapshot(buildDataHealthSnapshotFromRows(result.rows));
+      const baseScenarioState: ScenarioState = {
+        headers: scenarioPayloads.map((p) => p.header),
+        configs: [],
+        resultsDC: scenarioPayloads.flatMap((p) => p.dcResults),
+        resultsLanes: [],
+        overrides: [],
+      };
+      const localScenarioState = readLocalScenarioState();
+      const mergedScenarioState = mergeScenarioStates(baseScenarioState, localScenarioState);
+      setScenarioState(() => mergedScenarioState);
+
+      const baseComparisonState: ComparisonState = { headers: [], detailDC: [], detailLanes: [] };
+      const localComparisonState = readLocalComparisonState();
+      const mergedComparisonState = mergeComparisonStates(baseComparisonState, localComparisonState);
+      setComparisonState(mergedComparisonState);
+
+      setDomoDcLoaded(true);
+    } catch (err) {
+      console.warn('Failed to load Domo dataset', err);
+      setDomoDcLoaded(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (domoDcLoaded) return;
+    let cancelled = false;
+    loadDomoDc().catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [domoDcLoaded, loadDomoDc]);
+
   const createScenarioHeader = (payload: NewScenarioSubmit): ScenarioRunHeader => {
     const now = new Date().toISOString();
     const numeric = (scenarioState.headers.length + 1).toString().padStart(3, '0');
@@ -198,46 +391,51 @@ function App() {
       .filter(s => s.Region === payload.input.region && s.Status === 'Published')
       .sort((a, b) => new Date(b.LastUpdatedAt).getTime() - new Date(a.LastUpdatedAt).getTime())[0];
 
-    const baseline = baseForRegion ?? scenarioState.headers[0];
+    const baseline =
+      baseForRegion ??
+      scenarioState.headers.find((s) => s.Region === payload.input.region) ??
+      scenarioState.headers[0];
 
-    const costShift = (payload.input.costVsService - 50) / 500; // -0.1..0.1
-    const serviceShift = (payload.input.costVsService - 50) / 100; // -0.5..0.5
-    const utilCapImpact = payload.input.utilCap < 80 ? 0.02 : payload.input.utilCap > 90 ? -0.01 : 0;
+    const hasCostVsService = datasetOptions.costVsServiceWeights.length > 0;
+    const hasUtilCap = datasetOptions.utilCaps.length > 0;
+    const costShift = hasCostVsService ? (payload.input.costVsService - 50) / 500 : 0;
+    const serviceShift = hasCostVsService ? (payload.input.costVsService - 50) / 100 : 0;
+    const utilCapImpact = hasUtilCap
+      ? payload.input.utilCap < 80 ? 0.02 : payload.input.utilCap > 90 ? -0.01 : 0
+      : 0;
 
     const totalCost = baseline ? Math.round(baseline.TotalCost * (1 + costShift + utilCapImpact)) : 0;
     const costPerUnit = baseline ? Number((baseline.CostPerUnit * (1 + costShift)).toFixed(2)) : 0;
     const avgDays = baseline ? Number((baseline.AvgDeliveryDays * (1 - serviceShift * 0.1)).toFixed(1)) : 0;
     const slaBreach = baseline ? Number((baseline.SLABreachPct * (1 + costShift * 0.5)).toFixed(1)) : 0;
-    const maxUtil = baseline ? Math.round(baseline.MaxUtilPct * (1 + utilCapImpact)) : 0;
+    const maxUtil = baseline ? Number((baseline.MaxUtilPct * (1 + utilCapImpact)).toFixed(2)) : 0;
 
     const totalSpace = baseline ? baseline.TotalSpaceRequired : 0;
     const spaceCore = baseline ? baseline.SpaceCore : 0;
     const spaceBCV = baseline ? baseline.SpaceBCV : 0;
 
     const alertFlags = [];
-    if (payload.input.utilCap > 90) alertFlags.push('OverCap');
-    if (payload.input.leadTimeCap <= 5) alertFlags.push('SLA');
+    if (hasUtilCap && payload.input.utilCap > 90) alertFlags.push('OverCap');
+    if (datasetOptions.leadTimeCaps.length > 0 && payload.input.leadTimeCap <= 5) alertFlags.push('SLA');
 
     return {
       ScenarioRunID: scenarioId,
       RunName: payload.input.runName || `New Scenario ${scenarioId}`,
       Region: payload.input.region,
-      ScenarioType: payload.input.scenarioType as ScenarioRunHeader['ScenarioType'],
+      ScenarioType: (payload.input.scenarioType || baseline?.ScenarioType || 'Baseline') as ScenarioRunHeader['ScenarioType'],
       EntityScope: payload.input.entityScope,
-      ChannelScope: payload.input.channelScope.join(','),
-      TermsScope: payload.input.termsScope,
+      ChannelScope: payload.input.channelScope.length > 0 ? payload.input.channelScope.join(',') : 'NA',
+      TermsScope: payload.input.termsScope || 'NA',
       CreatedBy: 'You',
       CreatedAt: now,
       LastUpdatedAt: now,
-      Status: payload.action === 'draft' ? 'Draft' : 'Completed',
+      Status: payload.action === 'draft' ? 'Draft' : 'Running',
       ApprovedBy: null,
       ApprovedAt: null,
-      LatestComment: payload.input.notes || 'New scenario created',
-      Tags: payload.input.tags.join(','),
-      DataSnapshotVersion: getDataHealthSnapshot(payload.input.region).SnapshotTime,
-      AssumptionsSummary: payload.input.entityScope.includes('BCV')
-        ? 'BCV dims assumed via carton avg'
-        : 'Core entity only',
+      LatestComment: payload.input.notes || 'NA',
+      Tags: payload.input.tags.length > 0 ? payload.input.tags.join(',') : 'NA',
+      DataSnapshotVersion: dataHealthSnapshot?.SnapshotTime || 'NA',
+      AssumptionsSummary: 'NA',
       AlertFlags: alertFlags.join(','),
       TotalCost: totalCost,
       CostPerUnit: costPerUnit,
@@ -258,15 +456,15 @@ function App() {
     ScenarioRunID: scenarioId,
     ActiveDCs: payload.input.activeDCs.join(','),
     SuppressedDCs: payload.input.suppressedDCs.join(','),
-    FootprintMode: payload.input.footprintMode,
+    FootprintMode: payload.input.footprintMode as ScenarioRunConfig['FootprintMode'],
     UtilCapPct: payload.input.utilCap,
     LevelLoadMode: payload.input.levelLoad ? 'On' : 'Off',
     LeadTimeCapDays: payload.input.leadTimeCap === 0 ? null : payload.input.leadTimeCap,
     CostVsServiceWeight: payload.input.costVsService,
     AllowRelocationPrepaid: payload.input.allowRelocationPrepaid ? 'Y' : 'N',
     AllowRelocationCollect: payload.input.allowRelocationCollect ? 'Y' : 'N',
-    BCVRuleSet: payload.input.bcvRuleSet,
-    FuelSurchargeMode: payload.input.fuelSurchargeMode,
+    BCVRuleSet: payload.input.bcvRuleSet as ScenarioRunConfig['BCVRuleSet'],
+    FuelSurchargeMode: payload.input.fuelSurchargeMode as ScenarioRunConfig['FuelSurchargeMode'],
     FuelSurchargeOverridePct: payload.input.fuelSurchargeOverride,
     AccessorialFlags: [
       payload.input.accessorials.residential ? 'Residential' : null,
@@ -278,29 +476,73 @@ function App() {
 
   const createScenarioResultsDC = (payload: NewScenarioSubmit, scenarioId: string): ScenarioRunResultsDC[] => {
     const active = new Set(payload.input.activeDCs);
-    const baseline = scenarioState.resultsDC.find(r => r.ScenarioRunID === 'SR001');
+    const baselineHeader = scenarioState.headers.find((h) => h.Region === payload.input.region) ?? scenarioState.headers[0];
+    const baselineResults = baselineHeader
+      ? scenarioState.resultsDC.filter((r) => r.ScenarioRunID === baselineHeader.ScenarioRunID)
+      : [];
+    const hasUtilCap = datasetOptions.utilCaps.length > 0;
 
-    return payload.input.activeDCs.map((dc, idx) => {
-      const capacity = dcCapacityReference.find(d => d.DCName === dc)?.CurrentCapacity ?? 0;
-      const utilPct = Math.min(payload.input.utilCap, 95);
-      const totalCost = baseline ? Math.round((baseline.TotalCost / 6) * (1 + idx * 0.02)) : 0;
+    if (baselineResults.length === 0) return [];
 
+    return baselineResults.map((dc, idx) => ({
+      ...dc,
+      ScenarioRunID: scenarioId,
+      UtilPct: hasUtilCap ? Math.min(dc.UtilPct, payload.input.utilCap) : dc.UtilPct,
+      RankOverall: idx + 1,
+      IsSuppressed: active.has(dc.DCName) ? 'N' : 'Y',
+    }));
+  };
+
+  const summarizeDcResults = (rows: ScenarioRunResultsDC[]) => {
+    if (rows.length === 0) {
       return {
-        ScenarioRunID: scenarioId,
-        DCName: dc,
-        TotalCost: totalCost,
-        VolumeUnits: Math.round(totalCost / 6),
-        AvgDays: Number((3.5 + idx * 0.2).toFixed(1)),
-        UtilPct: utilPct,
-        SpaceRequired: Math.round(capacity * (utilPct / 100)),
-        SpaceCore: Math.round(capacity * (utilPct / 100) * 0.8),
-        SpaceBCV: Math.round(capacity * (utilPct / 100) * 0.2),
-        SLABreachCount: payload.input.leadTimeCap <= 5 ? 5 + idx : 2 + idx,
-        ExcludedBySLACount: payload.input.excludeBeyondCap ? 2 + idx : 0,
-        RankOverall: idx + 1,
-        IsSuppressed: active.has(dc) ? 'N' : 'Y',
+        totalCost: 0,
+        totalUnits: 0,
+        costPerUnit: 0,
+        avgDays: 0,
+        maxUtil: 0,
+        totalSpaceRequired: 0,
+        excludedBySla: 0,
+        slaBreachCount: 0,
+        missingAvgDays: 0,
       };
+    }
+
+    const totalCost = rows.reduce((sum, row) => sum + row.TotalCost, 0);
+    const totalUnits = rows.reduce((sum, row) => sum + row.VolumeUnits, 0);
+    let avgDaysNumerator = 0;
+    let avgDaysWeight = 0;
+    rows.forEach((row) => {
+      const weight = row.VolumeUnits > 0 ? row.VolumeUnits : 1;
+      avgDaysNumerator += row.AvgDays * weight;
+      avgDaysWeight += weight;
     });
+    const avgDays = avgDaysWeight > 0 ? avgDaysNumerator / avgDaysWeight : 0;
+    const maxUtil = rows.reduce((max, row) => Math.max(max, row.UtilPct), 0);
+    const totalSpaceRequired = rows.reduce((sum, row) => sum + row.SpaceRequired, 0);
+    const excludedBySla = rows.reduce((sum, row) => sum + row.ExcludedBySLACount, 0);
+    const slaBreachCount = rows.reduce((sum, row) => sum + row.SLABreachCount, 0);
+    const missingAvgDays = rows.filter((row) => row.AvgDays === 0).length;
+
+    return {
+      totalCost,
+      totalUnits,
+      costPerUnit: totalUnits > 0 ? Number((totalCost / totalUnits).toFixed(2)) : 0,
+      avgDays: Number(avgDays.toFixed(2)),
+      maxUtil: Number(maxUtil.toFixed(2)),
+      totalSpaceRequired,
+      excludedBySla,
+      slaBreachCount,
+      missingAvgDays,
+    };
+  };
+
+  const buildAlertFlagsFromResults = (summary: ReturnType<typeof summarizeDcResults>) => {
+    const flags: string[] = [];
+    if (summary.maxUtil > 100) flags.push('OverCap');
+    if (summary.totalUnits > 0 && summary.slaBreachCount > 0) flags.push('SLA');
+    if (summary.missingAvgDays > 0) flags.push('MissingRates');
+    return flags.join(',');
   };
 
   const createScenarioResultsLanes = (scenarioId: string): ScenarioRunResultsLane[] => {
@@ -320,10 +562,23 @@ function App() {
   };
 
   const handleScenarioComplete = (payload: NewScenarioSubmit) => {
-    const header = createScenarioHeader(payload);
-    const config = createScenarioConfig(payload, header.ScenarioRunID);
-    const resultsDC = createScenarioResultsDC(payload, header.ScenarioRunID);
-    const resultsLanes = createScenarioResultsLanes(header.ScenarioRunID);
+    const headerBase = createScenarioHeader(payload);
+    const config = createScenarioConfig(payload, headerBase.ScenarioRunID);
+    const resultsDC = createScenarioResultsDC(payload, headerBase.ScenarioRunID);
+    const resultsLanes = createScenarioResultsLanes(headerBase.ScenarioRunID);
+    const summary = summarizeDcResults(resultsDC);
+    const header: ScenarioRunHeader = resultsDC.length === 0
+      ? headerBase
+      : {
+          ...headerBase,
+          TotalCost: summary.totalCost,
+          CostPerUnit: summary.costPerUnit,
+          AvgDeliveryDays: summary.avgDays,
+          MaxUtilPct: summary.maxUtil,
+          TotalSpaceRequired: summary.totalSpaceRequired,
+          ExcludedBySLACount: summary.excludedBySla,
+          AlertFlags: buildAlertFlagsFromResults(summary),
+        };
 
     setScenarioState((prev) => ({
       headers: [header, ...prev.headers],
@@ -335,8 +590,8 @@ function App() {
   };
 
   const refreshData = () => {
-    setScenarioState(loadScenarioState());
-    setComparisonState(loadComparisonState());
+    setDomoDcLoaded(false);
+    loadDomoDc().catch(() => undefined);
   };
 
   const duplicateScenario = (scenarioId: string) => {
@@ -702,7 +957,7 @@ function App() {
         Cost_Delta: (laneB?.LaneCost || 0) - (laneA?.LaneCost || 0),
         Days_A: laneA?.DeliveryDays || 0,
         Days_B: laneB?.DeliveryDays || 0,
-        Days_Delta: (laneB?.DeliveryDays || 0) - (laneA?.DeliveryDays || 0),
+        Days_Delta: Math.round(((laneB?.DeliveryDays || 0) - (laneA?.DeliveryDays || 0)) * 100) / 100,
         UtilImpact_A: laneA?.UtilImpactPct || 0,
         UtilImpact_B: laneB?.UtilImpactPct || 0,
         Flags: flags.join(','),
@@ -744,7 +999,9 @@ function App() {
             workspace={workspace}
             onWorkspaceChange={setWorkspace}
             scenarioRunHeaders={scenarioState.headers}
+            scenarioRunResultsDC={scenarioState.resultsDC}
             comparisonHeaders={comparisonState.headers}
+            dataHealthSnapshot={dataHealthSnapshot}
             onDuplicateScenario={duplicateScenario}
             onArchiveScenario={archiveScenario}
             onUnarchiveScenario={unarchiveScenario}
@@ -811,7 +1068,14 @@ function App() {
         isOpen={showNewScenario}
         onClose={() => setShowNewScenario(false)}
         onComplete={handleScenarioComplete}
-        dataHealthSnapshot={getDataHealthSnapshot(workspace)}
+        dataHealthSnapshot={dataHealthSnapshot}
+        availableRegions={datasetContext.regions}
+        availableEntities={datasetContext.entities}
+        availableDcsByRegion={datasetContext.dcsByRegion}
+        availableDcCapacity={datasetContext.dcCapacityByName}
+        missingDataReasons={datasetContext.missingDataReasons}
+        availableScenarioTypes={datasetContext.scenarioTypes}
+        datasetOptions={datasetOptions}
       />
 
       <NewComparisonModal
@@ -826,7 +1090,7 @@ function App() {
       <DataHealthModal
         isOpen={showDataHealth}
         onClose={() => setShowDataHealth(false)}
-        dataHealthSnapshot={getDataHealthSnapshot(workspace)}
+        dataHealthSnapshot={dataHealthSnapshot}
         missingLanes={scenarioState.resultsLanes
           .filter((lane) => {
             const scenario = scenarioState.headers.find((s) => s.ScenarioRunID === lane.ScenarioRunID);

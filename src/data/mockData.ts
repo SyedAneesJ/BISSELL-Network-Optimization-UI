@@ -3,7 +3,7 @@ export interface ScenarioRunHeader {
   RunName: string;
   Region: 'US' | 'Canada';
   ScenarioType: 'Baseline' | 'Tactical Fixed Footprint' | 'Strategic Unconstrained Footprint' | 'Consolidation Tactical' | 'Consolidation Strategic' | 'BCV Ingestion Only';
-  EntityScope: 'Core' | 'BCV' | 'Core+BCV';
+  EntityScope: string;
   ChannelScope: string;
   TermsScope: 'Collect' | 'Prepaid' | 'Collect+Prepaid';
   CreatedBy: string;

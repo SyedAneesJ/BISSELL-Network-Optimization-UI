@@ -76,6 +76,7 @@ export const DataHealthModal: React.FC<DataHealthModalProps> = ({
             icon={<Download className="w-4 h-4" />}
             onClick={handleExportMissingLanesCSV}
             className={isActionActive('missing_lanes_csv') ? 'bg-amber-100 text-amber-800' : ''}
+            disabled={missingLanes.length === 0}
           >
             {isActionActive('missing_lanes_csv') ? 'Exporting Missing Lanes...' : 'Export Missing Lanes CSV'}
           </Button>

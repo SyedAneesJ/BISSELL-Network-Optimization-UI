@@ -1,29 +1,30 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Check, AlertCircle, CheckCircle, Play } from 'lucide-react';
 import { Modal } from './Modal';
 import { Button } from './Button';
 import { Tooltip } from './Tooltip';
 import { StatusBadge } from './StatusBadge';
-import { dcList, dcCapacityReference, DataHealthSnapshot } from '../data/mockData';
+import { DataHealthSnapshot } from '../data/mockData';
+import { DatasetOptionSets } from '../helpers/domoDataset';
 
 export interface NewScenarioInput {
   region: 'US' | 'Canada';
   scenarioType: string;
-  entityScope: 'Core' | 'BCV' | 'Core+BCV';
+  entityScope: string;
   channelScope: string[];
-  termsScope: 'Collect' | 'Prepaid' | 'Collect+Prepaid';
+  termsScope: string;
   runName: string;
   tags: string[];
   notes: string;
   activeDCs: string[];
   suppressedDCs: string[];
-  footprintMode: 'Fixed' | 'Unconstrained';
+  footprintMode: string;
   utilCap: number;
   levelLoad: boolean;
   leadTimeCap: number;
   excludeBeyondCap: boolean;
   costVsService: number;
-  fuelSurchargeMode: 'FromRates' | 'Override';
+  fuelSurchargeMode: string;
   fuelSurchargeOverride: number | null;
   accessorials: {
     residential: boolean;
@@ -32,7 +33,7 @@ export interface NewScenarioInput {
   };
   allowRelocationPrepaid: boolean;
   allowRelocationCollect: boolean;
-  bcvRuleSet: 'Default' | 'Custom';
+  bcvRuleSet: string;
   allowManualOverride: boolean;
 }
 
@@ -46,6 +47,13 @@ interface NewScenarioWizardProps {
   onClose: () => void;
   onComplete: (payload: NewScenarioSubmit) => void;
   dataHealthSnapshot: DataHealthSnapshot;
+  availableRegions: Array<'US' | 'Canada'>;
+  availableEntities: string[];
+  availableDcsByRegion: Record<string, string[]>;
+  availableDcCapacity: Record<string, number>;
+  missingDataReasons: string[];
+  availableScenarioTypes: string[];
+  datasetOptions: DatasetOptionSets;
 }
 
 export const NewScenarioWizard: React.FC<NewScenarioWizardProps> = ({
@@ -53,39 +61,109 @@ export const NewScenarioWizard: React.FC<NewScenarioWizardProps> = ({
   onClose,
   onComplete,
   dataHealthSnapshot,
+  availableRegions,
+  availableEntities,
+  availableDcsByRegion,
+  availableDcCapacity,
+  missingDataReasons,
+  availableScenarioTypes,
+  datasetOptions,
 }) => {
   const [step, setStep] = useState(1);
-  const [formData, setFormData] = useState({
-    region: 'US',
-    scenarioType: 'Baseline',
-    entityScope: 'Core+BCV',
-    channelScope: ['B2C', 'B2B', 'D2C'],
-    termsScope: 'Collect+Prepaid',
+  const initialRegion = availableRegions[0] || 'US';
+  const entityScopes = Array.from(
+    new Set(
+      availableEntities.length > 1
+        ? [...availableEntities, availableEntities.join('/')]
+        : availableEntities.length > 0
+          ? availableEntities
+          : ['Unknown']
+    )
+  );
+  const initialEntities = entityScopes[0] || 'Unknown';
+  const initialScenarioType = availableScenarioTypes[0] || '';
+  const initialChannelScope = datasetOptions.channelScopes.length > 0 ? datasetOptions.channelScopes : [];
+  const initialTermsScope = datasetOptions.termsScopes[0] || '';
+  const initialFootprintMode = datasetOptions.footprintModes[0] || 'Fixed';
+  const initialUtilCap = datasetOptions.utilCaps[0] ?? 80;
+  const initialLevelLoad = datasetOptions.levelLoadModes.length > 0
+    ? datasetOptions.levelLoadModes.includes('On')
+    : false;
+  const initialLeadTimeCap = datasetOptions.leadTimeCaps[0] ?? 0;
+  const initialExcludeBeyondCap = datasetOptions.excludeBeyondCap.length > 0
+    ? datasetOptions.excludeBeyondCap.includes(true)
+    : false;
+  const initialCostVsService = datasetOptions.costVsServiceWeights[0] ?? 50;
+  const initialFuelSurchargeMode = datasetOptions.fuelSurchargeModes[0] || 'FromRates';
+  const initialAccessorials = {
+    residential: datasetOptions.accessorialFlags.includes('Residential'),
+    liftgate: datasetOptions.accessorialFlags.includes('Liftgate'),
+    insideDelivery: datasetOptions.accessorialFlags.includes('InsideDelivery'),
+  };
+  const initialAllowRelocationPrepaid = datasetOptions.allowRelocationPrepaid.includes(true);
+  const initialAllowRelocationCollect = datasetOptions.allowRelocationCollect.includes(true);
+  const initialBcvRuleSet = datasetOptions.bcvRuleSets[0] || 'Default';
+  const initialAllowManualOverride = datasetOptions.allowManualOverride.includes(true);
+  const buildInitialFormData = () => ({
+    region: initialRegion,
+    scenarioType: initialScenarioType,
+    entityScope: initialEntities,
+    channelScope: initialChannelScope,
+    termsScope: initialTermsScope,
     runName: '',
     tags: [] as string[],
     notes: '',
-    activeDCs: new Set(dcList),
+    activeDCs: new Set(availableDcsByRegion[initialRegion] || []),
     suppressedDCs: new Set<string>(),
-    footprintMode: 'Fixed',
-    utilCap: 80,
-    levelLoad: true,
-    leadTimeCap: 7,
-    excludeBeyondCap: true,
-    costVsService: 50,
-    fuelSurchargeMode: 'FromRates',
+    footprintMode: initialFootprintMode,
+    utilCap: initialUtilCap,
+    levelLoad: initialLevelLoad,
+    leadTimeCap: initialLeadTimeCap,
+    excludeBeyondCap: initialExcludeBeyondCap,
+    costVsService: initialCostVsService,
+    fuelSurchargeMode: initialFuelSurchargeMode,
     fuelSurchargeOverride: null as number | null,
-    accessorials: {
-      residential: true,
-      liftgate: true,
-      insideDelivery: false,
-    },
-    allowRelocationPrepaid: true,
-    allowRelocationCollect: false,
-    bcvRuleSet: 'Default',
-    allowManualOverride: true,
+    accessorials: initialAccessorials,
+    allowRelocationPrepaid: initialAllowRelocationPrepaid,
+    allowRelocationCollect: initialAllowRelocationCollect,
+    bcvRuleSet: initialBcvRuleSet,
+    allowManualOverride: initialAllowManualOverride,
   });
+  const [formData, setFormData] = useState(buildInitialFormData);
+  const prevIsOpenRef = useRef(isOpen);
+  const utilCapMin = datasetOptions.utilCaps.length > 0
+    ? Math.min(60, ...datasetOptions.utilCaps)
+    : 30;
+  // const utilCapMax = datasetOptions.utilCaps.length > 0
+  //   ? Math.max(100, ...datasetOptions.utilCaps)
+  //   : 100;
+
+  const utilCapMax = 100;
+
+  useEffect(() => {
+    const wasOpen = prevIsOpenRef.current;
+    if (!wasOpen && isOpen) {
+      setStep(1);
+      setFormData(buildInitialFormData());
+    }
+    prevIsOpenRef.current = isOpen;
+  }, [isOpen]);
+
+  useEffect(() => {
+    const dcsForRegion = availableDcsByRegion[formData.region] || [];
+    setFormData((prev) => ({
+      ...prev,
+      activeDCs: new Set(dcsForRegion),
+      suppressedDCs: new Set<string>(),
+    }));
+  }, [formData.region, availableDcsByRegion]);
 
   const totalSteps = 5;
+  const isStep1Valid =
+    Boolean(formData.region) &&
+    Boolean(formData.scenarioType) &&
+    Boolean(formData.entityScope) &&
+    formData.runName.trim().length > 0;
 
   const handleNext = () => {
     if (step < totalSteps) setStep(step + 1);
@@ -110,29 +188,49 @@ export const NewScenarioWizard: React.FC<NewScenarioWizardProps> = ({
     setFormData({ ...formData, activeDCs: newActive, suppressedDCs: newSuppressed });
   };
 
+  const handleChannelToggle = (channel: string) => {
+    const next = new Set(formData.channelScope);
+    if (next.has(channel)) {
+      next.delete(channel);
+    } else {
+      next.add(channel);
+    }
+    setFormData({ ...formData, channelScope: Array.from(next) });
+  };
+
+  const handleTagToggle = (tag: string) => {
+    const next = new Set(formData.tags);
+    if (next.has(tag)) {
+      next.delete(tag);
+    } else {
+      next.add(tag);
+    }
+    setFormData({ ...formData, tags: Array.from(next) });
+  };
+
   const buildInput = (): NewScenarioInput => ({
     region: formData.region as 'US' | 'Canada',
     scenarioType: formData.scenarioType,
-    entityScope: formData.entityScope as 'Core' | 'BCV' | 'Core+BCV',
+    entityScope: formData.entityScope,
     channelScope: [...formData.channelScope],
-    termsScope: formData.termsScope as 'Collect' | 'Prepaid' | 'Collect+Prepaid',
+    termsScope: formData.termsScope,
     runName: formData.runName,
     tags: [...formData.tags],
     notes: formData.notes,
     activeDCs: Array.from(formData.activeDCs),
     suppressedDCs: Array.from(formData.suppressedDCs),
-    footprintMode: formData.footprintMode as 'Fixed' | 'Unconstrained',
+    footprintMode: formData.footprintMode,
     utilCap: formData.utilCap,
     levelLoad: formData.levelLoad,
     leadTimeCap: formData.leadTimeCap,
     excludeBeyondCap: formData.excludeBeyondCap,
     costVsService: formData.costVsService,
-    fuelSurchargeMode: formData.fuelSurchargeMode as 'FromRates' | 'Override',
+    fuelSurchargeMode: formData.fuelSurchargeMode,
     fuelSurchargeOverride: formData.fuelSurchargeOverride,
     accessorials: { ...formData.accessorials },
     allowRelocationPrepaid: formData.allowRelocationPrepaid,
     allowRelocationCollect: formData.allowRelocationCollect,
-    bcvRuleSet: formData.bcvRuleSet as 'Default' | 'Custom',
+    bcvRuleSet: formData.bcvRuleSet,
     allowManualOverride: formData.allowManualOverride,
   });
 
@@ -158,8 +256,9 @@ export const NewScenarioWizard: React.FC<NewScenarioWizardProps> = ({
             onChange={(e) => setFormData({ ...formData, region: e.target.value })}
             className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-            <option value="US">US</option>
-            <option value="Canada">Canada</option>
+            {availableRegions.map((region) => (
+              <option key={region} value={region}>{region}</option>
+            ))}
           </select>
         </div>
 
@@ -171,14 +270,19 @@ export const NewScenarioWizard: React.FC<NewScenarioWizardProps> = ({
             value={formData.scenarioType}
             onChange={(e) => setFormData({ ...formData, scenarioType: e.target.value })}
             className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            disabled={availableScenarioTypes.length === 0}
           >
-            <option value="Baseline">Baseline</option>
-            <option value="Tactical Fixed Footprint">Tactical Pro Forma (Fixed Footprint)</option>
-            <option value="Strategic Unconstrained Footprint">Strategic Pro Forma (Unconstrained Footprint)</option>
-            <option value="Consolidation Tactical">Consolidation (Tactical)</option>
-            <option value="Consolidation Strategic">Consolidation (Strategic)</option>
-            <option value="BCV Ingestion Only">BCV Ingestion Only</option>
+            {availableScenarioTypes.length === 0 ? (
+              <option value="">NA</option>
+            ) : (
+              availableScenarioTypes.map((type) => (
+                <option key={type} value={type}>{type}</option>
+              ))
+            )}
           </select>
+          {availableScenarioTypes.length === 0 && (
+            <p className="text-xs text-slate-500 mt-1">No scenario type data available.</p>
+          )}
         </div>
       </div>
 
@@ -187,7 +291,7 @@ export const NewScenarioWizard: React.FC<NewScenarioWizardProps> = ({
           Entity Scope
         </label>
         <div className="flex gap-4">
-          {['Core', 'BCV', 'Core+BCV'].map((scope) => (
+          {entityScopes.map((scope) => (
             <label key={scope} className="flex items-center gap-2 cursor-pointer">
               <input
                 type="radio"
@@ -207,28 +311,31 @@ export const NewScenarioWizard: React.FC<NewScenarioWizardProps> = ({
         <label className="block text-sm font-medium text-slate-700 mb-2">
           Channel Scope
         </label>
-        <div className="flex gap-4">
-          {[
-            { value: 'B2C', label: 'B2C Home Delivery' },
-            { value: 'B2B', label: 'B2B Retailer' },
-            { value: 'D2C', label: 'D2C/eCom' },
-          ].map((channel) => (
-            <label key={channel.value} className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={formData.channelScope.includes(channel.value)}
-                onChange={(e) => {
-                  const newChannels = e.target.checked
-                    ? [...formData.channelScope, channel.value]
-                    : formData.channelScope.filter(c => c !== channel.value);
-                  setFormData({ ...formData, channelScope: newChannels });
-                }}
-                className="rounded text-blue-600 focus:ring-blue-500"
-              />
-              <span className="text-sm text-slate-700">{channel.label}</span>
-            </label>
-          ))}
-        </div>
+        {datasetOptions.channelScopes.length === 0 ? (
+          <>
+            <div className="flex gap-4">
+              <label className="flex items-center gap-2 cursor-not-allowed text-slate-500">
+                <input type="checkbox" disabled className="rounded" />
+                <span className="text-sm">NA</span>
+              </label>
+            </div>
+            <p className="text-xs text-slate-500 mt-1">No channel scope data available.</p>
+          </>
+        ) : (
+          <div className="flex gap-4 flex-wrap">
+            {datasetOptions.channelScopes.map((channel) => (
+              <label key={channel} className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="rounded"
+                  checked={formData.channelScope.includes(channel)}
+                  onChange={() => handleChannelToggle(channel)}
+                />
+                <span className="text-sm text-slate-700">{channel}</span>
+              </label>
+            ))}
+          </div>
+        )}
       </div>
 
       <div>
@@ -238,12 +345,22 @@ export const NewScenarioWizard: React.FC<NewScenarioWizardProps> = ({
         <select
           value={formData.termsScope}
           onChange={(e) => setFormData({ ...formData, termsScope: e.target.value })}
-          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className={`w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+            datasetOptions.termsScopes.length === 0 ? 'bg-slate-100' : ''
+          }`}
+          disabled={datasetOptions.termsScopes.length === 0}
         >
-          <option value="Collect">Collect</option>
-          <option value="Prepaid">Prepaid</option>
-          <option value="Collect+Prepaid">Collect+Prepaid</option>
+          {datasetOptions.termsScopes.length === 0 ? (
+            <option value="">NA</option>
+          ) : (
+            datasetOptions.termsScopes.map((term) => (
+              <option key={term} value={term}>{term}</option>
+            ))
+          )}
         </select>
+        {datasetOptions.termsScopes.length === 0 && (
+          <p className="text-xs text-slate-500 mt-1">No terms scope data available.</p>
+        )}
       </div>
 
       <div>
@@ -257,37 +374,41 @@ export const NewScenarioWizard: React.FC<NewScenarioWizardProps> = ({
           placeholder="e.g., Q1 2026 Baseline US"
           className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
+        {formData.runName.trim().length === 0 && (
+          <p className="text-xs text-amber-600 mt-1">Run name is required to continue.</p>
+        )}
       </div>
 
       <div>
         <label className="block text-sm font-medium text-slate-700 mb-2">
           Tags
         </label>
-        <div className="flex gap-2 flex-wrap">
-          {['Peak', 'RateChange', 'Quarterly', 'Audit', 'BCV', 'Pilot'].map((tag) => (
-            <label
-              key={tag}
-              className={`px-3 py-1 rounded-full text-sm cursor-pointer transition-colors ${
-                formData.tags.includes(tag)
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-              }`}
-            >
-              <input
-                type="checkbox"
-                checked={formData.tags.includes(tag)}
-                onChange={(e) => {
-                  const newTags = e.target.checked
-                    ? [...formData.tags, tag]
-                    : formData.tags.filter(t => t !== tag);
-                  setFormData({ ...formData, tags: newTags });
-                }}
-                className="hidden"
-              />
-              {tag}
-            </label>
-          ))}
-        </div>
+        {datasetOptions.tags.length === 0 ? (
+          <>
+            <div className="flex gap-2 flex-wrap">
+              <span className="text-sm text-slate-500">NA</span>
+            </div>
+            <p className="text-xs text-slate-500 mt-1">No tag data available.</p>
+          </>
+        ) : (
+          <div className="flex gap-2 flex-wrap">
+            {datasetOptions.tags.map((tag) => {
+              const active = formData.tags.includes(tag);
+              return (
+                <button
+                  key={tag}
+                  type="button"
+                  onClick={() => handleTagToggle(tag)}
+                  className={`px-3 py-1 rounded-full text-xs border ${
+                    active ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-700 border-slate-300'
+                  }`}
+                >
+                  {tag}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <div>
@@ -316,9 +437,9 @@ export const NewScenarioWizard: React.FC<NewScenarioWizardProps> = ({
         </div>
 
         <div className="grid grid-cols-3 gap-3">
-          {dcList.map((dc) => {
+          {(availableDcsByRegion[formData.region] || []).map((dc) => {
             const isActive = formData.activeDCs.has(dc);
-            const dcInfo = dcCapacityReference.find(d => d.DCName === dc);
+            const capacity = availableDcCapacity[dc];
 
             return (
               <div
@@ -341,9 +462,11 @@ export const NewScenarioWizard: React.FC<NewScenarioWizardProps> = ({
                   </span>
                 </div>
                 <div className="text-xs text-slate-600">
-                  Capacity: {dcInfo?.CurrentCapacity.toLocaleString()} sq ft
+                  Capacity: {capacity === undefined ? 'NA' : capacity.toLocaleString()}
                 </div>
-                <div className="text-xs text-slate-500 mt-1">{dcInfo?.Notes}</div>
+                {capacity === undefined && (
+                  <div className="text-xs text-slate-500 mt-1">No capacity data</div>
+                )}
               </div>
             );
           })}
@@ -358,59 +481,79 @@ export const NewScenarioWizard: React.FC<NewScenarioWizardProps> = ({
             </label>
             <Tooltip content="Fixed: Use existing DC capacities. Unconstrained: Allow capacity expansion in optimization." />
           </div>
-          <div className="flex gap-4">
-            {[
-              { value: 'Fixed', label: 'Fixed capacity' },
-              { value: 'Unconstrained', label: 'Unconstrained footprint' },
-            ].map((mode) => (
-              <label key={mode.value} className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="footprintMode"
-                  value={mode.value}
-                  checked={formData.footprintMode === mode.value}
-                  onChange={(e) => setFormData({ ...formData, footprintMode: e.target.value })}
-                  className="text-blue-600 focus:ring-blue-500"
-                />
-                <span className="text-sm text-slate-700">{mode.label}</span>
-              </label>
-            ))}
-          </div>
+          {datasetOptions.footprintModes.length === 0 ? (
+            <>
+              <div className="flex gap-4">
+                <label className="flex items-center gap-2 text-slate-500 cursor-not-allowed">
+                  <input type="radio" disabled className="text-blue-600" />
+                  <span className="text-sm">NA</span>
+                </label>
+              </div>
+              <p className="text-xs text-slate-500 mt-1">No footprint mode data available.</p>
+            </>
+          ) : (
+            <div className="flex gap-4">
+              {datasetOptions.footprintModes.map((mode) => (
+                <label key={mode} className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="footprintMode"
+                    value={mode}
+                    checked={formData.footprintMode === mode}
+                    onChange={(e) => setFormData({ ...formData, footprintMode: e.target.value })}
+                    className="text-blue-600"
+                  />
+                  <span className="text-sm text-slate-700">{mode}</span>
+                </label>
+              ))}
+            </div>
+          )}
         </div>
 
         <div>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={formData.levelLoad}
-              onChange={(e) => setFormData({ ...formData, levelLoad: e.target.checked })}
-              className="rounded text-blue-600 focus:ring-blue-500"
-            />
-            <span className="text-sm font-medium text-slate-700">Enable Level-Load</span>
-            <Tooltip content="Balance volume across DCs to avoid over-concentration" />
-          </label>
+          {datasetOptions.levelLoadModes.length === 0 ? (
+            <label className="flex items-center gap-2 text-slate-500 cursor-not-allowed">
+              <input type="checkbox" disabled className="rounded" />
+              <span className="text-sm font-medium text-slate-500">Enable Level-Load</span>
+              <Tooltip content="No level-load data available" />
+            </label>
+          ) : (
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={formData.levelLoad}
+                onChange={(e) => setFormData({ ...formData, levelLoad: e.target.checked })}
+                className="rounded"
+              />
+              <span className="text-sm font-medium text-slate-700">Enable Level-Load</span>
+            </label>
+          )}
         </div>
       </div>
 
       <div>
         <div className="flex items-center gap-2 mb-2">
           <label className="text-sm font-medium text-slate-700">
-            Utilization Cap: {formData.utilCap}%
+            Utilization Cap{datasetOptions.utilCaps.length === 0 ? ': NA' : `: ${100}%`}
           </label>
           <Tooltip content="Maximum DC utilization percentage allowed. Lanes that would exceed this will be assigned to alternate DCs." />
         </div>
         <input
           type="range"
-          min="60"
-          max="100"
+          min={utilCapMin}
+          max={utilCapMax}
           value={formData.utilCap}
-          onChange={(e) => setFormData({ ...formData, utilCap: parseInt(e.target.value) })}
+          onChange={(e) => setFormData({ ...formData, utilCap: Number(e.target.value) })}
           className="w-full"
+          disabled={datasetOptions.utilCaps.length === 0}
         />
         <div className="flex justify-between text-xs text-slate-500">
-          <span>60%</span>
-          <span>100%</span>
+          <span>{utilCapMin}%</span>
+          <span>{utilCapMax}%</span>
         </div>
+        {datasetOptions.utilCaps.length === 0 && (
+          <p className="text-xs text-slate-500 mt-1">No utilization cap data available.</p>
+        )}
       </div>
     </div>
   );
@@ -426,30 +569,47 @@ export const NewScenarioWizard: React.FC<NewScenarioWizardProps> = ({
         </div>
         <select
           value={formData.leadTimeCap}
-          onChange={(e) => setFormData({ ...formData, leadTimeCap: parseInt(e.target.value) })}
-          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          onChange={(e) => setFormData({ ...formData, leadTimeCap: Number(e.target.value) })}
+          className={`w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+            datasetOptions.leadTimeCaps.length === 0 ? 'bg-slate-100' : ''
+          }`}
+          disabled={datasetOptions.leadTimeCaps.length === 0}
         >
-          <option value={0}>No cap</option>
-          <option value={3}>≤ 3 days</option>
-          <option value={5}>≤ 5 days</option>
-          <option value={7}>≤ 7 days (default)</option>
-          <option value={10}>≤ 10 days</option>
+          {datasetOptions.leadTimeCaps.length === 0 ? (
+            <option value={0}>NA</option>
+          ) : (
+            datasetOptions.leadTimeCaps.map((cap) => (
+              <option key={cap} value={cap}>{cap}</option>
+            ))
+          )}
         </select>
+        {datasetOptions.leadTimeCaps.length === 0 && (
+          <p className="text-xs text-slate-500 mt-1">No lead time cap data available.</p>
+        )}
       </div>
 
       <div>
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={formData.excludeBeyondCap}
-            onChange={(e) => setFormData({ ...formData, excludeBeyondCap: e.target.checked })}
-            className="rounded text-blue-600 focus:ring-blue-500"
-          />
-          <span className="text-sm font-medium text-slate-700">Exclude lanes beyond lead time cap</span>
-        </label>
-        <p className="text-xs text-slate-500 mt-1 ml-6">
-          When enabled, lanes exceeding the lead time will be excluded from the solution
-        </p>
+        {datasetOptions.excludeBeyondCap.length === 0 ? (
+          <>
+            <label className="flex items-center gap-2 text-slate-500 cursor-not-allowed">
+              <input type="checkbox" disabled className="rounded" />
+              <span className="text-sm font-medium text-slate-500">Exclude lanes beyond lead time cap</span>
+            </label>
+            <p className="text-xs text-slate-500 mt-1 ml-6">
+              No exclusion data available
+            </p>
+          </>
+        ) : (
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={formData.excludeBeyondCap}
+              onChange={(e) => setFormData({ ...formData, excludeBeyondCap: e.target.checked })}
+              className="rounded"
+            />
+            <span className="text-sm font-medium text-slate-700">Exclude lanes beyond lead time cap</span>
+          </label>
+        )}
       </div>
 
       <div>
@@ -464,47 +624,52 @@ export const NewScenarioWizard: React.FC<NewScenarioWizardProps> = ({
           min="0"
           max="100"
           value={formData.costVsService}
-          onChange={(e) => setFormData({ ...formData, costVsService: parseInt(e.target.value) })}
+          onChange={(e) => setFormData({ ...formData, costVsService: Number(e.target.value) })}
           className="w-full"
+          disabled={datasetOptions.costVsServiceWeights.length === 0}
         />
         <div className="flex justify-between text-xs text-slate-500">
           <span>Minimize Cost (0)</span>
-          <span className="font-medium text-slate-700">{formData.costVsService}</span>
+          <span className="font-medium text-slate-700">
+            {datasetOptions.costVsServiceWeights.length === 0 ? 'NA' : formData.costVsService}
+          </span>
           <span>Prioritize Service (100)</span>
         </div>
+        {datasetOptions.costVsServiceWeights.length === 0 && (
+          <p className="text-xs text-slate-500 mt-1">No cost vs service data available.</p>
+        )}
       </div>
 
       <div className="bg-slate-50 p-4 rounded-lg">
         <h4 className="text-sm font-semibold text-slate-900 mb-3">Advanced: Fuel Surcharge</h4>
 
         <div className="space-y-3">
-          <div className="flex gap-4">
-            {[
-              { value: 'FromRates', label: 'Use from rate table' },
-              { value: 'Override', label: 'Override %' },
-            ].map((mode) => (
-              <label key={mode.value} className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="fuelSurchargeMode"
-                  value={mode.value}
-                  checked={formData.fuelSurchargeMode === mode.value}
-                  onChange={(e) => setFormData({ ...formData, fuelSurchargeMode: e.target.value })}
-                  className="text-blue-600 focus:ring-blue-500"
-                />
-                <span className="text-sm text-slate-700">{mode.label}</span>
-              </label>
-            ))}
-          </div>
-
-          {formData.fuelSurchargeMode === 'Override' && (
-            <input
-              type="number"
-              value={formData.fuelSurchargeOverride || ''}
-              onChange={(e) => setFormData({ ...formData, fuelSurchargeOverride: parseFloat(e.target.value) })}
-              placeholder="Enter percentage (e.g., 12.5)"
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+          {datasetOptions.fuelSurchargeModes.length === 0 ? (
+            <>
+              <div className="flex gap-4">
+                <label className="flex items-center gap-2 text-slate-500 cursor-not-allowed">
+                  <input type="radio" disabled className="text-blue-600" />
+                  <span className="text-sm">NA</span>
+                </label>
+              </div>
+              <p className="text-xs text-slate-500 mt-1">No fuel surcharge data available.</p>
+            </>
+          ) : (
+            <div className="flex gap-4">
+              {datasetOptions.fuelSurchargeModes.map((mode) => (
+                <label key={mode} className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="fuelSurchargeMode"
+                    value={mode}
+                    checked={formData.fuelSurchargeMode === mode}
+                    onChange={(e) => setFormData({ ...formData, fuelSurchargeMode: e.target.value })}
+                    className="text-blue-600"
+                  />
+                  <span className="text-sm text-slate-700">{mode}</span>
+                </label>
+              ))}
+            </div>
           )}
         </div>
       </div>
@@ -514,30 +679,49 @@ export const NewScenarioWizard: React.FC<NewScenarioWizardProps> = ({
           Accessorials
         </label>
         <div className="space-y-2">
-          {[
-            { key: 'residential', label: 'Residential surcharge' },
-            { key: 'liftgate', label: 'Liftgate' },
-            { key: 'insideDelivery', label: 'Inside delivery' },
-          ].map((acc) => (
-            <label key={acc.key} className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={formData.accessorials[acc.key as keyof typeof formData.accessorials]}
-                onChange={(e) => setFormData({
-                  ...formData,
-                  accessorials: { ...formData.accessorials, [acc.key]: e.target.checked },
-                })}
-                className="rounded text-blue-600 focus:ring-blue-500"
-              />
-              <span className="text-sm text-slate-700">{acc.label}</span>
+          {datasetOptions.accessorialFlags.length === 0 ? (
+            <label className="flex items-center gap-2 text-slate-500 cursor-not-allowed">
+              <input type="checkbox" disabled className="rounded" />
+              <span className="text-sm">NA</span>
             </label>
-          ))}
+          ) : (
+            <>
+              {['Residential', 'Liftgate', 'InsideDelivery']
+                .filter((flag) => datasetOptions.accessorialFlags.includes(flag))
+                .map((flag) => {
+                const key = flag === 'InsideDelivery' ? 'insideDelivery' : flag.toLowerCase();
+                const checked = (formData.accessorials as any)[key] as boolean;
+                return (
+                  <label key={flag} className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          accessorials: {
+                            ...formData.accessorials,
+                            [key]: e.target.checked,
+                          },
+                        })
+                      }
+                      className="rounded"
+                    />
+                    <span className="text-sm text-slate-700">{flag}</span>
+                  </label>
+                );
+              })}
+            </>
+          )}
         </div>
+        {datasetOptions.accessorialFlags.length === 0 && (
+          <p className="text-xs text-slate-500 mt-1">No accessorial data available.</p>
+        )}
       </div>
 
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
         <p className="text-sm text-blue-800">
-          <strong>Excluded by SLA preview:</strong> Approximately 12-18 lanes may be excluded based on current settings.
+          <strong>Excluded by SLA preview:</strong> NA (no lane data available).
         </p>
       </div>
     </div>
@@ -549,39 +733,57 @@ export const NewScenarioWizard: React.FC<NewScenarioWizardProps> = ({
         <label className="text-sm font-medium text-slate-700 mb-3 block">
           Allow Relocation
         </label>
-        <div className="space-y-3">
-          <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={formData.allowRelocationPrepaid}
-                onChange={(e) => setFormData({ ...formData, allowRelocationPrepaid: e.target.checked })}
-                className="rounded text-blue-600 focus:ring-blue-500"
-              />
-              <span className="text-sm font-medium text-slate-700">Prepaid</span>
-              <span className="text-xs text-green-600 font-medium">(default ON)</span>
-            </div>
-          </div>
+        {datasetOptions.allowRelocationPrepaid.length === 0 && datasetOptions.allowRelocationCollect.length === 0 ? (
+          <>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <input type="checkbox" disabled className="rounded" />
+                  <span className="text-sm font-medium text-slate-500">Prepaid</span>
+                </div>
+              </div>
 
-          <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={formData.allowRelocationCollect}
-                onChange={(e) => setFormData({ ...formData, allowRelocationCollect: e.target.checked })}
-                className="rounded text-blue-600 focus:ring-blue-500"
-              />
-              <span className="text-sm font-medium text-slate-700">Collect</span>
-              <Tooltip content="Collect relocation may require customer notification and contract review" />
+              <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <input type="checkbox" disabled className="rounded" />
+                  <span className="text-sm font-medium text-slate-500">Collect</span>
+                  <Tooltip content="No relocation data available" />
+                </div>
+              </div>
             </div>
-            {formData.allowRelocationCollect && (
-              <span className="text-xs text-amber-600 font-medium flex items-center gap-1">
-                <AlertCircle className="w-3 h-3" />
-                Review required
-              </span>
+            <p className="text-xs text-slate-500 mt-1">No relocation data available.</p>
+          </>
+        ) : (
+          <div className="space-y-3">
+            {datasetOptions.allowRelocationPrepaid.length > 0 && (
+              <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={formData.allowRelocationPrepaid}
+                    onChange={(e) => setFormData({ ...formData, allowRelocationPrepaid: e.target.checked })}
+                    className="rounded"
+                  />
+                  <span className="text-sm font-medium text-slate-700">Prepaid</span>
+                </div>
+              </div>
+            )}
+
+            {datasetOptions.allowRelocationCollect.length > 0 && (
+              <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={formData.allowRelocationCollect}
+                    onChange={(e) => setFormData({ ...formData, allowRelocationCollect: e.target.checked })}
+                    className="rounded"
+                  />
+                  <span className="text-sm font-medium text-slate-700">Collect</span>
+                </div>
+              </div>
             )}
           </div>
-        </div>
+        )}
       </div>
 
       <div>
@@ -594,35 +796,44 @@ export const NewScenarioWizard: React.FC<NewScenarioWizardProps> = ({
         <select
           value={formData.bcvRuleSet}
           onChange={(e) => setFormData({ ...formData, bcvRuleSet: e.target.value })}
-          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className={`w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+            datasetOptions.bcvRuleSets.length === 0 ? 'bg-slate-100' : ''
+          }`}
+          disabled={datasetOptions.bcvRuleSets.length === 0}
         >
-          <option value="Default">Default (Acceptance Criteria)</option>
-          <option value="Custom">Custom mapping</option>
+          {datasetOptions.bcvRuleSets.length === 0 ? (
+            <option value="">NA</option>
+          ) : (
+            datasetOptions.bcvRuleSets.map((rule) => (
+              <option key={rule} value={rule}>{rule}</option>
+            ))
+          )}
         </select>
+        {datasetOptions.bcvRuleSets.length === 0 && (
+          <p className="text-xs text-slate-500 mt-1">No BCV mapping data available.</p>
+        )}
       </div>
 
-      {formData.bcvRuleSet === 'Custom' && (
-        <div className="bg-slate-50 p-4 rounded-lg">
-          <p className="text-sm text-slate-600 mb-2">Custom BCV Mapping Editor</p>
-          <div className="text-xs text-slate-500">
-            Custom mapping configuration would appear here in the full implementation
-          </div>
-        </div>
-      )}
-
       <div className="border-t border-slate-200 pt-4">
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={formData.allowManualOverride}
-            onChange={(e) => setFormData({ ...formData, allowManualOverride: e.target.checked })}
-            className="rounded text-blue-600 focus:ring-blue-500"
-          />
-          <span className="text-sm font-medium text-slate-700">Allow manual lane override after run</span>
-        </label>
-        <p className="text-xs text-slate-500 mt-1 ml-6">
-          Enables post-optimization manual adjustments in the Overrides tab
-        </p>
+        {datasetOptions.allowManualOverride.length === 0 ? (
+          <>
+            <label className="flex items-center gap-2 text-slate-500 cursor-not-allowed">
+              <input type="checkbox" disabled className="rounded" />
+              <span className="text-sm font-medium text-slate-500">Allow manual lane override after run</span>
+            </label>
+            <p className="text-xs text-slate-500 mt-1 ml-6">No override settings data available.</p>
+          </>
+        ) : (
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={formData.allowManualOverride}
+              onChange={(e) => setFormData({ ...formData, allowManualOverride: e.target.checked })}
+              className="rounded"
+            />
+            <span className="text-sm font-medium text-slate-700">Allow manual lane override after run</span>
+          </label>
+        )}
       </div>
     </div>
   );
@@ -637,10 +848,10 @@ export const NewScenarioWizard: React.FC<NewScenarioWizardProps> = ({
         <div className="text-sm text-blue-800 space-y-1">
           <p><strong>Run Name:</strong> {formData.runName || 'Untitled Run'}</p>
           <p><strong>Region:</strong> {formData.region}</p>
-          <p><strong>Type:</strong> {formData.scenarioType}</p>
+          <p><strong>Type:</strong> {formData.scenarioType || 'NA'}</p>
           <p><strong>Entity:</strong> {formData.entityScope}</p>
-          <p><strong>Active DCs:</strong> {formData.activeDCs.size} of {dcList.length}</p>
-          <p><strong>Lead Time Cap:</strong> {formData.leadTimeCap === 0 ? 'No cap' : `${formData.leadTimeCap} days`}</p>
+          <p><strong>Active DCs:</strong> {formData.activeDCs.size} of {(availableDcsByRegion[formData.region] || []).length}</p>
+          <p><strong>Lead Time Cap:</strong> {datasetOptions.leadTimeCaps.length === 0 ? 'NA' : formData.leadTimeCap === 0 ? 'No cap' : `${formData.leadTimeCap} days`}</p>
         </div>
       </div>
 
@@ -764,7 +975,12 @@ export const NewScenarioWizard: React.FC<NewScenarioWizardProps> = ({
             )}
 
             {step < totalSteps ? (
-              <Button onClick={handleNext} variant="primary" icon={<ChevronRight className="w-4 h-4" />}>
+              <Button
+                onClick={handleNext}
+                variant="primary"
+                icon={<ChevronRight className="w-4 h-4" />}
+                disabled={step === 1 && !isStep1Valid}
+              >
                 Next
               </Button>
             ) : (
@@ -776,6 +992,11 @@ export const NewScenarioWizard: React.FC<NewScenarioWizardProps> = ({
         </>
       }
     >
+      {missingDataReasons.length > 0 && (
+        <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded text-sm text-amber-800">
+          Missing data: {missingDataReasons.join(', ')}. These sections will be unavailable after scenario creation.
+        </div>
+      )}
       <div className="mb-4">
         <h3 className="text-lg font-semibold text-slate-900">{stepTitles[step - 1]}</h3>
       </div>

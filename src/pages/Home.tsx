@@ -10,7 +10,7 @@ import {
   ScenarioRunHeader,
   ComparisonHeader,
   DataHealthSnapshot,
-  getDataHealthSnapshot,
+  ScenarioRunResultsDC,
 } from '../data/mockData';
 
 interface HomeProps {
@@ -22,7 +22,9 @@ interface HomeProps {
   workspace: 'All' | 'US' | 'Canada';
   onWorkspaceChange: (workspace: 'All' | 'US' | 'Canada') => void;
   scenarioRunHeaders: ScenarioRunHeader[];
+  scenarioRunResultsDC: ScenarioRunResultsDC[];
   comparisonHeaders: ComparisonHeader[];
+  dataHealthSnapshot: DataHealthSnapshot;
   onDuplicateScenario: (scenarioId: string) => void;
   onArchiveScenario: (scenarioId: string) => void;
   onUnarchiveScenario: (scenarioId: string) => void;
@@ -41,7 +43,9 @@ export const Home: React.FC<HomeProps> = ({
   workspace,
   onWorkspaceChange,
   scenarioRunHeaders,
+  scenarioRunResultsDC,
   comparisonHeaders,
+  dataHealthSnapshot,
   onDuplicateScenario,
   onArchiveScenario,
   onUnarchiveScenario,
@@ -53,16 +57,26 @@ export const Home: React.FC<HomeProps> = ({
   const { trigger: triggerAction, isActive: isActionActive } = useActionFeedback();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedScenarios, setSelectedScenarios] = useState<Set<string>>(new Set());
+  const hasComparisons = comparisonHeaders.length > 0;
 
   const [statusFilter, setStatusFilter] = useState<string>('All');
   const [scenarioTypeFilter, setScenarioTypeFilter] = useState<string[]>([]);
   const [onlyAlerts, setOnlyAlerts] = useState(false);
   const [onlyPublished, setOnlyPublished] = useState(false);
-  const dataHealthSnapshot: DataHealthSnapshot = useMemo(
-    () => getDataHealthSnapshot(workspace),
-    [workspace]
-  );
-
+  const entityLabels = useMemo(() => {
+    const entities = new Set<string>();
+    scenarioRunHeaders.forEach((s) => {
+      s.EntityScope?.split('/').forEach((e) => {
+        const trimmed = e.trim();
+        if (trimmed) entities.add(trimmed);
+      });
+    });
+    const list = Array.from(entities);
+    return {
+      first: list[0] || 'Entity A',
+      second: list[1] || 'Entity B',
+    };
+  }, [scenarioRunHeaders]);
   const filteredScenarios = useMemo(() => {
     return scenarioRunHeaders.filter(scenario => {
       if (workspace !== 'All' && scenario.Region !== workspace) return false;
@@ -111,7 +125,7 @@ export const Home: React.FC<HomeProps> = ({
     const overCap = filteredScenarios.filter(s => s.AlertFlags?.includes('OverCap')).length;
     const sla = filteredScenarios.filter(s => s.AlertFlags?.includes('SLA')).length;
     const missingRates = filteredScenarios.filter(s => s.AlertFlags?.includes('MissingRates')).length;
-    const assumptions = filteredScenarios.filter(s => s.AssumptionsSummary?.includes('assumed')).length;
+    const assumptions = filteredScenarios.filter(s => s.AlertFlags?.includes('Assumed')).length;
 
     return { overCap, sla, missingRates, assumptions };
   }, [filteredScenarios]);
@@ -127,11 +141,32 @@ export const Home: React.FC<HomeProps> = ({
       };
     }
 
-    const totalCost = filteredScenarios.reduce((sum, s) => sum + s.TotalCost, 0);
-    const totalSpaceRequired = filteredScenarios.reduce((sum, s) => sum + s.TotalSpaceRequired, 0);
-    const maxUtilPct = Math.max(...filteredScenarios.map(s => s.MaxUtilPct));
-    const avgDeliveryDays = filteredScenarios.reduce((sum, s) => sum + s.AvgDeliveryDays, 0) / filteredScenarios.length;
-    const slaBreachPct = filteredScenarios.reduce((sum, s) => sum + s.SLABreachPct, 0) / filteredScenarios.length;
+    const visibleScenarioIds = new Set(filteredScenarios.map((s) => s.ScenarioRunID));
+    const dcRows = scenarioRunResultsDC.filter((row) => visibleScenarioIds.has(row.ScenarioRunID));
+
+    const totalCost = dcRows.reduce((sum, r) => sum + r.TotalCost, 0);
+    const totalSpaceRequired = dcRows.reduce((sum, r) => sum + r.SpaceRequired, 0);
+    const maxUtilPct = dcRows.length > 0 ? Math.max(...dcRows.map((r) => r.UtilPct)) : 0;
+
+    let avgDaysNumerator = 0;
+    let avgDaysWeight = 0;
+    dcRows.forEach((r) => {
+      if (r.AvgDays <= 0) return;
+      const weight = r.VolumeUnits > 0 ? r.VolumeUnits : 1;
+      avgDaysNumerator += r.AvgDays * weight;
+      avgDaysWeight += weight;
+    });
+    const avgDeliveryDays = avgDaysWeight > 0 ? avgDaysNumerator / avgDaysWeight : 0;
+
+    let slaNumerator = 0;
+    let slaWeight = 0;
+    filteredScenarios.forEach((s) => {
+      const count = scenarioRunResultsDC.filter((r) => r.ScenarioRunID === s.ScenarioRunID).length;
+      if (count === 0) return;
+      slaNumerator += s.SLABreachPct * count;
+      slaWeight += count;
+    });
+    const slaBreachPct = slaWeight > 0 ? slaNumerator / slaWeight : 0;
 
     return {
       totalCost,
@@ -140,7 +175,7 @@ export const Home: React.FC<HomeProps> = ({
       totalSpaceRequired,
       slaBreachPct,
     };
-  }, [filteredScenarios]);
+  }, [filteredScenarios, scenarioRunResultsDC]);
 
   const handleExportScenarioList = () => {
     const rows = filteredScenarios.map((s) => ({
@@ -250,14 +285,14 @@ export const Home: React.FC<HomeProps> = ({
       header: 'Cost/Unit',
       width: '100px',
       sortable: true,
-      render: (row) => `$${row.CostPerUnit.toFixed(2)}`,
+      render: (row) => row.CostPerUnit > 0 ? `$${row.CostPerUnit.toFixed(2)}` : 'NA',
     },
     {
       key: 'AvgDeliveryDays',
       header: 'Avg Days',
       width: '90px',
       sortable: true,
-      render: (row) => row.AvgDeliveryDays.toFixed(1),
+      render: (row) => row.AvgDeliveryDays > 0 ? row.AvgDeliveryDays.toFixed(2) : 'NA',
     },
     {
       key: 'SLABreachPct',
@@ -266,7 +301,7 @@ export const Home: React.FC<HomeProps> = ({
       sortable: true,
       render: (row) => (
         <span className={row.SLABreachPct > 5 ? 'text-red-600 font-medium' : ''}>
-          {row.SLABreachPct.toFixed(1)}%
+          {Number.isFinite(row.SLABreachPct) ? `${row.SLABreachPct.toFixed(2)}%` : 'NA'}
         </span>
       ),
     },
@@ -284,27 +319,27 @@ export const Home: React.FC<HomeProps> = ({
       sortable: true,
       render: (row) => (
         <span className={row.MaxUtilPct > 85 ? 'text-amber-600 font-medium' : ''}>
-          {row.MaxUtilPct}%
+          {row.MaxUtilPct > 0 ? `${row.MaxUtilPct.toFixed(2)}%` : 'NA'}
         </span>
       ),
     },
     {
       key: 'TotalSpaceRequired',
-      header: 'Total Space',
+      header: 'Total Space Required',
       width: '110px',
       sortable: true,
       render: (row) => row.TotalSpaceRequired.toLocaleString(),
     },
     {
       key: 'SpaceCore',
-      header: 'Space Core',
+      header: `Space ${entityLabels.first}`,
       width: '110px',
       sortable: true,
       render: (row) => row.SpaceCore.toLocaleString(),
     },
     {
       key: 'SpaceBCV',
-      header: 'Space BCV',
+      header: `Space ${entityLabels.second}`,
       width: '110px',
       sortable: true,
       render: (row) => row.SpaceBCV.toLocaleString(),
@@ -323,7 +358,7 @@ export const Home: React.FC<HomeProps> = ({
       sortable: true,
       render: (row) => new Date(row.LastUpdatedAt).toLocaleDateString(),
     },
-    { key: 'CreatedBy', header: 'Owner', width: '120px', sortable: true },
+    // { key: 'CreatedBy', header: 'Owner', width: '120px', sortable: true },
     {
       key: 'LatestComment',
       header: 'Latest Comment',
@@ -647,15 +682,16 @@ export const Home: React.FC<HomeProps> = ({
                     {isActionActive('export_scenario_list') ? 'Exporting Scenario List...' : 'Export Scenario List CSV'}
                   </button>
                   <button
-                    className={`w-full text-left px-4 py-2 text-sm hover:bg-slate-50 ${isActionActive('export_comparison_list') ? 'bg-amber-50 text-amber-800' : ''}`}
+                    className={`w-full text-left px-4 py-2 text-sm hover:bg-slate-50 ${!hasComparisons ? 'text-slate-400 cursor-not-allowed' : ''} ${isActionActive('export_comparison_list') ? 'bg-amber-50 text-amber-800' : ''}`}
                     onClick={handleExportComparisonList}
+                    disabled={!hasComparisons}
                   >
                     {isActionActive('export_comparison_list') ? 'Exporting Comparison List...' : 'Export Comparison List CSV'}
                   </button>
                 </div>
               </div>
 
-              <Button onClick={onNewComparison} variant="secondary" size="small" icon={<Plus className="w-4 h-4" />}>
+              <Button onClick={onNewComparison} variant="secondary" size="small" icon={<Plus className="w-4 h-4" />} disabled={!hasComparisons}>
                 New Comparison
               </Button>
 
@@ -711,7 +747,7 @@ export const Home: React.FC<HomeProps> = ({
             <h2 className="text-lg font-semibold text-slate-900">Scenario Runs</h2>
             <div className="flex gap-2">
               {selectedScenarios.size === 2 && (
-                <Button onClick={handleCompareSelected} variant="primary" size="small" icon={<Play className="w-4 h-4" />}>
+                <Button onClick={handleCompareSelected} variant="primary" size="small" disabled={!hasComparisons} icon={<Play className="w-4 h-4" />}>
                   Compare Selected
                 </Button>
               )}
@@ -781,19 +817,21 @@ export const Home: React.FC<HomeProps> = ({
           />
         </div>
 
-        <div className="bg-white rounded-lg border border-slate-200 shadow-sm mb-6 p-4">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-slate-900">Comparisons</h2>
-          </div>
+        {comparisonHeaders.length > 0 && (
+          <div className="bg-white rounded-lg border border-slate-200 shadow-sm mb-6 p-4">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-slate-900">Comparisons</h2>
+            </div>
 
-          <DataTable
-            columns={comparisonColumns}
-            data={filteredComparisons}
-            onRowClick={(row) => onOpenComparison(row.ComparisonID)}
-            getRowId={(row) => row.ComparisonID}
-            maxHeight="400px"
-          />
-        </div>
+            <DataTable
+              columns={comparisonColumns}
+              data={filteredComparisons}
+              onRowClick={(row) => onOpenComparison(row.ComparisonID)}
+              getRowId={(row) => row.ComparisonID}
+              maxHeight="400px"
+            />
+          </div>
+        )}
 
         <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-4">
           <h2 className="text-lg font-semibold text-slate-900 mb-4">Alerts & Data Health</h2>

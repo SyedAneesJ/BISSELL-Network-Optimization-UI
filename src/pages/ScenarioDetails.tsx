@@ -62,6 +62,20 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = ({
   const [laneFlagFilter, setLaneFlagFilter] = useState('All');
 
   const scenario = scenarioRunHeaders.find(s => s.ScenarioRunID === scenarioId);
+  const entityLabels = (() => {
+    const entities = new Set<string>();
+    scenarioRunHeaders.forEach((s) => {
+      s.EntityScope?.split('/').forEach((e) => {
+        const trimmed = e.trim();
+        if (trimmed) entities.add(trimmed);
+      });
+    });
+    const list = Array.from(entities);
+    return {
+      first: list[0] || 'Entity A',
+      second: list[1] || 'Entity B',
+    };
+  })();
   const scenarioConfig = scenarioRunConfigs.find(c => c.ScenarioRunID === scenarioId);
   const dcResults = scenarioRunResultsDC.filter(dc => dc.ScenarioRunID === scenarioId);
   const laneResults = scenarioRunResultsLanes.filter(lane => lane.ScenarioRunID === scenarioId);
@@ -94,6 +108,7 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = ({
 
   const baselineScenario = scenario ? getBaselineScenario() : null;
   const baselineScenarioId = baselineScenario?.ScenarioRunID;
+  const canShowDifference = Boolean(baselineScenarioId && baselineScenarioId !== scenarioId);
   const baselineDcResults = baselineScenarioId
     ? scenarioRunResultsDC.filter((dc) => dc.ScenarioRunID === baselineScenarioId)
     : [];
@@ -309,7 +324,7 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = ({
       key: 'AvgDays',
       header: 'Avg Days',
       sortable: true,
-      render: (row) => row.AvgDays.toFixed(1),
+      render: (row) => row.AvgDays > 0 ? row.AvgDays.toFixed(2) : 'NA',
     },
     {
       key: 'UtilPct',
@@ -317,7 +332,7 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = ({
       sortable: true,
       render: (row) => (
         <span className={row.UtilPct > 85 ? 'text-amber-600 font-medium' : ''}>
-          {row.UtilPct}%
+          {row.UtilPct > 0 ? `${row.UtilPct.toFixed(2)}%` : 'NA'}
         </span>
       ),
     },
@@ -473,20 +488,20 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = ({
         <div className="space-y-6">
           <div className="grid grid-cols-5 gap-4">
             <KPICard label="Total Cost" value={scenario.TotalCost} format="currency" />
-            <KPICard label="Cost per Unit" value={scenario.CostPerUnit} format="currency" />
-            <KPICard label="Avg Delivery Days" value={scenario.AvgDeliveryDays} format="decimal" />
-            <KPICard label="SLA Breach %" value={scenario.SLABreachPct} format="decimal" />
-            <KPICard label="Max Utilization %" value={scenario.MaxUtilPct} format="number" />
+            <KPICard label="Cost per Unit" value={scenario.CostPerUnit > 0 ? `$${scenario.CostPerUnit.toFixed(2)}` : 'NA'} />
+            <KPICard label="Avg Delivery Days" value={scenario.AvgDeliveryDays > 0 ? scenario.AvgDeliveryDays : 'NA'} format="decimal" />
+          <KPICard label="SLA Breach %" value={Number.isFinite(scenario.SLABreachPct) ? scenario.SLABreachPct : 'NA'} format="decimal" />
+            <KPICard label="Max Utilization %" value={scenario.MaxUtilPct > 0 ? scenario.MaxUtilPct.toFixed(2) : 'NA'} />
           </div>
 
           <div className="grid grid-cols-4 gap-4">
-            <KPICard label="Total Space" value={scenario.TotalSpaceRequired} format="number" tooltip="Total warehouse space required (sq ft)" />
-            <KPICard label="Space Core" value={scenario.SpaceCore} format="number" tooltip="Space for core products" />
-            <KPICard label="Space BCV" value={scenario.SpaceBCV} format="number" tooltip="Space for business critical volume" />
+            <KPICard label="Total Space Required" value={scenario.TotalSpaceRequired} format="number" tooltip="Total warehouse space required (sq ft)" />
+            <KPICard label={`Space ${entityLabels.first}`} value={scenario.SpaceCore} format="number" tooltip={`Space for ${entityLabels.first}`} />
+            <KPICard label={`Space ${entityLabels.second}`} value={scenario.SpaceBCV} format="number" tooltip={`Space for ${entityLabels.second}`} />
             <KPICard label="Overrides" value={scenario.OverrideCount} format="number" tooltip="Number of manual overrides applied" />
           </div>
 
-          {scenarioConfig && (
+          {scenarioConfig ? (
             <div className="bg-white border border-slate-200 rounded-lg p-4">
               <h3 className="text-lg font-semibold text-slate-900 mb-4">Scenario Configuration</h3>
               <div className="grid grid-cols-3 gap-4 text-sm">
@@ -500,6 +515,11 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = ({
                 <div><span className="text-slate-600">Relocation Prepaid:</span> {scenarioConfig.AllowRelocationPrepaid}</div>
                 <div><span className="text-slate-600">Relocation Collect:</span> {scenarioConfig.AllowRelocationCollect}</div>
               </div>
+            </div>
+          ) : (
+            <div className="bg-white border border-slate-200 rounded-lg p-4">
+              <h3 className="text-lg font-semibold text-slate-900 mb-2">Scenario Configuration</h3>
+              <div className="text-sm text-slate-500">No configuration data available for this scenario.</div>
             </div>
           )}
 
@@ -529,7 +549,7 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = ({
                     <div className="flex justify-between">
                       <span className="text-slate-600">Utilization:</span>
                       <span className={`font-medium ${dc.UtilPct > 85 ? 'text-amber-600' : ''}`}>
-                        {dc.UtilPct}%
+                        {dc.UtilPct > 0 ? `${dc.UtilPct.toFixed(2)}%` : 'NA'}
                       </span>
                     </div>
                     <div className="flex justify-between">
@@ -544,7 +564,7 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = ({
                     </div>
 
                     <div className="pt-2 border-t border-slate-200">
-                      <div className="text-xs text-slate-500 mb-1">Core/BCV Split</div>
+                      <div className="text-xs text-slate-500 mb-1">Square Footage/Working Capacity</div>
                       <div className="flex gap-1 h-2">
                         <div
                           className="bg-blue-500 rounded-l"
@@ -556,8 +576,8 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = ({
                         />
                       </div>
                       <div className="flex justify-between text-xs text-slate-600 mt-1">
-                        <span>Core: {dc.SpaceCore.toLocaleString()}</span>
-                        <span>BCV: {dc.SpaceBCV.toLocaleString()}</span>
+                        <span>Square Footage: {dc.SpaceCore.toLocaleString()}</span>
+                        <span>Working Capacity: {dc.SpaceBCV.toLocaleString()}</span>
                       </div>
                     </div>
 
@@ -620,7 +640,7 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = ({
                 <Button
                   variant="secondary"
                   size="small"
-                  disabled={!baselineScenarioId}
+                  disabled={!canShowDifference}
                   onClick={() => setNetworkView(networkView === 'difference' ? 'current' : 'difference')}
                   className={networkView === 'difference' ? 'bg-amber-100 text-amber-800' : ''}
                 >
@@ -768,9 +788,10 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = ({
         <div className="space-y-4">
           <div className="flex gap-2">
             <select
-              className="px-3 py-2 border border-slate-300 rounded-lg text-sm"
+              className={`px-3 py-2 border border-slate-300 rounded-lg text-sm ${laneResults.length === 0 ? 'bg-slate-100 cursor-not-allowed' : ''}`}
               value={laneChannelFilter}
               onChange={(e) => setLaneChannelFilter(e.target.value)}
+              disabled={laneResults.length === 0}
             >
               <option value="All">All Channels</option>
               {channelOptions.map((channel) => (
@@ -779,9 +800,10 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = ({
             </select>
 
             <select
-              className="px-3 py-2 border border-slate-300 rounded-lg text-sm"
+              className={`px-3 py-2 border border-slate-300 rounded-lg text-sm ${laneResults.length === 0 ? 'bg-slate-100 cursor-not-allowed' : ''}`}
               value={laneTermsFilter}
               onChange={(e) => setLaneTermsFilter(e.target.value)}
+              disabled={laneResults.length === 0}
             >
               <option value="All">All Terms</option>
               {termsOptions.map((term) => (
@@ -790,9 +812,10 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = ({
             </select>
 
             <select
-              className="px-3 py-2 border border-slate-300 rounded-lg text-sm"
+              className={`px-3 py-2 border border-slate-300 rounded-lg text-sm ${laneResults.length === 0 ? 'bg-slate-100 cursor-not-allowed' : ''}`}
               value={laneFlagFilter}
               onChange={(e) => setLaneFlagFilter(e.target.value)}
+              disabled={laneResults.length === 0}
             >
               <option value="All">All Lanes</option>
               <option value="SLA Breaches Only">SLA Breaches Only</option>
@@ -823,21 +846,21 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = ({
           </div>
 
           <div className="bg-white border border-slate-200 rounded-lg p-4">
-            <h3 className="text-lg font-semibold text-slate-900 mb-4">Space Required by DC</h3>
+            <h3 className="text-lg font-semibold text-slate-900 mb-4">Square Footage vs Working Capacity</h3>
             <div className="space-y-3">
               {dcResults.map((dc) => {
-                const total = Math.max(dc.SpaceRequired, 1);
-                const corePct = (dc.SpaceCore / total) * 100;
-                const bcvPct = (dc.SpaceBCV / total) * 100;
+                const total = Math.max(dc.SpaceCore, dc.SpaceBCV, 1);
+                const squarePct = (dc.SpaceCore / total) * 100;
+                const workingPct = (dc.SpaceBCV / total) * 100;
                 return (
                   <div key={dc.DCName}>
                     <div className="flex justify-between text-sm mb-1">
                       <span className="text-slate-700">{dc.DCName}</span>
-                      <span className="font-medium">{dc.SpaceRequired.toLocaleString()} sq ft</span>
+                      <span className="font-medium">{dc.SpaceCore.toLocaleString()} / {dc.SpaceBCV.toLocaleString()} sq ft</span>
                     </div>
                     <div className="flex h-2 rounded-full overflow-hidden bg-slate-200">
-                      <div className="bg-blue-500" style={{ width: `${corePct}%` }} />
-                      <div className="bg-green-500" style={{ width: `${bcvPct}%` }} />
+                      <div className="bg-blue-500" style={{ width: `${squarePct}%` }} />
+                      <div className="bg-green-500" style={{ width: `${workingPct}%` }} />
                     </div>
                   </div>
                 );
@@ -917,10 +940,12 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = ({
           ) : (
             <div className="bg-white border border-slate-200 rounded-lg p-8 text-center">
               <Settings className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-              <p className="text-slate-600">No overrides applied to this scenario</p>
-              <Button onClick={() => setShowOverrideModal(true)} variant="secondary" size="small" className="mt-4">
-                Apply Override
-              </Button>
+              <p className="text-slate-600">No override data available for this scenario</p>
+              {laneResults.length > 0 && (
+                <Button onClick={() => setShowOverrideModal(true)} variant="secondary" size="small" className="mt-4">
+                  Apply Override
+                </Button>
+              )}
             </div>
           )}
         </div>
@@ -975,19 +1000,22 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = ({
                   {isActionActive('scenario_export_decision') ? 'Exporting Decision Pack...' : 'Export Decision Pack CSV'}
                 </button>
                 <button
-                  className={`w-full text-left px-4 py-2 text-sm hover:bg-slate-50 ${isActionActive('scenario_export_routing') ? 'bg-amber-50 text-amber-800' : ''}`}
+                  className={`w-full text-left px-4 py-2 text-sm hover:bg-slate-50 ${laneResults.length === 0 ? 'text-slate-400 cursor-not-allowed' : ''} ${isActionActive('scenario_export_routing') ? 'bg-amber-50 text-amber-800' : ''}`}
+                  disabled={laneResults.length === 0}
                   onClick={handleExportRoutingCSV}
                 >
                   {isActionActive('scenario_export_routing') ? 'Exporting Routing CSV...' : 'Export Routing Assignment CSV'}
                 </button>
                 <button
-                  className={`w-full text-left px-4 py-2 text-sm hover:bg-slate-50 ${isActionActive('scenario_export_lane') ? 'bg-amber-50 text-amber-800' : ''}`}
+                  className={`w-full text-left px-4 py-2 text-sm hover:bg-slate-50 ${laneResults.length === 0 ? 'text-slate-400 cursor-not-allowed' : ''} ${isActionActive('scenario_export_lane') ? 'bg-amber-50 text-amber-800' : ''}`}
+                  disabled={laneResults.length === 0}
                   onClick={handleExportLaneCSV}
                 >
                   {isActionActive('scenario_export_lane') ? 'Exporting Lane Table...' : 'Export Lane Table CSV'}
                 </button>
                 <button
-                  className={`w-full text-left px-4 py-2 text-sm hover:bg-slate-50 ${isActionActive('scenario_export_exceptions') ? 'bg-amber-50 text-amber-800' : ''}`}
+                  className={`w-full text-left px-4 py-2 text-sm hover:bg-slate-50 ${laneResults.length === 0 ? 'text-slate-400 cursor-not-allowed' : ''} ${isActionActive('scenario_export_exceptions') ? 'bg-amber-50 text-amber-800' : ''}`}
+                  disabled={laneResults.length === 0}
                   onClick={handleExportExceptionsCSV}
                 >
                   {isActionActive('scenario_export_exceptions') ? 'Exporting Exceptions...' : 'Export Exceptions CSV'}

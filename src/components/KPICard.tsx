@@ -26,7 +26,7 @@ export const KPICard: React.FC<KPICardProps> = ({
       case 'currency':
         return `$${val.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
       case 'percent':
-        return `${val.toFixed(1)}%`;
+        return `${val.toFixed(2)}%`;
       case 'decimal':
         return val.toFixed(2);
       default:

@@ -164,8 +164,8 @@ export const NewComparisonModal: React.FC<NewComparisonModalProps> = ({
               <div className="text-center">{scenarioB.SLABreachPct.toFixed(1)}%</div>
 
               <div className="text-slate-700">Max Util %</div>
-              <div className="text-center">{scenarioA.MaxUtilPct}%</div>
-              <div className="text-center">{scenarioB.MaxUtilPct}%</div>
+              <div className="text-center">{scenarioA.MaxUtilPct.toFixed(2)}%</div>
+              <div className="text-center">{scenarioB.MaxUtilPct.toFixed(2)}%</div>
 
               <div className="text-slate-700 font-semibold pt-2 border-t border-slate-200">Delta</div>
               <div className={`text-center font-semibold pt-2 border-t border-slate-200 ${
