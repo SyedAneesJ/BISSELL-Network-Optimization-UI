@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Modal } from './Modal';
-import { Button } from './Button';
-import { ScenarioRunHeader } from '../data/mockData';
+import { Button, Modal } from '../ui';
+import { ScenarioRunHeader } from '@/data';
 
 interface NewComparisonModalProps {
   isOpen: boolean;

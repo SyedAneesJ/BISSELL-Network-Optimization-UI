@@ -1,9 +1,10 @@
-import DatasetApi, { DatasetApiHelpers } from './datasetApi';
+import DatasetApi from './datasetApi';
+import { csvToObjects } from '@/utils';
 import {
   ScenarioRunHeader,
   ScenarioRunResultsDC,
   DataHealthSnapshot,
-} from '../data/mockData';
+} from '@/data';
 
 export const DOMO_DC_DATASET_ID = '0f804e68-b63f-4409-a979-64dea90018fe';
 
@@ -163,7 +164,7 @@ export const fetchDomoDcDatasetRows = async (): Promise<{
   const token = await DatasetApi.fetchAccessToken();
   const dataset = await DatasetApi.getDataset(DOMO_DC_DATASET_ID, token);
   const csv = await DatasetApi.getDatasetDataCsv(DOMO_DC_DATASET_ID, token, 50000, 0);
-  const parsed = DatasetApiHelpers.csvToObjects(csv) as DomoDcRow[];
+  const parsed = csvToObjects(csv) as DomoDcRow[];
   return { dataset, rows: parsed, rawCsv: csv };
 };
 

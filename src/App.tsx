@@ -1,10 +1,12 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { Home } from './pages/Home';
-import { ScenarioDetails } from './pages/ScenarioDetails';
-import { ComparisonDetails } from './pages/ComparisonDetails';
-import { NewScenarioSubmit, NewScenarioWizard } from './components/NewScenarioWizard';
-import { NewComparisonModal, NewComparisonSubmit } from './components/NewComparisonModal';
-import { DataHealthModal } from './components/DataHealthModal';
+import { Home, ScenarioDetails, ComparisonDetails } from '@/pages';
+import {
+  NewScenarioSubmit,
+  NewScenarioWizard,
+  NewComparisonModal,
+  NewComparisonSubmit,
+  DataHealthModal,
+} from '@/components';
 import {
   ComparisonDetailDC,
   ComparisonDetailLane,
@@ -15,7 +17,7 @@ import {
   ScenarioRunResultsDC,
   ScenarioRunResultsLane,
   getDataHealthSnapshot,
-} from './data/mockData';
+} from '@/data';
 import {
   buildScenarioHeaderFromRows,
   buildDataHealthSnapshotFromRows,
@@ -23,7 +25,7 @@ import {
   fetchDomoDcDatasetRows,
   getEntityOrder,
   mapDcResultsFromRows,
-} from './helpers/domoDataset';
+} from '@/services';
 
 type Page = 'home' | 'scenario' | 'comparison';
 

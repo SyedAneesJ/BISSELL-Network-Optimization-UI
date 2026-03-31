@@ -66,7 +66,7 @@ export function DataTable<T>({
 
   return (
     <div className="overflow-x-auto border border-slate-200 rounded-xl shadow-sm bg-white/70" style={{ maxHeight }}>
-      <table className="w-full">
+      <table className="min-w-max w-full">
         <thead className="bg-white/80 backdrop-blur sticky top-0 z-10 border-b border-slate-200">
           <tr>
             {selectedRows && onSelectRow && (
@@ -77,7 +77,7 @@ export function DataTable<T>({
             {columns.map((column) => (
               <th
                 key={column.key}
-                className={`px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider ${column.sortable ? 'cursor-pointer select-none hover:bg-slate-100' : ''}`}
+                className={`px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider whitespace-nowrap ${column.sortable ? 'cursor-pointer select-none hover:bg-slate-100' : ''}`}
                 style={{ width: column.width }}
                 onClick={() => column.sortable && handleSort(column.key)}
               >
@@ -121,7 +121,7 @@ export function DataTable<T>({
                   </td>
                 )}
                 {columns.map((column) => (
-                  <td key={column.key} className="px-4 py-3 text-sm text-slate-900">
+                  <td key={column.key} className="px-4 py-3 text-sm text-slate-900 whitespace-nowrap">
                     {column.render ? column.render(row) : String((row as any)[column.key] || '')}
                   </td>
                 ))}

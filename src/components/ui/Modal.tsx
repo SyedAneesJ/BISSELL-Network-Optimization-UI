@@ -32,19 +32,19 @@ export const Modal: React.FC<ModalProps> = ({
   if (!isOpen) return null;
 
   const sizeClasses = {
-    small: 'max-w-md',
-    medium: 'max-w-2xl',
-    large: 'max-w-4xl',
-    xlarge: 'max-w-6xl',
+    small: 'max-w-full sm:max-w-md',
+    medium: 'max-w-full sm:max-w-2xl',
+    large: 'max-w-full lg:max-w-4xl',
+    xlarge: 'max-w-full xl:max-w-6xl',
   };
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
-      <div className="flex min-h-screen items-center justify-center p-4">
+      <div className="flex min-h-screen items-center justify-center p-3 sm:p-4">
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-[2px] transition-opacity" onClick={onClose} />
 
         <div className={`relative bg-white/90 backdrop-blur-md rounded-2xl shadow-2xl w-full ${sizeClasses[size]} max-h-[90vh] flex flex-col border border-white/40 fade-in`}>
-          <div className="flex items-center justify-between p-6 border-b border-slate-200">
+          <div className="flex items-center justify-between p-4 sm:p-6 border-b border-slate-200">
             <h2 className="text-xl font-semibold text-slate-900">{title}</h2>
             <button
               onClick={onClose}
@@ -54,12 +54,12 @@ export const Modal: React.FC<ModalProps> = ({
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-6">
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6">
             {children}
           </div>
 
           {footer && (
-            <div className="flex items-center justify-end gap-3 p-6 border-t border-slate-200 bg-slate-50">
+            <div className="flex flex-wrap items-center justify-end gap-3 p-4 sm:p-6 border-t border-slate-200 bg-slate-50">
               {footer}
             </div>
           )}

@@ -1,12 +1,8 @@
 import React from 'react';
 import { Download, AlertTriangle, CheckCircle, Clock } from 'lucide-react';
-import { Modal } from './Modal';
-import { Button } from './Button';
-import { StatusBadge } from './StatusBadge';
-import { Tooltip } from './Tooltip';
-import { DataHealthSnapshot, ScenarioRunResultsLane } from '../data/mockData';
-import { createDataHealthPdf, downloadBlob, toCSV } from '../utils/export';
-import { useActionFeedback } from '../utils/actionFeedback';
+import { Button, Modal, StatusBadge, Tooltip } from '../ui';
+import { DataHealthSnapshot, ScenarioRunResultsLane } from '@/data';
+import { createDataHealthPdf, downloadBlob, toCSV, useActionFeedback } from '@/utils';
 
 interface DataHealthModalProps {
   isOpen: boolean;
