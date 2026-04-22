@@ -5,5 +5,6 @@ export { Modal } from './Modal';
 export { StatusBadge } from './StatusBadge';
 export { Tabs } from './Tabs';
 export { Tooltip } from './Tooltip';
+export { Toast } from './Toast';
 export type { Column } from './DataTable';
 export type { Tab } from './Tabs';

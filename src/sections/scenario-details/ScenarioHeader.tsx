@@ -80,6 +80,12 @@ export const ScenarioHeader: React.FC<ScenarioHeaderProps> = ({
             {scenario.ApprovedBy && (
               <span className="ml-3">Approved by {scenario.ApprovedBy}</span>
             )}
+            {scenario.LastRunBy && (
+              <span className="ml-3">
+                Last run by {scenario.LastRunBy}
+                {scenario.LastRunAt ? ` on ${new Date(scenario.LastRunAt).toLocaleString()}` : ''}
+              </span>
+            )}
           </div>
         </div>
       </div>

@@ -7,6 +7,8 @@ interface HomeHeaderProps {
   onWorkspaceChange: (workspace: 'All' | 'US' | 'Canada') => void;
   searchTerm: string;
   onSearchTermChange: (value: string) => void;
+  currentUserDisplayName: string;
+  currentUserEmail?: string | null;
   onDataHealth: () => void;
   onExportScenarioList: () => void;
   onExportComparisonList: () => void;
@@ -22,6 +24,8 @@ export const HomeHeader: React.FC<HomeHeaderProps> = ({
   onWorkspaceChange,
   searchTerm,
   onSearchTermChange,
+  currentUserDisplayName,
+  currentUserEmail,
   onDataHealth,
   onExportScenarioList,
   onExportComparisonList,
@@ -47,6 +51,11 @@ export const HomeHeader: React.FC<HomeHeaderProps> = ({
             <option value="US">US</option>
             <option value="Canada">Canada</option>
           </select>
+          <div className="inline-flex flex-col rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-600 sm:flex-row sm:items-center sm:gap-2">
+            <span className="font-medium text-slate-800">{currentUserDisplayName || 'User'}</span>
+            <span className="hidden sm:inline text-slate-300">•</span>
+            <span className="truncate max-w-[220px]">{currentUserEmail || 'No email resolved'}</span>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
@@ -77,9 +86,8 @@ export const HomeHeader: React.FC<HomeHeaderProps> = ({
                 {exportScenarioActive ? 'Exporting Scenario List...' : 'Export Scenario List CSV'}
               </button>
               <button
-                className={`w-full text-left px-4 py-2 text-sm hover:bg-slate-50 ${!hasComparisons ? 'text-slate-400 cursor-not-allowed' : ''} ${exportComparisonActive ? 'bg-amber-50 text-amber-800' : ''}`}
+                className={`w-full text-left px-4 py-2 text-sm hover:bg-slate-50 ${exportComparisonActive ? 'bg-amber-50 text-amber-800' : ''}`}
                 onClick={onExportComparisonList}
-                disabled={!hasComparisons}
               >
                 {exportComparisonActive ? 'Exporting Comparison List...' : 'Export Comparison List CSV'}
               </button>
@@ -91,7 +99,6 @@ export const HomeHeader: React.FC<HomeHeaderProps> = ({
             variant="secondary"
             size="small"
             icon={<Plus className="w-4 h-4" />}
-            disabled={!hasComparisons}
           >
             New Comparison
           </Button>

@@ -1,5 +1,6 @@
 import { Column } from '@/components/ui';
 import { ScenarioRunResultsDC, ScenarioRunResultsLane } from '@/data';
+import { formatCurrencyOrNA, formatDecimalOrNA, formatNumberOrNA, formatPercentOrNA, formatTextOrNA } from '@/utils';
 
 export const createScenarioDcColumns = (): Column<ScenarioRunResultsDC>[] => [
   { key: 'DCName', header: 'DC Name', sortable: true },
@@ -7,19 +8,19 @@ export const createScenarioDcColumns = (): Column<ScenarioRunResultsDC>[] => [
     key: 'TotalCost',
     header: 'Cost',
     sortable: true,
-    render: (row) => `$${row.TotalCost.toLocaleString()}`,
+    render: (row) => formatCurrencyOrNA(row.TotalCost),
   },
   {
     key: 'VolumeUnits',
     header: 'Volume',
     sortable: true,
-    render: (row) => row.VolumeUnits.toLocaleString(),
+    render: (row) => formatNumberOrNA(row.VolumeUnits),
   },
   {
     key: 'AvgDays',
     header: 'Avg Days',
     sortable: true,
-    render: (row) => row.AvgDays > 0 ? row.AvgDays.toFixed(2) : 'NA',
+    render: (row) => formatDecimalOrNA(row.AvgDays, 2),
   },
   {
     key: 'UtilPct',
@@ -27,7 +28,7 @@ export const createScenarioDcColumns = (): Column<ScenarioRunResultsDC>[] => [
     sortable: true,
     render: (row) => (
       <span className={row.UtilPct > 85 ? 'text-amber-600 font-medium' : ''}>
-        {row.UtilPct > 0 ? `${row.UtilPct.toFixed(2)}%` : 'NA'}
+        {formatPercentOrNA(row.UtilPct, 2)}
       </span>
     ),
   },
@@ -35,7 +36,7 @@ export const createScenarioDcColumns = (): Column<ScenarioRunResultsDC>[] => [
     key: 'SpaceRequired',
     header: 'Space Req',
     sortable: true,
-    render: (row) => row.SpaceRequired.toLocaleString(),
+    render: (row) => formatNumberOrNA(row.SpaceRequired),
   },
   {
     key: 'SLABreachCount',
@@ -43,7 +44,7 @@ export const createScenarioDcColumns = (): Column<ScenarioRunResultsDC>[] => [
     sortable: true,
     render: (row) => (
       <span className={row.SLABreachCount > 5 ? 'text-red-600 font-medium' : ''}>
-        {row.SLABreachCount}
+        {formatNumberOrNA(row.SLABreachCount)}
       </span>
     ),
   },
@@ -67,7 +68,7 @@ export const createScenarioLaneColumns = (): Column<ScenarioRunResultsLane>[] =>
     header: 'Cost',
     width: '90px',
     sortable: true,
-    render: (row) => `$${row.LaneCost.toFixed(2)}`,
+    render: (row) => formatCurrencyOrNA(row.LaneCost, 2),
   },
   {
     key: 'CostDeltaVsBest',
@@ -76,7 +77,7 @@ export const createScenarioLaneColumns = (): Column<ScenarioRunResultsLane>[] =>
     sortable: true,
     render: (row) => (
       <span className={row.CostDeltaVsBest > 0 ? 'text-amber-600' : 'text-green-600'}>
-        ${row.CostDeltaVsBest.toFixed(2)}
+        {formatCurrencyOrNA(row.CostDeltaVsBest, 2)}
       </span>
     ),
   },
@@ -85,7 +86,7 @@ export const createScenarioLaneColumns = (): Column<ScenarioRunResultsLane>[] =>
     header: 'Days',
     width: '70px',
     sortable: true,
-    render: (row) => row.DeliveryDays.toFixed(1),
+    render: (row) => formatDecimalOrNA(row.DeliveryDays, 1),
   },
   {
     key: 'SLABreachFlag',
@@ -120,7 +121,7 @@ export const createScenarioRankedOptionsColumns = (): Column<ScenarioRunResultsL
     render: (row) => (
       <div className="text-xs">
         <div className="font-medium">{row.RankedOption1DC}</div>
-        <div className="text-slate-600">${row.RankedOption1Cost.toFixed(2)} | {row.RankedOption1Days}d</div>
+        <div className="text-slate-600">{formatCurrencyOrNA(row.RankedOption1Cost, 2)} | {formatTextOrNA(row.RankedOption1Days)}d</div>
       </div>
     ),
   },
@@ -131,7 +132,7 @@ export const createScenarioRankedOptionsColumns = (): Column<ScenarioRunResultsL
     render: (row) => (
       <div className="text-xs">
         <div className="font-medium">{row.RankedOption2DC}</div>
-        <div className="text-slate-600">${row.RankedOption2Cost.toFixed(2)} | {row.RankedOption2Days}d</div>
+        <div className="text-slate-600">{formatCurrencyOrNA(row.RankedOption2Cost, 2)} | {formatTextOrNA(row.RankedOption2Days)}d</div>
       </div>
     ),
   },
@@ -142,7 +143,7 @@ export const createScenarioRankedOptionsColumns = (): Column<ScenarioRunResultsL
     render: (row) => (
       <div className="text-xs">
         <div className="font-medium">{row.RankedOption3DC}</div>
-        <div className="text-slate-600">${row.RankedOption3Cost.toFixed(2)} | {row.RankedOption3Days}d</div>
+        <div className="text-slate-600">{formatCurrencyOrNA(row.RankedOption3Cost, 2)} | {formatTextOrNA(row.RankedOption3Days)}d</div>
       </div>
     ),
   },
@@ -168,7 +169,7 @@ export const createScenarioRankedOptionsColumns = (): Column<ScenarioRunResultsL
     sortable: true,
     render: (row) => (
       <span className={row.CostDeltaVsBest > 0 ? 'text-amber-600' : 'text-green-600'}>
-        ${row.CostDeltaVsBest.toFixed(2)}
+        {formatCurrencyOrNA(row.CostDeltaVsBest, 2)}
       </span>
     ),
   },

@@ -59,7 +59,9 @@ export const useScenarioDetails = ({
     scenarioRunHeaders.forEach((s) => {
       s.EntityScope?.split('/').forEach((e) => {
         const trimmed = e.trim();
-        if (trimmed) entities.add(trimmed);
+        if (trimmed && trimmed.toLowerCase() !== 'unknown' && trimmed.toLowerCase() !== 'na') {
+          entities.add(trimmed);
+        }
       });
     });
     const list = Array.from(entities);

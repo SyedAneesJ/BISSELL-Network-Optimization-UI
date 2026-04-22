@@ -47,11 +47,11 @@ export const KPICard: React.FC<KPICardProps> = ({
   };
 
   return (
-    <div className={`bg-white/80 rounded-xl border border-slate-200 shadow-sm ${sizeClasses[size]} hover:shadow-lg hover:-translate-y-0.5 transition-all`}>
+    <div className={`bg-white/80 rounded-xl border border-slate-200 shadow-sm ${sizeClasses[size]} hover:shadow-lg hover:-translate-y-0.5 transition-all min-w-0`}>
       <div className="flex items-start justify-between">
-        <div className="flex-1">
+        <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <p className="text-sm font-medium text-slate-600">{label}</p>
+            <p className="text-sm font-medium text-slate-600 break-words">{label}</p>
             {tooltip && (
               <div className="group relative">
                 <div className="cursor-help text-slate-400 hover:text-slate-600">
@@ -65,7 +65,7 @@ export const KPICard: React.FC<KPICardProps> = ({
               </div>
             )}
           </div>
-          <p className={`${valueSizeClasses[size]} font-semibold text-slate-900 mt-1`}>
+          <p className={`${valueSizeClasses[size]} font-semibold text-slate-900 mt-1 leading-tight break-all`}>
             {formatValue(value)}
           </p>
           {delta !== undefined && (

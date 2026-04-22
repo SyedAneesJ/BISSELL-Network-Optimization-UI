@@ -9,6 +9,11 @@ export interface ScenarioRunHeader {
   CreatedBy: string;
   CreatedAt: string;
   LastUpdatedAt: string;
+
+  DataflowID?: string;
+  LastRunBy?: string | null;
+  LastRunAt?: string | null;
+  LastRunExecutionId?: string | null;
   Status: 'Draft' | 'Running' | 'Completed' | 'Reviewed' | 'Published' | 'Archived';
   ApprovedBy: string | null;
   ApprovedAt: string | null;
@@ -20,12 +25,18 @@ export interface ScenarioRunHeader {
   TotalCost: number;
   CostPerUnit: number;
   AvgDeliveryDays: number;
+  AvgTransitDays?: number | null;
+  TotalCount?: number | null;
   SLABreachPct: number;
   ExcludedBySLACount: number;
   MaxUtilPct: number;
   TotalSpaceRequired: number;
   SpaceCore: number;
   SpaceBCV: number;
+  FootprintMode?: string | null;
+  LevelLoad?: string | null;
+  UtilizationCap?: string | number | null;
+  CollectTreatment?: string | null;
   OverrideCount: number;
   LaneCount: number;
   ChangedLaneCountVsBaseline: number;

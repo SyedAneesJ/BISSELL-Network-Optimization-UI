@@ -82,15 +82,15 @@ export const NewScenarioWizard: React.FC<NewScenarioWizardProps> = ({
         ? [...availableEntities, availableEntities.join('/')]
         : availableEntities.length > 0
           ? availableEntities
-          : ['Unknown']
+          : ['NA']
     )
   );
-  const initialEntities = entityScopes[0] || 'Unknown';
+  const initialEntities = entityScopes[0] || 'NA';
   const initialScenarioType = availableScenarioTypes[0] || '';
   const initialChannelScope = datasetOptions.channelScopes.length > 0 ? datasetOptions.channelScopes : [];
   const initialTermsScope = datasetOptions.termsScopes[0] || '';
-  const initialFootprintMode = datasetOptions.footprintModes[0] || 'Fixed';
-  const initialUtilCap = datasetOptions.utilCaps[0] ?? 80;
+  const initialFootprintMode = datasetOptions.footprintModes[0] || 'NA';
+  const initialUtilCap = datasetOptions.utilCaps[0] ?? 0;
   const initialLevelLoad = datasetOptions.levelLoadModes.length > 0
     ? datasetOptions.levelLoadModes.includes('On')
     : false;
@@ -98,8 +98,8 @@ export const NewScenarioWizard: React.FC<NewScenarioWizardProps> = ({
   const initialExcludeBeyondCap = datasetOptions.excludeBeyondCap.length > 0
     ? datasetOptions.excludeBeyondCap.includes(true)
     : false;
-  const initialCostVsService = datasetOptions.costVsServiceWeights[0] ?? 50;
-  const initialFuelSurchargeMode = datasetOptions.fuelSurchargeModes[0] || 'FromRates';
+  const initialCostVsService = datasetOptions.costVsServiceWeights[0] ?? 0;
+  const initialFuelSurchargeMode = datasetOptions.fuelSurchargeModes[0] || 'NA';
   const initialAccessorials = {
     residential: datasetOptions.accessorialFlags.includes('Residential'),
     liftgate: datasetOptions.accessorialFlags.includes('Liftgate'),
@@ -107,7 +107,7 @@ export const NewScenarioWizard: React.FC<NewScenarioWizardProps> = ({
   };
   const initialAllowRelocationPrepaid = datasetOptions.allowRelocationPrepaid.includes(true);
   const initialAllowRelocationCollect = datasetOptions.allowRelocationCollect.includes(true);
-  const initialBcvRuleSet = datasetOptions.bcvRuleSets[0] || 'Default';
+  const initialBcvRuleSet = datasetOptions.bcvRuleSets[0] || 'NA';
   const initialAllowManualOverride = datasetOptions.allowManualOverride.includes(true);
   const buildInitialFormData = (): NewScenarioFormData => ({
     region: initialRegion,

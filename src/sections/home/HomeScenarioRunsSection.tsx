@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Play, RefreshCw } from 'lucide-react';
 import { Button, DataTable, Column } from '@/components/ui';
 import { ScenarioRunHeader } from '@/data';
@@ -20,6 +20,8 @@ interface HomeScenarioRunsSectionProps {
   canCompare: boolean;
   onRefresh: () => void;
   refreshActive: boolean;
+  onRunSelected?: () => void;
+  canRun?: boolean;
 }
 
 export const HomeScenarioRunsSection: React.FC<HomeScenarioRunsSectionProps> = ({
@@ -39,14 +41,44 @@ export const HomeScenarioRunsSection: React.FC<HomeScenarioRunsSectionProps> = (
   canCompare,
   onRefresh,
   refreshActive,
+  onRunSelected,
+  canRun,
 }) => {
+  const PAGE_SIZE = 10;
+  const [currentPage, setCurrentPage] = useState(1);
+
+  const totalPages = Math.max(1, Math.ceil(filteredScenarios.length / PAGE_SIZE));
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [statusFilter, onlyAlerts, onlyPublished, filteredScenarios.length]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
+  const paginatedScenarios = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return filteredScenarios.slice(start, start + PAGE_SIZE);
+  }, [filteredScenarios, currentPage]);
+
+  const startItem = filteredScenarios.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1;
+  const endItem = Math.min(currentPage * PAGE_SIZE, filteredScenarios.length);
+
   return (
     <div className="bg-white rounded-lg border border-slate-200 shadow-sm mb-6 p-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
         <h2 className="text-lg font-semibold text-slate-900">Scenario Runs</h2>
         <div className="flex gap-2">
+          {onRunSelected && (
+            <Button onClick={onRunSelected} variant="primary" size="small" disabled={!canRun} icon={<Play className="w-4 h-4" />}>
+              Run Selected
+            </Button>
+          )}
           {showCompareSelected && (
-            <Button onClick={onCompareSelected} variant="primary" size="small" disabled={!canCompare} icon={<Play className="w-4 h-4" />}>
+            <Button onClick={onCompareSelected} variant="secondary" size="small" disabled={!canCompare}>
               Compare Selected
             </Button>
           )}
@@ -104,13 +136,40 @@ export const HomeScenarioRunsSection: React.FC<HomeScenarioRunsSectionProps> = (
 
       <DataTable
         columns={scenarioColumns}
-        data={filteredScenarios}
+        data={paginatedScenarios}
         onRowClick={(row) => onOpenScenario(row.ScenarioRunID)}
         selectedRows={selectedScenarios}
         onSelectRow={onSelectScenario}
         getRowId={(row) => row.ScenarioRunID}
         maxHeight="600px"
       />
+
+      <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm text-slate-600">
+          Showing {startItem}-{endItem} of {filteredScenarios.length}
+        </p>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="secondary"
+            size="small"
+            disabled={currentPage === 1}
+            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+          >
+            Previous
+          </Button>
+          <span className="text-sm text-slate-700">
+            Page {currentPage} of {totalPages}
+          </span>
+          <Button
+            variant="secondary"
+            size="small"
+            disabled={currentPage === totalPages}
+            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+          >
+            Next
+          </Button>
+        </div>
+      </div>
     </div>
   );
 };

@@ -122,6 +122,7 @@ export const ComparisonDetails: React.FC<ComparisonDetailsProps> = (props) => {
           onLaneChannelFilterChange={setLaneChannelFilter}
           filteredLaneComparison={filteredLaneComparison}
           laneComparisonColumns={laneComparisonColumns}
+          hasLaneData={laneComparison.length > 0}
         />
       ),
     },

@@ -3,6 +3,7 @@ import { Tooltip } from '@/components/ui';
 import { StatusBadge } from '@/components/ui';
 import { Column } from '@/components/ui';
 import { ComparisonHeader, ScenarioRunHeader } from '@/data';
+import { formatCurrencyOrNA, formatDecimalOrNA, formatNumberOrNA, formatPercentOrNA, formatTextOrNA } from '@/utils';
 
 interface ScenarioColumnsParams {
   entityLabels: { first: string; second: string };
@@ -49,21 +50,35 @@ export const createScenarioColumns = ({
     header: 'Total Cost',
     width: '120px',
     sortable: true,
-    render: (row) => `$${row.TotalCost.toLocaleString()}`,
+    render: (row) => formatCurrencyOrNA(row.TotalCost),
   },
   {
     key: 'CostPerUnit',
     header: 'Cost/Unit',
     width: '100px',
     sortable: true,
-    render: (row) => row.CostPerUnit > 0 ? `$${row.CostPerUnit.toFixed(2)}` : 'NA',
+    render: (row) => formatCurrencyOrNA(row.CostPerUnit, 2),
   },
   {
     key: 'AvgDeliveryDays',
     header: 'Avg Days',
     width: '90px',
     sortable: true,
-    render: (row) => row.AvgDeliveryDays > 0 ? row.AvgDeliveryDays.toFixed(2) : 'NA',
+    render: (row) => formatDecimalOrNA(row.AvgDeliveryDays, 2),
+  },
+  {
+    key: 'AvgTransitDays',
+    header: 'Transit Days',
+    width: '110px',
+    sortable: true,
+    render: (row) => formatDecimalOrNA(row.AvgTransitDays, 2),
+  },
+  {
+    key: 'TotalCount',
+    header: 'Total Count',
+    width: '110px',
+    sortable: true,
+    render: (row) => formatNumberOrNA(row.TotalCount),
   },
   {
     key: 'SLABreachPct',
@@ -72,7 +87,7 @@ export const createScenarioColumns = ({
     sortable: true,
     render: (row) => (
       <span className={row.SLABreachPct > 5 ? 'text-red-600 font-medium' : ''}>
-        {Number.isFinite(row.SLABreachPct) ? `${row.SLABreachPct.toFixed(2)}%` : 'NA'}
+        {formatPercentOrNA(row.SLABreachPct, 2)}
       </span>
     ),
   },
@@ -81,7 +96,7 @@ export const createScenarioColumns = ({
     header: 'Excluded SLA',
     width: '110px',
     sortable: true,
-    render: (row) => row.ExcludedBySLACount,
+      render: (row) => formatNumberOrNA(row.ExcludedBySLACount),
   },
   {
     key: 'MaxUtilPct',
@@ -90,7 +105,7 @@ export const createScenarioColumns = ({
     sortable: true,
     render: (row) => (
       <span className={row.MaxUtilPct > 85 ? 'text-amber-600 font-medium' : ''}>
-        {row.MaxUtilPct > 0 ? `${row.MaxUtilPct.toFixed(2)}%` : 'NA'}
+        {formatPercentOrNA(row.MaxUtilPct, 2)}
       </span>
     ),
   },
@@ -99,21 +114,49 @@ export const createScenarioColumns = ({
     header: 'Total Space Required',
     width: '110px',
     sortable: true,
-    render: (row) => row.TotalSpaceRequired.toLocaleString(),
+    render: (row) => formatNumberOrNA(row.TotalSpaceRequired),
   },
   {
     key: 'SpaceCore',
     header: `Space ${entityLabels.first}`,
     width: '110px',
     sortable: true,
-    render: (row) => row.SpaceCore.toLocaleString(),
+    render: (row) => formatNumberOrNA(row.SpaceCore),
   },
   {
     key: 'SpaceBCV',
     header: `Space ${entityLabels.second}`,
     width: '110px',
     sortable: true,
-    render: (row) => row.SpaceBCV.toLocaleString(),
+    render: (row) => formatNumberOrNA(row.SpaceBCV),
+  },
+  {
+    key: 'FootprintMode',
+    header: 'Footprint',
+    width: '110px',
+    sortable: true,
+    render: (row) => formatTextOrNA(row.FootprintMode),
+  },
+  {
+    key: 'LevelLoad',
+    header: 'Level Load',
+    width: '100px',
+    sortable: true,
+    render: (row) => formatTextOrNA(row.LevelLoad),
+  },
+  {
+    key: 'UtilizationCap',
+    header: 'Util Cap',
+    width: '100px',
+    sortable: true,
+    render: (row) => formatTextOrNA(row.UtilizationCap),
+  },
+  {
+    key: 'CollectTreatment',
+    header: 'Collect Tx',
+    width: '100px',
+    sortable: true,
+    render: (row) => formatTextOrNA(row.CollectTreatment),
   },
   {
     key: 'OverrideCount',
@@ -128,6 +171,13 @@ export const createScenarioColumns = ({
     width: '140px',
     sortable: true,
     render: (row) => new Date(row.LastUpdatedAt).toLocaleDateString(),
+  },
+  {
+    key: 'LastRunBy',
+    header: 'Last Run By',
+    width: '140px',
+    sortable: true,
+    render: (row) => formatTextOrNA(row.LastRunBy),
   },
   {
     key: 'LatestComment',
@@ -221,6 +271,7 @@ export const createScenarioColumns = ({
 
 interface ComparisonColumnsParams {
   scenarioRunHeaders: ScenarioRunHeader[];
+  currentUserDisplayName: string;
   isActionActive: (key: string) => boolean;
   triggerAction: (key: string) => void;
   onDuplicateComparison: (comparisonId: string) => void;
@@ -231,6 +282,7 @@ interface ComparisonColumnsParams {
 
 export const createComparisonColumns = ({
   scenarioRunHeaders,
+  currentUserDisplayName,
   isActionActive,
   triggerAction,
   onDuplicateComparison,
@@ -343,7 +395,15 @@ export const createComparisonColumns = ({
     sortable: true,
     render: (row) => new Date(row.CreatedAt).toLocaleDateString(),
   },
-  { key: 'CreatedBy', header: 'Owner', width: '120px', sortable: true },
+  {
+    key: 'CreatedBy',
+    header: 'Owner',
+    width: '120px',
+    sortable: true,
+    render: (row) => (
+      <span>{row.CreatedBy === 'You' ? currentUserDisplayName : row.CreatedBy}</span>
+    ),
+  },
   {
     key: 'Notes',
     header: 'Notes',

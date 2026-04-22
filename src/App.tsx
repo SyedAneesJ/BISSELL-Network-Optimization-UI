@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { Home, ScenarioDetails, ComparisonDetails } from '@/pages';
 import {
   NewScenarioSubmit,
@@ -16,16 +16,23 @@ import {
   ScenarioRunHeader,
   ScenarioRunResultsDC,
   ScenarioRunResultsLane,
-  getDataHealthSnapshot,
 } from '@/data';
 import {
+  buildScenarioIdentityFromRows,
   buildScenarioHeaderFromRows,
   buildDataHealthSnapshotFromRows,
   buildDatasetOptionSets,
-  fetchDomoDcDatasetRows,
+  DatasetOptionSets,
+  fetchAllScenarioDatasets,
   getEntityOrder,
   mapDcResultsFromRows,
+  resolveRegistryItemFromMeta,
+  triggerDataflow,
+  checkDataflowStatus,
+  sendCodeEngineEmail,
+  DomoApi,
 } from '@/services';
+import { Toast } from '@/components/ui';
 
 type Page = 'home' | 'scenario' | 'comparison';
 
@@ -49,156 +56,46 @@ interface ComparisonState {
   detailLanes: ComparisonDetailLane[];
 }
 
-const SCENARIO_STORAGE_KEY = 'bno_scenarios_v2';
-const COMPARISON_STORAGE_KEY = 'bno_comparisons_v1';
-
-const loadScenarioState = (): ScenarioState => {
-  if (typeof window === 'undefined') {
-    return {
-      headers: [],
-      configs: [],
-      resultsDC: [],
-      resultsLanes: [],
-      overrides: [],
-    };
-  }
-
-  try {
-    const raw = window.localStorage.getItem(SCENARIO_STORAGE_KEY);
-    if (!raw) {
-      return {
-        headers: [],
-        configs: [],
-        resultsDC: [],
-        resultsLanes: [],
-        overrides: [],
-      };
-    }
-    const parsed = JSON.parse(raw) as ScenarioState;
-    return {
-      headers: parsed.headers ?? [],
-      configs: parsed.configs ?? [],
-      resultsDC: parsed.resultsDC ?? [],
-      resultsLanes: parsed.resultsLanes ?? [],
-      overrides: parsed.overrides ?? [],
-    };
-  } catch {
-    return {
-      headers: [],
-      configs: [],
-      resultsDC: [],
-      resultsLanes: [],
-      overrides: [],
-    };
-  }
+const EMPTY_SCENARIO_STATE: ScenarioState = {
+  headers: [],
+  configs: [],
+  resultsDC: [],
+  resultsLanes: [],
+  overrides: [],
 };
 
-const loadComparisonState = (): ComparisonState => {
-  if (typeof window === 'undefined') {
-    return { headers: [], detailDC: [], detailLanes: [] };
-  }
-
-  try {
-    const raw = window.localStorage.getItem(COMPARISON_STORAGE_KEY);
-    if (!raw) return { headers: [], detailDC: [], detailLanes: [] };
-    const parsed = JSON.parse(raw) as ComparisonState;
-    return {
-      headers: parsed.headers ?? [],
-      detailDC: parsed.detailDC ?? [],
-      detailLanes: parsed.detailLanes ?? [],
-    };
-  } catch {
-    return { headers: [], detailDC: [], detailLanes: [] };
-  }
+const EMPTY_COMPARISON_STATE: ComparisonState = {
+  headers: [],
+  detailDC: [],
+  detailLanes: [],
 };
 
-const readLocalScenarioState = (): ScenarioState => loadScenarioState();
-const readLocalComparisonState = (): ComparisonState => loadComparisonState();
+const COMPARISON_STORAGE_KEY = 'bissell-comparisons-v1';
+const DATAFLOW_POLL_INTERVAL_MS = 5000;
+const DATAFLOW_MAX_POLL_ATTEMPTS = 360;
+const DATAFLOW_MAX_CONSECUTIVE_POLL_ERRORS = 3;
 
-const mergeScenarioStates = (base: ScenarioState, local: ScenarioState): ScenarioState => {
-  const baseHeaders = new Map(base.headers.map((h) => [h.ScenarioRunID, h]));
-  const localHeaders = new Map(local.headers.map((h) => [h.ScenarioRunID, h]));
-
-  const mergedHeaders: ScenarioRunHeader[] = [];
-  baseHeaders.forEach((baseHeader, id) => {
-    const localHeader = localHeaders.get(id);
-    if (!localHeader) {
-      mergedHeaders.push(baseHeader);
-      return;
-    }
-    mergedHeaders.push({
-      ...baseHeader,
-      Status: localHeader.Status ?? baseHeader.Status,
-      ApprovedBy: localHeader.ApprovedBy ?? baseHeader.ApprovedBy,
-      ApprovedAt: localHeader.ApprovedAt ?? baseHeader.ApprovedAt,
-      LatestComment: localHeader.LatestComment ?? baseHeader.LatestComment,
-      Tags: localHeader.Tags ?? baseHeader.Tags,
-      CreatedBy: localHeader.CreatedBy ?? baseHeader.CreatedBy,
-      CreatedAt: localHeader.CreatedAt ?? baseHeader.CreatedAt,
-      LastUpdatedAt: localHeader.LastUpdatedAt ?? baseHeader.LastUpdatedAt,
-      OverrideCount: localHeader.OverrideCount ?? baseHeader.OverrideCount,
-      Notes: (localHeader as any).Notes ?? (baseHeader as any).Notes,
-    });
-  });
-  localHeaders.forEach((localHeader, id) => {
-    if (!baseHeaders.has(id)) mergedHeaders.push(localHeader);
-  });
-
-  const mergeRowsByScenarioId = <T extends { ScenarioRunID: string }>(
-    baseRows: T[],
-    localRows: T[]
-  ): T[] => {
-    const localIds = new Set(localRows.map((r) => r.ScenarioRunID));
-    const baseFiltered = baseRows.filter((r) => !localIds.has(r.ScenarioRunID));
-    return [...baseFiltered, ...localRows];
-  };
-
-  const mergedConfigs = mergeRowsByScenarioId(base.configs, local.configs);
-  const mergedResultsDC = mergeRowsByScenarioId(base.resultsDC, local.resultsDC);
-  const mergedResultsLanes = mergeRowsByScenarioId(base.resultsLanes, local.resultsLanes);
-  const mergedOverrides = mergeRowsByScenarioId(base.overrides, local.overrides);
-
-  return {
-    headers: mergedHeaders,
-    configs: mergedConfigs,
-    resultsDC: mergedResultsDC,
-    resultsLanes: mergedResultsLanes,
-    overrides: mergedOverrides,
-  };
-};
-
-const mergeComparisonStates = (base: ComparisonState, local: ComparisonState): ComparisonState => {
-  const byId = (rows: { ComparisonID: string }[]) => new Map(rows.map((r) => [r.ComparisonID, r]));
-  const baseHeaders = byId(base.headers);
-  const localHeaders = byId(local.headers);
-  const mergedHeaders: ComparisonHeader[] = [];
-  baseHeaders.forEach((b, id) => {
-    const l = localHeaders.get(id);
-    mergedHeaders.push(l ? { ...b, ...l } : b);
-  });
-  localHeaders.forEach((l, id) => {
-    if (!baseHeaders.has(id)) mergedHeaders.push(l as ComparisonHeader);
-  });
-
-  const mergeRows = <T extends { ComparisonID: string }>(baseRows: T[], localRows: T[]): T[] => {
-    const localIds = new Set(localRows.map((r) => r.ComparisonID));
-    const baseFiltered = baseRows.filter((r) => !localIds.has(r.ComparisonID));
-    return [...baseFiltered, ...localRows];
-  };
-
-  return {
-    headers: mergedHeaders,
-    detailDC: mergeRows(base.detailDC, local.detailDC),
-    detailLanes: mergeRows(base.detailLanes, local.detailLanes),
-  };
-};
+type ToastKind = 'success' | 'error' | 'info';
+interface AppToast {
+  id: number;
+  kind: ToastKind;
+  message: string;
+}
 
 function App() {
   const [workspace, setWorkspace] = useState<'All' | 'US' | 'Canada'>('All');
-  const [scenarioState, setScenarioState] = useState<ScenarioState>(() => loadScenarioState());
-  const [comparisonState, setComparisonState] = useState<ComparisonState>(() => loadComparisonState());
+  const [scenarioState, setScenarioState] = useState<ScenarioState>(EMPTY_SCENARIO_STATE);
+  const [comparisonState, setComparisonState] = useState<ComparisonState>(() => {
+    try {
+      const stored = localStorage.getItem(COMPARISON_STORAGE_KEY);
+      if (stored) return JSON.parse(stored);
+    } catch (e) {
+      console.warn('Failed to parse comparisons from localStorage', e);
+    }
+    return EMPTY_COMPARISON_STATE;
+  });
   const [domoDcLoaded, setDomoDcLoaded] = useState(false);
-  const [dataHealthSnapshot, setDataHealthSnapshot] = useState(() => getDataHealthSnapshot('All'));
+  const [dataHealthSnapshot, setDataHealthSnapshot] = useState(() => buildDataHealthSnapshotFromRows([]));
   const [preselectedRuns, setPreselectedRuns] = useState<{ a?: string; b?: string }>({});
   const [archivedScenarioPrevStatus, setArchivedScenarioPrevStatus] = useState<Record<string, ScenarioRunHeader['Status']>>({});
   const [archivedComparisonPrevStatus, setArchivedComparisonPrevStatus] = useState<Record<string, ComparisonHeader['Status']>>({});
@@ -211,8 +108,16 @@ function App() {
   const [showNewScenario, setShowNewScenario] = useState(false);
   const [showNewComparison, setShowNewComparison] = useState(false);
   const [showDataHealth, setShowDataHealth] = useState(false);
+  const [currentUserDisplayName, setCurrentUserDisplayName] = useState('You');
+  const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
+  const [testEmailActive, setTestEmailActive] = useState(false);
+  const [toasts, setToasts] = useState<AppToast[]>([]);
+  const toastIdRef = useRef(0);
+  const toastTimersRef = useRef<Record<number, number>>({});
+  const activeScenarioRunsRef = useRef<Set<string>>(new Set());
+  const pollingTimersRef = useRef<Record<string, number>>({});
 
-  const [datasetOptions, setDatasetOptions] = useState(() => ({
+  const [datasetOptions, setDatasetOptions] = useState<DatasetOptionSets>(() => ({
     scenarioTypes: [],
     channelScopes: [],
     termsScopes: [],
@@ -312,61 +217,102 @@ function App() {
     setShowDataHealth(true);
   };
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem(SCENARIO_STORAGE_KEY, JSON.stringify(scenarioState));
-  }, [scenarioState]);
+  const dismissToast = useCallback((id: number) => {
+    setToasts((prev) => prev.filter((toast) => toast.id !== id));
+    const timer = toastTimersRef.current[id];
+    if (timer) {
+      window.clearTimeout(timer);
+      delete toastTimersRef.current[id];
+    }
+  }, []);
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem(COMPARISON_STORAGE_KEY, JSON.stringify(comparisonState));
-  }, [comparisonState]);
+  const pushToast = useCallback((message: string, kind: ToastKind = 'info') => {
+    const id = ++toastIdRef.current;
+    setToasts((prev) => [...prev, { id, kind, message }]);
+    toastTimersRef.current[id] = window.setTimeout(() => {
+      dismissToast(id);
+    }, 10000);
+  }, [dismissToast]);
+
+  const clearPollingForScenario = useCallback((scenarioId: string) => {
+    const timer = pollingTimersRef.current[scenarioId];
+    if (timer) {
+      window.clearTimeout(timer);
+      delete pollingTimersRef.current[scenarioId];
+    }
+    activeScenarioRunsRef.current.delete(scenarioId);
+  }, []);
 
   const loadDomoDc = useCallback(async () => {
     try {
-      const result = await fetchDomoDcDatasetRows();
+      const datasetResults = await fetchAllScenarioDatasets();
+      const allRows = datasetResults.flatMap((result) => result.rows);
 
-      console.log('Domo dataset details:', result.dataset);
-      console.log('Domo dataset CSV (sample):', result.rawCsv.slice(0, 1000));
-      console.log('Domo dataset rows (sample):', result.rows.slice(0, 10));
+      console.log('Domo datasets loaded:', datasetResults.map((d) => ({
+        datasetId: d.datasetId,
+        scenarioKey: d.registryItem.scenarioKey,
+        rows: d.rows.length,
+      })));
 
-      if (result.rows.length === 0) {
+      if (allRows.length === 0) {
         setDomoDcLoaded(true);
         return;
       }
 
-      const rowsByRegion = result.rows.reduce<Record<string, typeof result.rows>>((acc, row) => {
-        const region = String(row['DC_region'] ?? '').trim() || 'US';
-        acc[region] = acc[region] || [];
-        acc[region].push(row);
-        return acc;
-      }, {});
+      const globalEntityOrder = getEntityOrder(allRows);
+      const scenarioPayloads = datasetResults.flatMap((datasetResult) => {
+        const grouped = datasetResult.rows.reduce<Record<string, typeof datasetResult.rows>>((acc, row) => {
+          const scenarioType = String(row['scenarioType'] ?? '').trim() || datasetResult.registryItem.scenarioLabel || 'Baseline';
+          const region = String(row['dcRegion'] ?? row['DC_region'] ?? row['region'] ?? '').trim() || datasetResult.registryItem.regionDefault || 'US';
+          const entity = String(row['entityScope'] ?? row['dcEntity'] ?? row['DC_entity'] ?? '').trim() || 'NA';
+          const key = `${scenarioType}|${region}|${entity}`;
+          acc[key] = acc[key] || [];
+          acc[key].push(row);
+          return acc;
+        }, {});
 
-      const globalEntityOrder = getEntityOrder(result.rows);
-      const scenarioPayloads = Object.entries(rowsByRegion).map(([region, rows]) => {
-        const scenarioId = `SR_DOMO_${region.toUpperCase()}`;
-        const header = buildScenarioHeaderFromRows(rows, scenarioId, globalEntityOrder);
-        const dcResults = mapDcResultsFromRows(rows, scenarioId, globalEntityOrder);
-        return { header, dcResults };
+        return Object.values(grouped).map((rows) => {
+          const effectiveRegistryInfo = resolveRegistryItemFromMeta(
+            datasetResult.registryItem,
+            datasetResult.datasetMeta
+          );
+          const identity = buildScenarioIdentityFromRows(rows, effectiveRegistryInfo);
+          const header = buildScenarioHeaderFromRows(
+            rows,
+            identity.scenarioId,
+            globalEntityOrder,
+            effectiveRegistryInfo
+          );
+          const dcResults = mapDcResultsFromRows(
+            rows,
+            identity.scenarioId,
+            globalEntityOrder,
+            effectiveRegistryInfo
+          );
+          return { header, dcResults };
+        });
       });
 
-      setDatasetOptions(buildDatasetOptionSets(result.rows));
-      setDataHealthSnapshot(buildDataHealthSnapshotFromRows(result.rows));
+      const dataflowSortValue = (value?: string) => {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : Number.MAX_SAFE_INTEGER;
+      };
+      const sortedScenarioPayloads = [...scenarioPayloads].sort((a, b) => {
+        const byDataflow = dataflowSortValue(a.header.DataflowID) - dataflowSortValue(b.header.DataflowID);
+        if (byDataflow !== 0) return byDataflow;
+        return a.header.RunName.localeCompare(b.header.RunName);
+      });
+
+      setDatasetOptions(buildDatasetOptionSets(allRows));
+      setDataHealthSnapshot(buildDataHealthSnapshotFromRows(allRows));
       const baseScenarioState: ScenarioState = {
-        headers: scenarioPayloads.map((p) => p.header),
+        headers: sortedScenarioPayloads.map((p) => p.header),
         configs: [],
-        resultsDC: scenarioPayloads.flatMap((p) => p.dcResults),
+        resultsDC: sortedScenarioPayloads.flatMap((p) => p.dcResults),
         resultsLanes: [],
         overrides: [],
       };
-      const localScenarioState = readLocalScenarioState();
-      const mergedScenarioState = mergeScenarioStates(baseScenarioState, localScenarioState);
-      setScenarioState(() => mergedScenarioState);
-
-      const baseComparisonState: ComparisonState = { headers: [], detailDC: [], detailLanes: [] };
-      const localComparisonState = readLocalComparisonState();
-      const mergedComparisonState = mergeComparisonStates(baseComparisonState, localComparisonState);
-      setComparisonState(mergedComparisonState);
+      setScenarioState(baseScenarioState);
 
       setDomoDcLoaded(true);
     } catch (err) {
@@ -377,12 +323,122 @@ function App() {
 
   useEffect(() => {
     if (domoDcLoaded) return;
-    let cancelled = false;
     loadDomoDc().catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
+    return undefined;
   }, [domoDcLoaded, loadDomoDc]);
+
+  useEffect(() => {
+    let isMounted = true;
+    DomoApi.getCurrentUser()
+      .then((user) => {
+        if (!isMounted) return;
+        const displayName = String(user?.displayName || user?.userName || user?.name || '').trim();
+        if (displayName) {
+          setCurrentUserDisplayName(displayName);
+        }
+        const email = String(user?.userEmail || user?.emailAddress || user?.email || '').trim();
+        setCurrentUserEmail(email || null);
+      })
+      .catch(() => undefined);
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!currentUserDisplayName || currentUserDisplayName === 'You') return;
+    setScenarioState((prev) => {
+      const needsBackfill = prev.headers.some((header) => !header.CreatedBy || header.CreatedBy === 'NA');
+      if (!needsBackfill) return prev;
+      return {
+        ...prev,
+        headers: prev.headers.map((header) =>
+          !header.CreatedBy || header.CreatedBy === 'NA'
+            ? { ...header, CreatedBy: currentUserDisplayName }
+            : header
+        ),
+      };
+    });
+  }, [currentUserDisplayName]);
+
+  const triggerScenarioCompletionEmail = useCallback(async (params: {
+    scenarioName: string;
+    scenarioId: string;
+    dataflowId: string;
+    executionId: string | number;
+    completedAtIso: string;
+  }) => {
+    if (!currentUserEmail) {
+      return;
+    }
+
+    const completedAt = new Date(params.completedAtIso).toLocaleString();
+    const subject = `Scenario Run Completed: ${params.scenarioName}`;
+    const body = [
+      `<p>Hi ${currentUserDisplayName || 'there'},</p>`,
+      '<p>Your scenario ETL completed successfully.</p>',
+      '<ul>',
+      `<li><strong>Scenario:</strong> ${params.scenarioName}</li>`,
+      `<li><strong>Scenario ID:</strong> ${params.scenarioId}</li>`,
+      `<li><strong>Dataflow ID:</strong> ${params.dataflowId}</li>`,
+      `<li><strong>Execution ID:</strong> ${params.executionId}</li>`,
+      `<li><strong>Completed At:</strong> ${completedAt}</li>`,
+      '</ul>',
+      '<p>Regards,<br/>Network Optimization UI</p>',
+    ].join('');
+
+    await sendCodeEngineEmail({
+      recipientEmails: currentUserEmail,
+      subject,
+      body,
+      includeReplyAll: false,
+    });
+  }, [currentUserDisplayName, currentUserEmail]);
+
+  const handleSendTestEmail = useCallback(async () => {
+    if (!currentUserEmail) {
+      pushToast('No current user email is available for the test email.', 'error');
+      return;
+    }
+
+    setTestEmailActive(true);
+    try {
+      await sendCodeEngineEmail({
+        recipientEmails: currentUserEmail,
+        subject: 'Test Email from Network Optimization UI',
+        body: [
+          `<p>Hi ${currentUserDisplayName || 'there'},</p>`,
+          '<p>This is a direct test email from the Home page.</p>',
+          '<p>If you received this, the Code Engine notification package is working.</p>',
+        ].join(''),
+        includeReplyAll: false,
+      });
+      pushToast(`Test email sent to ${currentUserEmail}.`, 'success');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      pushToast(`Test email failed: ${message}`, 'error');
+    } finally {
+      setTestEmailActive(false);
+    }
+  }, [currentUserDisplayName, currentUserEmail, pushToast]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(COMPARISON_STORAGE_KEY, JSON.stringify(comparisonState));
+    } catch (e) {
+      console.warn('Failed to save comparisons to localStorage', e);
+    }
+  }, [comparisonState]);
+
+  useEffect(() => {
+    return () => {
+      Object.values(pollingTimersRef.current).forEach((timerId) => window.clearTimeout(timerId));
+      pollingTimersRef.current = {};
+      activeScenarioRunsRef.current.clear();
+      Object.values(toastTimersRef.current).forEach((timerId) => window.clearTimeout(timerId));
+      toastTimersRef.current = {};
+    };
+  }, []);
 
   const createScenarioHeader = (payload: NewScenarioSubmit): ScenarioRunHeader => {
     const now = new Date().toISOString();
@@ -427,10 +483,13 @@ function App() {
       ScenarioType: (payload.input.scenarioType || baseline?.ScenarioType || 'Baseline') as ScenarioRunHeader['ScenarioType'],
       EntityScope: payload.input.entityScope,
       ChannelScope: payload.input.channelScope.length > 0 ? payload.input.channelScope.join(',') : 'NA',
-      TermsScope: payload.input.termsScope || 'NA',
-      CreatedBy: 'You',
+      TermsScope: (payload.input.termsScope || 'Collect+Prepaid') as ScenarioRunHeader['TermsScope'],
+      CreatedBy: currentUserDisplayName,
       CreatedAt: now,
       LastUpdatedAt: now,
+      LastRunBy: null,
+      LastRunAt: null,
+      LastRunExecutionId: null,
       Status: payload.action === 'draft' ? 'Draft' : 'Running',
       ApprovedBy: null,
       ApprovedAt: null,
@@ -442,12 +501,18 @@ function App() {
       TotalCost: totalCost,
       CostPerUnit: costPerUnit,
       AvgDeliveryDays: avgDays,
+      AvgTransitDays: baseline?.AvgTransitDays ?? null,
+      TotalCount: baseline?.TotalCount ?? 0,
       SLABreachPct: slaBreach,
       ExcludedBySLACount: baseline ? Math.round(baseline.ExcludedBySLACount * (1 + costShift)) : 0,
       MaxUtilPct: maxUtil,
       TotalSpaceRequired: totalSpace,
       SpaceCore: spaceCore,
       SpaceBCV: spaceBCV,
+      FootprintMode: payload.input.footprintMode || baseline?.FootprintMode || 'NA',
+      LevelLoad: payload.input.levelLoad ? 'On' : (baseline?.LevelLoad || 'NA'),
+      UtilizationCap: payload.input.utilCap || baseline?.UtilizationCap || 'NA',
+      CollectTreatment: baseline?.CollectTreatment || 'NA',
       OverrideCount: 0,
       LaneCount: baseline ? baseline.LaneCount : 0,
       ChangedLaneCountVsBaseline: payload.action === 'draft' ? 0 : baseline ? Math.round(baseline.ChangedLaneCountVsBaseline * (1 + costShift)) : 0,
@@ -576,6 +641,7 @@ function App() {
           TotalCost: summary.totalCost,
           CostPerUnit: summary.costPerUnit,
           AvgDeliveryDays: summary.avgDays,
+          TotalCount: summary.totalUnits,
           MaxUtilPct: summary.maxUtil,
           TotalSpaceRequired: summary.totalSpaceRequired,
           ExcludedBySLACount: summary.excludedBySla,
@@ -869,7 +935,7 @@ function App() {
       ComparisonName: payload.comparisonName,
       ScenarioRunID_A: payload.runA,
       ScenarioRunID_B: payload.runB,
-      CreatedBy: 'You',
+      CreatedBy: currentUserDisplayName,
       CreatedAt: now,
       Status: 'Working',
       Notes: payload.notes || 'Created from comparison wizard',
@@ -984,9 +1050,188 @@ function App() {
 
     console.log('Comparison created successfully');
   };
-  // const handleComparisonComplete = () => {
-  //   console.log('Comparison created successfully');
-  // };
+
+  const handleRunScenario = async (scenarioId: string) => {
+    const scenario = scenarioState.headers.find((s) => s.ScenarioRunID === scenarioId);
+    if (!scenario) return;
+
+    if (activeScenarioRunsRef.current.has(scenarioId)) {
+      pushToast(`${scenario.RunName || scenarioId} is already running.`, 'info');
+      return;
+    }
+
+    const dataflowId = scenario.DataflowID;
+    if (!dataflowId) {
+      pushToast(`No Dataflow mapped for ${scenario.RunName || scenarioId}.`, 'error');
+      return;
+    }
+
+    const priorStatus = scenario.Status;
+    activeScenarioRunsRef.current.add(scenarioId);
+    setScenarioState((prev) => ({
+      ...prev,
+      headers: prev.headers.map((header) =>
+        header.ScenarioRunID === scenarioId
+          ? {
+              ...header,
+              Status: 'Running',
+              LastRunBy: currentUserDisplayName,
+              LastRunAt: new Date().toISOString(),
+              LastUpdatedAt: new Date().toISOString(),
+            }
+          : header
+      ),
+    }));
+
+    try {
+      const execution = await triggerDataflow(dataflowId);
+      pushToast(
+        `${scenario.RunName || scenarioId} is running. Dataflow ${dataflowId}, execution ${execution.id}.`,
+        'info'
+      );
+
+      let pollAttempts = 0;
+      let consecutivePollErrors = 0;
+      const executionId = execution.id;
+
+      const pollExecution = async () => {
+        pollAttempts += 1;
+        if (pollAttempts > DATAFLOW_MAX_POLL_ATTEMPTS) {
+          clearPollingForScenario(scenarioId);
+          setScenarioState((prev) => ({
+            ...prev,
+            headers: prev.headers.map((header) =>
+              header.ScenarioRunID === scenarioId
+                ? { ...header, Status: priorStatus, LastUpdatedAt: new Date().toISOString() }
+                : header
+            ),
+          }));
+          pushToast(
+            `${scenario.RunName || scenarioId} timed out after ${DATAFLOW_MAX_POLL_ATTEMPTS} checks. Execution ${executionId}.`,
+            'error'
+          );
+          return;
+        }
+
+        try {
+          const status = await checkDataflowStatus(dataflowId, executionId);
+          consecutivePollErrors = 0;
+
+          if (status.state === 'SUCCESS') {
+            clearPollingForScenario(scenarioId);
+            await loadDomoDc();
+            const completionTimeIso = new Date().toISOString();
+            setScenarioState((prev) => ({
+              ...prev,
+              headers: prev.headers.map((header) =>
+                header.ScenarioRunID === scenarioId
+                  ? {
+                      ...header,
+                      Status: 'Completed',
+                      LastRunBy: currentUserDisplayName,
+                      LastRunAt: completionTimeIso,
+                      LastRunExecutionId: String(executionId),
+                      LastUpdatedAt: completionTimeIso,
+                    }
+                  : header
+              ),
+            }));
+            pushToast(
+              `${scenario.RunName || scenarioId} completed successfully. Dataflow ${dataflowId}, execution ${executionId}.`,
+              'success'
+            );
+            try {
+              await triggerScenarioCompletionEmail({
+                scenarioName: scenario.RunName || scenarioId,
+                scenarioId,
+                dataflowId,
+                executionId,
+                completedAtIso: completionTimeIso,
+              });
+              if (currentUserEmail) {
+                pushToast(`Completion email sent to ${currentUserEmail}.`, 'success');
+              }
+            } catch (emailError) {
+              const message = emailError instanceof Error ? emailError.message : String(emailError);
+              pushToast(`Scenario completed, but email notification failed: ${message}`, 'error');
+            }
+            return;
+          } else if (status.state === 'FAILED') {
+            clearPollingForScenario(scenarioId);
+            setScenarioState((prev) => ({
+              ...prev,
+              headers: prev.headers.map((header) =>
+                header.ScenarioRunID === scenarioId
+                  ? { ...header, Status: priorStatus, LastUpdatedAt: new Date().toISOString() }
+                  : header
+              ),
+            }));
+            pushToast(
+              `${scenario.RunName || scenarioId} failed. Dataflow ${dataflowId}, execution ${executionId}.`,
+              'error'
+            );
+            return;
+          }
+        } catch (pollErr) {
+          consecutivePollErrors += 1;
+          console.error('Error polling dataflow status:', pollErr);
+          const pollMessage = pollErr instanceof Error ? pollErr.message : String(pollErr);
+          const isFatalResponseError = pollMessage.includes('Invalid dataflow status response');
+          if (isFatalResponseError) {
+            clearPollingForScenario(scenarioId);
+            setScenarioState((prev) => ({
+              ...prev,
+              headers: prev.headers.map((header) =>
+                header.ScenarioRunID === scenarioId
+                  ? { ...header, Status: priorStatus, LastUpdatedAt: new Date().toISOString() }
+                  : header
+              ),
+            }));
+            pushToast(
+              `Stopped ETL polling for ${scenario.RunName || scenarioId}. ${pollMessage}`,
+              'error'
+            );
+            return;
+          }
+          if (consecutivePollErrors >= DATAFLOW_MAX_CONSECUTIVE_POLL_ERRORS) {
+            clearPollingForScenario(scenarioId);
+            setScenarioState((prev) => ({
+              ...prev,
+              headers: prev.headers.map((header) =>
+                header.ScenarioRunID === scenarioId
+                  ? { ...header, Status: priorStatus, LastUpdatedAt: new Date().toISOString() }
+                  : header
+              ),
+            }));
+            const message = pollErr instanceof Error ? pollErr.message : 'Unknown error';
+            pushToast(
+              `Polling stopped for ${scenario.RunName || scenarioId} after ${DATAFLOW_MAX_CONSECUTIVE_POLL_ERRORS} errors. Execution ${executionId}. ${message}`,
+              'error'
+            );
+            return;
+          }
+        }
+
+        pollingTimersRef.current[scenarioId] = window.setTimeout(() => {
+          void pollExecution();
+        }, DATAFLOW_POLL_INTERVAL_MS);
+      };
+
+      void pollExecution();
+    } catch (err) {
+      clearPollingForScenario(scenarioId);
+      setScenarioState((prev) => ({
+        ...prev,
+        headers: prev.headers.map((header) =>
+          header.ScenarioRunID === scenarioId
+            ? { ...header, Status: priorStatus, LastUpdatedAt: new Date().toISOString() }
+            : header
+        ),
+      }));
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      pushToast(`Failed to trigger ETL for ${scenario.RunName || scenarioId}. Dataflow ${dataflowId}. ${message}`, 'error');
+    }
+  };
 
   const renderPage = () => {
     switch (appState.currentPage) {
@@ -1011,6 +1256,11 @@ function App() {
             onArchiveComparison={archiveComparison}
             onUnarchiveComparison={unarchiveComparison}
             onRefresh={refreshData}
+            onRunScenario={handleRunScenario}
+            currentUserDisplayName={currentUserDisplayName}
+            currentUserEmail={currentUserEmail}
+            onSendTestEmail={handleSendTestEmail}
+            testEmailActive={testEmailActive}
           />
         );
 
@@ -1106,6 +1356,17 @@ function App() {
           })
           .slice(0, 50)}
       />
+
+      <div className="fixed top-4 right-4 z-[10000] flex w-[min(32rem,calc(100vw-2rem))] flex-col gap-2">
+        {toasts.map((toast) => (
+          <Toast
+            key={toast.id}
+            kind={toast.kind}
+            message={toast.message}
+            onClose={() => dismissToast(toast.id)}
+          />
+        ))}
+      </div>
     </>
   );
 }

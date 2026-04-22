@@ -6,6 +6,7 @@ import {
   ScenarioRunResultsDC,
   ScenarioRunResultsLane,
 } from '@/data';
+import { formatCurrencyOrNA, formatDecimalOrNA, formatNumberOrNA, formatTextOrNA } from '@/utils';
 
 interface ScenarioSummaryTabProps {
   scenario: ScenarioRunHeader;
@@ -28,8 +29,9 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
     <div className="space-y-6">
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
         <KPICard label="Total Cost" value={scenario.TotalCost} format="currency" />
-        <KPICard label="Cost per Unit" value={scenario.CostPerUnit > 0 ? `$${scenario.CostPerUnit.toFixed(2)}` : 'NA'} />
-        <KPICard label="Avg Delivery Days" value={scenario.AvgDeliveryDays > 0 ? scenario.AvgDeliveryDays : 'NA'} format="decimal" />
+        <KPICard label="Cost per Unit" value={formatCurrencyOrNA(scenario.CostPerUnit, 2)} />
+        <KPICard label="Avg Delivery Days" value={formatDecimalOrNA(scenario.AvgDeliveryDays, 2)} />
+        <KPICard label="Avg Transit Days" value={formatDecimalOrNA(scenario.AvgTransitDays, 2)} />
         <KPICard label="SLA Breach %" value={Number.isFinite(scenario.SLABreachPct) ? scenario.SLABreachPct : 'NA'} format="decimal" />
         <KPICard label="Max Utilization %" value={scenario.MaxUtilPct > 0 ? scenario.MaxUtilPct.toFixed(2) : 'NA'} />
       </div>
@@ -38,28 +40,35 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
         <KPICard label="Total Space Required" value={scenario.TotalSpaceRequired} format="number" tooltip="Total warehouse space required (sq ft)" />
         <KPICard label={`Space ${entityLabels.first}`} value={scenario.SpaceCore} format="number" tooltip={`Space for ${entityLabels.first}`} />
         <KPICard label={`Space ${entityLabels.second}`} value={scenario.SpaceBCV} format="number" tooltip={`Space for ${entityLabels.second}`} />
-        <KPICard label="Overrides" value={scenario.OverrideCount} format="number" tooltip="Number of manual overrides applied" />
+        <KPICard label="Total Count" value={formatNumberOrNA(scenario.TotalCount)} tooltip="Dataset total count" />
       </div>
 
       {scenarioConfig ? (
         <div className="bg-white border border-slate-200 rounded-lg p-4">
           <h3 className="text-lg font-semibold text-slate-900 mb-4">Scenario Configuration</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
-            <div><span className="text-slate-600">Active DCs:</span> {scenarioConfig.ActiveDCs || '-'}</div>
-            <div><span className="text-slate-600">Suppressed DCs:</span> {scenarioConfig.SuppressedDCs || '-'}</div>
-            <div><span className="text-slate-600">Footprint Mode:</span> {scenarioConfig.FootprintMode}</div>
-            <div><span className="text-slate-600">Util Cap:</span> {scenarioConfig.UtilCapPct}%</div>
-            <div><span className="text-slate-600">Level Load:</span> {scenarioConfig.LevelLoadMode}</div>
-            <div><span className="text-slate-600">Lead Time Cap:</span> {scenarioConfig.LeadTimeCapDays ?? 'None'}</div>
-            <div><span className="text-slate-600">Cost vs Service:</span> {scenarioConfig.CostVsServiceWeight}</div>
-            <div><span className="text-slate-600">Relocation Prepaid:</span> {scenarioConfig.AllowRelocationPrepaid}</div>
-            <div><span className="text-slate-600">Relocation Collect:</span> {scenarioConfig.AllowRelocationCollect}</div>
+            <div><span className="text-slate-600">Active DCs:</span> {formatTextOrNA(scenarioConfig.ActiveDCs)}</div>
+            <div><span className="text-slate-600">Suppressed DCs:</span> {formatTextOrNA(scenarioConfig.SuppressedDCs)}</div>
+            <div><span className="text-slate-600">Footprint Mode:</span> {formatTextOrNA(scenarioConfig.FootprintMode)}</div>
+            <div><span className="text-slate-600">Util Cap:</span> {scenarioConfig.UtilCapPct ? `${scenarioConfig.UtilCapPct}%` : 'NA'}</div>
+            <div><span className="text-slate-600">Level Load:</span> {formatTextOrNA(scenarioConfig.LevelLoadMode)}</div>
+            <div><span className="text-slate-600">Lead Time Cap:</span> {formatTextOrNA(scenarioConfig.LeadTimeCapDays)}</div>
+            <div><span className="text-slate-600">Cost vs Service:</span> {formatTextOrNA(scenarioConfig.CostVsServiceWeight)}</div>
+            <div><span className="text-slate-600">Relocation Prepaid:</span> {formatTextOrNA(scenarioConfig.AllowRelocationPrepaid)}</div>
+            <div><span className="text-slate-600">Relocation Collect:</span> {formatTextOrNA(scenarioConfig.AllowRelocationCollect)}</div>
+            <div><span className="text-slate-600">Collect Treatment:</span> {formatTextOrNA(scenario.CollectTreatment)}</div>
           </div>
         </div>
       ) : (
         <div className="bg-white border border-slate-200 rounded-lg p-4">
           <h3 className="text-lg font-semibold text-slate-900 mb-2">Scenario Configuration</h3>
-          <div className="text-sm text-slate-500">No configuration data available for this scenario.</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
+            <div><span className="text-slate-600">Footprint Mode:</span> {formatTextOrNA(scenario.FootprintMode)}</div>
+            <div><span className="text-slate-600">Level Load:</span> {formatTextOrNA(scenario.LevelLoad)}</div>
+            <div><span className="text-slate-600">Utilization Cap:</span> {formatTextOrNA(scenario.UtilizationCap)}</div>
+            <div><span className="text-slate-600">Collect Treatment:</span> {formatTextOrNA(scenario.CollectTreatment)}</div>
+            <div><span className="text-slate-600">Overrides:</span> {formatNumberOrNA(scenario.OverrideCount)}</div>
+          </div>
         </div>
       )}
 
@@ -84,7 +93,7 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-600">Avg Days:</span>
-                  <span className="font-medium">{dc.AvgDays.toFixed(1)}</span>
+                  <span className="font-medium">{formatDecimalOrNA(dc.AvgDays, 2)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-600">Utilization:</span>

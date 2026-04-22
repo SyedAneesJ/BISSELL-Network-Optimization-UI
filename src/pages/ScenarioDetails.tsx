@@ -176,6 +176,7 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = (props) => {
         <ScenarioRankedOptionsTab
           rankedOptionsColumns={rankedOptionsColumns}
           laneResults={laneResults}
+          hasLaneData={laneResults.length > 0}
         />
       ),
     },
@@ -197,6 +198,7 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = (props) => {
           filteredLanes={filteredLanes}
           laneColumns={laneColumns}
           onSelectLane={setSelectedLane}
+          hasLaneData={laneResults.length > 0}
         />
       ),
     },

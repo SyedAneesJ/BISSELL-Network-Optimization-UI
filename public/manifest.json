@@ -8,8 +8,361 @@
   "fileName": "manifest.json",
   "allowPopups": true,
   "datasetsMapping": [],
-  "packagesMapping": [],
   "collectionsMapping": [],
-  "id": "67a31488-b0e3-4ac1-81df-d25ba50ab8ca",
-  "proxyId": "6b5a1ee8-a7d7-43e0-8e29-286d9809bb80"
+  "packagesMapping": [
+    {
+      "name": "DOMO DataFlows",
+      "alias": "dataflowstatus",
+      "packageId": "fd94540a-8c94-4d8c-af0f-8b149138add0",
+      "parameters": [
+        {
+          "name": "dataFlowId",
+          "displayName": "dataFlowId",
+          "type": "text",
+          "value": null,
+          "nullable": false,
+          "isList": false,
+          "children": [],
+          "entitySubType": null,
+          "alias": "dataFlowId"
+        }
+      ],
+      "output": {
+        "name": "result",
+        "displayName": "result",
+        "type": "text",
+        "value": null,
+        "nullable": true,
+        "isList": false,
+        "children": [],
+        "entitySubType": null,
+        "alias": "result"
+      },
+      "version": "2.0.13",
+      "functionName": "getDataflowExecutionsStatus"
+    },
+    {
+      "name": "DOMO DataFlows",
+      "alias": "dataflowmetadata",
+      "packageId": "fd94540a-8c94-4d8c-af0f-8b149138add0",
+      "parameters": [
+        {
+          "name": "dataFlowId",
+          "displayName": "dataFlowId",
+          "type": "text",
+          "value": null,
+          "nullable": false,
+          "isList": false,
+          "children": [],
+          "entitySubType": null,
+          "alias": "dataFlowId"
+        }
+      ],
+      "output": {
+        "name": "result",
+        "displayName": "result",
+        "type": "object",
+        "value": null,
+        "nullable": true,
+        "isList": false,
+        "children": [],
+        "entitySubType": null,
+        "alias": "result"
+      },
+      "version": "2.0.13",
+      "functionName": "getDataFlowMetadata"
+    },
+    {
+      "name": "DOMO DataFlows",
+      "alias": "startdataflow",
+      "packageId": "fd94540a-8c94-4d8c-af0f-8b149138add0",
+      "parameters": [
+        {
+          "name": "dataFlowId",
+          "displayName": "dataFlowId",
+          "type": "text",
+          "value": null,
+          "nullable": false,
+          "isList": false,
+          "children": [],
+          "entitySubType": null,
+          "alias": "dataFlowId"
+        }
+      ],
+      "output": {
+        "name": "result",
+        "displayName": "result",
+        "type": "object",
+        "value": null,
+        "nullable": true,
+        "isList": false,
+        "children": [],
+        "entitySubType": null,
+        "alias": "result"
+      },
+      "version": "2.0.13",
+      "functionName": "startDataFlow"
+    },
+    {
+      "name": "DOMO Notifications",
+      "alias": "sendEmail",
+      "packageId": "03ba6971-98d0-4654-9bfd-aa897816df33",
+      "parameters": [
+        {
+          "name": "recipientEmails",
+          "displayName": "recipientEmails",
+          "type": "text",
+          "value": null,
+          "nullable": true,
+          "isList": false,
+          "children": [],
+          "entitySubType": null,
+          "alias": "recipientEmails"
+        },
+        {
+          "name": "subject",
+          "displayName": "subject",
+          "type": "text",
+          "value": null,
+          "nullable": false,
+          "isList": false,
+          "children": [],
+          "entitySubType": null,
+          "alias": "subject"
+        },
+        {
+          "name": "body",
+          "displayName": "body",
+          "type": "text",
+          "value": null,
+          "nullable": true,
+          "isList": false,
+          "children": [],
+          "entitySubType": null,
+          "alias": "body"
+        },
+        {
+          "name": "personRecipients",
+          "displayName": "personRecipients",
+          "type": "user",
+          "value": null,
+          "nullable": true,
+          "isList": true,
+          "children": [],
+          "entitySubType": null,
+          "alias": "personRecipients"
+        },
+        {
+          "name": "groupRecipients",
+          "displayName": "groupRecipients",
+          "type": "group",
+          "value": null,
+          "nullable": true,
+          "isList": true,
+          "children": [],
+          "entitySubType": null,
+          "alias": "groupRecipients"
+        },
+        {
+          "name": "attachments",
+          "displayName": "attachments",
+          "type": "number",
+          "value": null,
+          "nullable": true,
+          "isList": true,
+          "children": [],
+          "entitySubType": null,
+          "alias": "attachments"
+        },
+        {
+          "name": "attachment",
+          "displayName": "attachment",
+          "type": "number",
+          "value": null,
+          "nullable": true,
+          "isList": false,
+          "children": [],
+          "entitySubType": null,
+          "alias": "attachment"
+        },
+        {
+          "name": "includeReplyAll",
+          "displayName": "includeReplyAll",
+          "type": "boolean",
+          "value": null,
+          "nullable": true,
+          "isList": false,
+          "children": [],
+          "entitySubType": null,
+          "alias": "includeReplyAll"
+        }
+      ],
+      "output": {
+        "name": "result",
+        "displayName": "result",
+        "type": "boolean",
+        "value": null,
+        "nullable": true,
+        "isList": false,
+        "children": [],
+        "entitySubType": null,
+        "alias": "result"
+      },
+      "version": "2.1.13",
+      "functionName": "sendEmail"
+    }
+  ],
+  "workflowMapping": [
+    {
+      "alias": "testEmail",
+      "version": "1.0.1",
+      "parameters": [
+        {
+          "name": "recipientEmails",
+          "aliasedName": "recipientEmails",
+          "type": "text",
+          "list": false,
+          "children": []
+        },
+        {
+          "name": "subject",
+          "aliasedName": "subject",
+          "type": "text",
+          "list": false,
+          "children": []
+        },
+        {
+          "name": "body",
+          "aliasedName": "body",
+          "type": "text",
+          "list": false,
+          "children": []
+        },
+        {
+          "name": "scenarioId",
+          "aliasedName": "scenarioId",
+          "type": "text",
+          "list": false,
+          "children": []
+        },
+        {
+          "name": "dataflowId",
+          "aliasedName": "dataflowId",
+          "type": "text",
+          "list": false,
+          "children": []
+        },
+        {
+          "name": "executionId",
+          "aliasedName": "executionId",
+          "type": "text",
+          "list": false,
+          "children": []
+        },
+        {
+          "name": "triggeredByUserId",
+          "aliasedName": "triggeredByUserId",
+          "type": "text",
+          "list": false,
+          "children": []
+        },
+        {
+          "name": "triggeredByDisplayName",
+          "aliasedName": "triggeredByDisplayName",
+          "type": "text",
+          "list": false,
+          "children": []
+        },
+        {
+          "name": "completedAt",
+          "aliasedName": "completedAt",
+          "type": "text",
+          "list": false,
+          "children": []
+        }
+      ]
+    },
+    {
+      "alias": "sendEmail",
+      "parameters": [
+        {
+          "name": "recipientEmails",
+          "aliasedName": "recipientEmails",
+          "type": "text",
+          "list": false,
+          "children": []
+        },
+        {
+          "name": "subject",
+          "aliasedName": "subject",
+          "type": "text",
+          "list": false,
+          "children": []
+        },
+        {
+          "name": "body",
+          "aliasedName": "body",
+          "type": "text",
+          "list": false,
+          "children": []
+        },
+        {
+          "name": "scenarioId",
+          "aliasedName": "scenarioId",
+          "type": "text",
+          "list": false,
+          "children": []
+        },
+        {
+          "name": "dataflowId",
+          "aliasedName": "dataflowId",
+          "type": "text",
+          "list": false,
+          "children": []
+        },
+        {
+          "name": "executionId",
+          "aliasedName": "executionId",
+          "type": "text",
+          "list": false,
+          "children": []
+        },
+        {
+          "name": "triggeredByUserId",
+          "aliasedName": "triggeredByUserId",
+          "type": "text",
+          "list": false,
+          "children": []
+        },
+        {
+          "name": "triggeredByDisplayName",
+          "aliasedName": "triggeredByDisplayName",
+          "type": "text",
+          "list": false,
+          "children": []
+        },
+        {
+          "name": "completedAt",
+          "aliasedName": "completedAt",
+          "type": "text",
+          "list": false,
+          "children": []
+        }
+      ]
+    }
+  ],
+  "proxy": [
+    {
+      "method": "POST",
+      "route": "/dataprocessing",
+      "target": "https://bissell.domo.com/api/dataprocessing/v1"
+    },
+    {
+      "method": "GET",
+      "route": "/dataprocessing",
+      "target": "https://bissell.domo.com/api/dataprocessing/v1"
+    }
+  ],
+  "id": "6a475f08-6fa5-4e7d-b691-dac67c6bf17a",
+  "proxyId": "ad735cb7-c03c-4c1b-885e-5f8bd3cd5079"
 }
