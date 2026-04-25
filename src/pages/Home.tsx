@@ -40,6 +40,8 @@ interface HomeProps {
   onRunScenario: (scenarioId: string) => void;
   currentUserDisplayName: string;
   currentUserEmail?: string | null;
+  notificationCount: number;
+  onOpenNotifications: () => void;
   onSendTestEmail: () => void;
   testEmailActive?: boolean;
 }
@@ -66,6 +68,8 @@ export const Home: React.FC<HomeProps> = ({
   onRunScenario,
   currentUserDisplayName,
   currentUserEmail,
+  notificationCount,
+  onOpenNotifications,
   onSendTestEmail,
   testEmailActive,
 }) => {
@@ -416,7 +420,9 @@ export const Home: React.FC<HomeProps> = ({
             searchTerm={searchTerm}
             onSearchTermChange={setSearchTerm}
             currentUserDisplayName={currentUserDisplayName}
-            currentUserEmail={currentUserEmail}
+            // currentUserEmail={currentUserEmail}
+            notificationCount={notificationCount}
+            onOpenNotifications={onOpenNotifications}
             onDataHealth={onDataHealth}
             onExportScenarioList={handleExportScenarioList}
             onExportComparisonList={handleExportComparisonList}

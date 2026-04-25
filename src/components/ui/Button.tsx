@@ -10,6 +10,7 @@ interface ButtonProps {
   fullWidth?: boolean;
   type?: 'button' | 'submit' | 'reset';
   className?: string;
+  title?: string;
 }
 
 export const Button: React.FC<ButtonProps> = ({
@@ -22,6 +23,7 @@ export const Button: React.FC<ButtonProps> = ({
   fullWidth = false,
   type = 'button',
   className = '',
+  title,
 }) => {
   const baseClasses = 'inline-flex items-center justify-center gap-2 font-semibold rounded-lg transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 shadow-sm hover:shadow';
 
@@ -45,6 +47,7 @@ export const Button: React.FC<ButtonProps> = ({
       type={type}
       onClick={onClick}
       disabled={disabled}
+      title={title}
       className={`${baseClasses} ${variantClasses[variant]} ${sizeClasses[size]} ${widthClass} ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'} ${className}`}
     >
       {icon && <span>{icon}</span>}

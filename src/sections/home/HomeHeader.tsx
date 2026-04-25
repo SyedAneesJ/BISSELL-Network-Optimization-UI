@@ -1,6 +1,6 @@
 import React from 'react';
 import { Download, Plus, Search } from 'lucide-react';
-import { Button } from '@/components/ui';
+import { Button, NotificationBell } from '@/components';
 
 interface HomeHeaderProps {
   workspace: 'All' | 'US' | 'Canada';
@@ -8,7 +8,8 @@ interface HomeHeaderProps {
   searchTerm: string;
   onSearchTermChange: (value: string) => void;
   currentUserDisplayName: string;
-  currentUserEmail?: string | null;
+  notificationCount: number;
+  onOpenNotifications: () => void;
   onDataHealth: () => void;
   onExportScenarioList: () => void;
   onExportComparisonList: () => void;
@@ -25,7 +26,8 @@ export const HomeHeader: React.FC<HomeHeaderProps> = ({
   searchTerm,
   onSearchTermChange,
   currentUserDisplayName,
-  currentUserEmail,
+  notificationCount,
+  onOpenNotifications,
   onDataHealth,
   onExportScenarioList,
   onExportComparisonList,
@@ -53,9 +55,8 @@ export const HomeHeader: React.FC<HomeHeaderProps> = ({
           </select>
           <div className="inline-flex flex-col rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-600 sm:flex-row sm:items-center sm:gap-2">
             <span className="font-medium text-slate-800">{currentUserDisplayName || 'User'}</span>
-            <span className="hidden sm:inline text-slate-300">•</span>
-            <span className="truncate max-w-[220px]">{currentUserEmail || 'No email resolved'}</span>
           </div>
+          <NotificationBell count={notificationCount} onClick={onOpenNotifications} />
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
@@ -99,6 +100,7 @@ export const HomeHeader: React.FC<HomeHeaderProps> = ({
             variant="secondary"
             size="small"
             icon={<Plus className="w-4 h-4" />}
+            title={hasComparisons ? 'Open the comparison wizard' : 'Create your first comparison'}
           >
             New Comparison
           </Button>

@@ -6,6 +6,7 @@ import {
   NewComparisonModal,
   NewComparisonSubmit,
   DataHealthModal,
+  NotificationCenter,
 } from '@/components';
 import {
   ComparisonDetailDC,
@@ -33,6 +34,7 @@ import {
   DomoApi,
 } from '@/services';
 import { Toast } from '@/components/ui';
+import { AppNotification } from '@/types/notifications';
 
 type Page = 'home' | 'scenario' | 'comparison';
 
@@ -71,6 +73,7 @@ const EMPTY_COMPARISON_STATE: ComparisonState = {
 };
 
 const COMPARISON_STORAGE_KEY = 'bissell-comparisons-v1';
+const NOTIFICATIONS_STORAGE_KEY = 'bissell-notifications-v1';
 const DATAFLOW_POLL_INTERVAL_MS = 5000;
 const DATAFLOW_MAX_POLL_ATTEMPTS = 360;
 const DATAFLOW_MAX_CONSECUTIVE_POLL_ERRORS = 3;
@@ -81,6 +84,18 @@ interface AppToast {
   kind: ToastKind;
   message: string;
 }
+
+const loadNotifications = (): AppNotification[] => {
+  try {
+    const stored = localStorage.getItem(NOTIFICATIONS_STORAGE_KEY);
+    if (!stored) return [];
+    const parsed = JSON.parse(stored);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    console.warn('Failed to parse notifications from localStorage', error);
+    return [];
+  }
+};
 
 function App() {
   const [workspace, setWorkspace] = useState<'All' | 'US' | 'Canada'>('All');
@@ -111,6 +126,8 @@ function App() {
   const [currentUserDisplayName, setCurrentUserDisplayName] = useState('You');
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
   const [testEmailActive, setTestEmailActive] = useState(false);
+  const [notifications, setNotifications] = useState<AppNotification[]>(loadNotifications);
+  const [showNotifications, setShowNotifications] = useState(false);
   const [toasts, setToasts] = useState<AppToast[]>([]);
   const toastIdRef = useRef(0);
   const toastTimersRef = useRef<Record<number, number>>({});
@@ -234,6 +251,39 @@ function App() {
     }, 10000);
   }, [dismissToast]);
 
+  const pushNotification = useCallback((
+    notification: Omit<AppNotification, 'id' | 'createdAt' | 'readAt'>
+  ) => {
+    const id = `notif-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+    const createdAt = new Date().toISOString();
+    setNotifications((prev) => [
+      {
+        id,
+        createdAt,
+        readAt: null,
+        ...notification,
+      },
+      ...prev,
+    ]);
+    return id;
+  }, []);
+
+  const updateNotification = useCallback((id: string, patch: Partial<AppNotification>) => {
+    setNotifications((prev) => prev.map((item) => (item.id === id ? { ...item, ...patch } : item)));
+  }, []);
+
+  const markNotificationRead = useCallback((id: string) => {
+    updateNotification(id, { readAt: new Date().toISOString() });
+  }, [updateNotification]);
+
+  const dismissNotification = useCallback((id: string) => {
+    setNotifications((prev) => prev.filter((item) => item.id !== id));
+  }, []);
+
+  const clearNotifications = useCallback(() => {
+    setNotifications([]);
+  }, []);
+
   const clearPollingForScenario = useCallback((scenarioId: string) => {
     const timer = pollingTimersRef.current[scenarioId];
     if (timer) {
@@ -242,6 +292,8 @@ function App() {
     }
     activeScenarioRunsRef.current.delete(scenarioId);
   }, []);
+
+  const unreadNotificationCount = notifications.filter((notification) => !notification.readAt).length;
 
   const loadDomoDc = useCallback(async () => {
     try {
@@ -414,13 +466,25 @@ function App() {
         includeReplyAll: false,
       });
       pushToast(`Test email sent to ${currentUserEmail}.`, 'success');
+      pushNotification({
+        kind: 'success',
+        title: 'Test email sent',
+        message: `A direct test email was sent to ${currentUserEmail}.`,
+        entity: { type: 'email', id: 'test-email' },
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       pushToast(`Test email failed: ${message}`, 'error');
+      pushNotification({
+        kind: 'error',
+        title: 'Test email failed',
+        message,
+        entity: { type: 'email', id: 'test-email' },
+      });
     } finally {
       setTestEmailActive(false);
     }
-  }, [currentUserDisplayName, currentUserEmail, pushToast]);
+  }, [currentUserDisplayName, currentUserEmail, pushNotification, pushToast]);
 
   useEffect(() => {
     try {
@@ -429,6 +493,14 @@ function App() {
       console.warn('Failed to save comparisons to localStorage', e);
     }
   }, [comparisonState]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(NOTIFICATIONS_STORAGE_KEY, JSON.stringify(notifications.slice(0, 200)));
+    } catch (e) {
+      console.warn('Failed to save notifications to localStorage', e);
+    }
+  }, [notifications]);
 
   useEffect(() => {
     return () => {
@@ -1083,12 +1155,24 @@ function App() {
       ),
     }));
 
+    const runningNotificationId = pushNotification({
+      kind: 'info',
+      title: 'Scenario run started',
+      message: `${scenario.RunName || scenarioId} is now running.`,
+      entity: { type: 'scenario', id: scenarioId },
+      metadata: { dataflowId },
+    });
+
     try {
       const execution = await triggerDataflow(dataflowId);
       pushToast(
         `${scenario.RunName || scenarioId} is running. Dataflow ${dataflowId}, execution ${execution.id}.`,
         'info'
       );
+      updateNotification(runningNotificationId, {
+        message: `${scenario.RunName || scenarioId} is running. Dataflow ${dataflowId}, execution ${execution.id}.`,
+        metadata: { dataflowId, executionId: String(execution.id) },
+      });
 
       let pollAttempts = 0;
       let consecutivePollErrors = 0;
@@ -1106,6 +1190,12 @@ function App() {
                 : header
             ),
           }));
+          updateNotification(runningNotificationId, {
+            kind: 'error',
+            title: 'Scenario timed out',
+            message: `${scenario.RunName || scenarioId} timed out after ${DATAFLOW_MAX_POLL_ATTEMPTS} checks.`,
+            metadata: { dataflowId, executionId: String(executionId) },
+          });
           pushToast(
             `${scenario.RunName || scenarioId} timed out after ${DATAFLOW_MAX_POLL_ATTEMPTS} checks. Execution ${executionId}.`,
             'error'
@@ -1136,24 +1226,52 @@ function App() {
                   : header
               ),
             }));
+            updateNotification(runningNotificationId, {
+              kind: 'success',
+              title: 'Scenario completed',
+              message: `${scenario.RunName || scenarioId} completed successfully.`,
+              metadata: { dataflowId, executionId: String(executionId) },
+            });
             pushToast(
               `${scenario.RunName || scenarioId} completed successfully. Dataflow ${dataflowId}, execution ${executionId}.`,
               'success'
             );
             try {
-              await triggerScenarioCompletionEmail({
-                scenarioName: scenario.RunName || scenarioId,
-                scenarioId,
-                dataflowId,
-                executionId,
-                completedAtIso: completionTimeIso,
-              });
               if (currentUserEmail) {
+                await triggerScenarioCompletionEmail({
+                  scenarioName: scenario.RunName || scenarioId,
+                  scenarioId,
+                  dataflowId,
+                  executionId,
+                  completedAtIso: completionTimeIso,
+                });
                 pushToast(`Completion email sent to ${currentUserEmail}.`, 'success');
+                pushNotification({
+                  kind: 'success',
+                  title: 'Completion email sent',
+                  message: `Scenario completion email was sent to ${currentUserEmail}.`,
+                  entity: { type: 'email', id: `scenario-${scenarioId}` },
+                  metadata: { dataflowId, executionId: String(executionId) },
+                });
+              } else {
+                pushNotification({
+                  kind: 'warning',
+                  title: 'Completion email skipped',
+                  message: 'No recipient email was resolved for the current user.',
+                  entity: { type: 'email', id: `scenario-${scenarioId}` },
+                  metadata: { dataflowId, executionId: String(executionId) },
+                });
               }
             } catch (emailError) {
               const message = emailError instanceof Error ? emailError.message : String(emailError);
               pushToast(`Scenario completed, but email notification failed: ${message}`, 'error');
+              pushNotification({
+                kind: 'error',
+                title: 'Completion email failed',
+                message,
+                entity: { type: 'email', id: `scenario-${scenarioId}` },
+                metadata: { dataflowId, executionId: String(executionId) },
+              });
             }
             return;
           } else if (status.state === 'FAILED') {
@@ -1166,6 +1284,12 @@ function App() {
                   : header
               ),
             }));
+            updateNotification(runningNotificationId, {
+              kind: 'error',
+              title: 'Scenario failed',
+              message: `${scenario.RunName || scenarioId} failed during execution ${executionId}.`,
+              metadata: { dataflowId, executionId: String(executionId) },
+            });
             pushToast(
               `${scenario.RunName || scenarioId} failed. Dataflow ${dataflowId}, execution ${executionId}.`,
               'error'
@@ -1187,6 +1311,12 @@ function App() {
                   : header
               ),
             }));
+            updateNotification(runningNotificationId, {
+              kind: 'error',
+              title: 'Polling stopped',
+              message: `${scenario.RunName || scenarioId}: ${pollMessage}`,
+              metadata: { dataflowId, executionId: String(executionId) },
+            });
             pushToast(
               `Stopped ETL polling for ${scenario.RunName || scenarioId}. ${pollMessage}`,
               'error'
@@ -1203,6 +1333,12 @@ function App() {
                   : header
               ),
             }));
+            updateNotification(runningNotificationId, {
+              kind: 'error',
+              title: 'Polling stopped',
+              message: `${scenario.RunName || scenarioId} stopped polling after repeated errors.`,
+              metadata: { dataflowId, executionId: String(executionId) },
+            });
             const message = pollErr instanceof Error ? pollErr.message : 'Unknown error';
             pushToast(
               `Polling stopped for ${scenario.RunName || scenarioId} after ${DATAFLOW_MAX_CONSECUTIVE_POLL_ERRORS} errors. Execution ${executionId}. ${message}`,
@@ -1229,10 +1365,15 @@ function App() {
         ),
       }));
       const message = err instanceof Error ? err.message : 'Unknown error';
+      updateNotification(runningNotificationId, {
+        kind: 'error',
+        title: 'Scenario trigger failed',
+        message: `${scenario.RunName || scenarioId} could not start: ${message}`,
+        metadata: { dataflowId },
+      });
       pushToast(`Failed to trigger ETL for ${scenario.RunName || scenarioId}. Dataflow ${dataflowId}. ${message}`, 'error');
     }
   };
-
   const renderPage = () => {
     switch (appState.currentPage) {
       case 'home':
@@ -1259,6 +1400,8 @@ function App() {
             onRunScenario={handleRunScenario}
             currentUserDisplayName={currentUserDisplayName}
             currentUserEmail={currentUserEmail}
+            notificationCount={unreadNotificationCount}
+            onOpenNotifications={() => setShowNotifications(true)}
             onSendTestEmail={handleSendTestEmail}
             testEmailActive={testEmailActive}
           />
@@ -1357,6 +1500,17 @@ function App() {
           .slice(0, 50)}
       />
 
+      <NotificationCenter
+        isOpen={showNotifications}
+        notifications={notifications}
+        onClose={() => setShowNotifications(false)}
+        onMarkRead={markNotificationRead}
+        onDismiss={dismissNotification}
+        onClearAll={clearNotifications}
+        onOpenScenario={navigateToScenario}
+        onOpenComparison={navigateToComparison}
+      />
+
       <div className="fixed top-4 right-4 z-[10000] flex w-[min(32rem,calc(100vw-2rem))] flex-col gap-2">
         {toasts.map((toast) => (
           <Toast
@@ -1372,3 +1526,4 @@ function App() {
 }
 
 export default App;
+
