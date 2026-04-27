@@ -21,7 +21,12 @@ html, body, #root {
   height: 100%;
 }
 
+html {
+  overflow-x: hidden;
+}
+
 body {
+  overflow-x: hidden;
   font-family: "Space Grotesk", "Sora", sans-serif;
   color: var(--bg-ink);
   background:

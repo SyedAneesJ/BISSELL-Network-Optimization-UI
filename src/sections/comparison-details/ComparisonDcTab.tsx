@@ -50,7 +50,7 @@ export const ComparisonDcTab: React.FC<ComparisonDcTabProps> = ({
                     <span className="text-slate-700">{dc.DCName}</span>
                     <span className="font-medium">${dc.Cost_A.toLocaleString()} vs ${dc.Cost_B.toLocaleString()}</span>
                   </div>
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <div className="bg-slate-200 rounded h-2 overflow-hidden">
                       <div className="bg-blue-500 h-2" style={{ width: `${(dc.Cost_A / maxCost) * 100}%` }} />
                     </div>

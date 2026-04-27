@@ -33,8 +33,27 @@ import {
   sendCodeEngineEmail,
   DomoApi,
 } from '@/services';
+import {
+  buildScenarioArtifacts,
+  buildScenarioRepositoryRecord,
+  buildScenarioRepositoryRecordFromState,
+  reconcileScenarioRepositoryRecordWithSuppressedDcs,
+  createScenario as createScenarioRecord,
+  archiveScenario as archiveScenarioRecord,
+  duplicateScenario as duplicateScenarioRecord,
+  getScenarioRecord,
+  listScenarioRecords,
+  saveScenarioRecord,
+  updateScenario,
+  updateScenarioOverrides,
+  updateScenarioRunHistory,
+  updateScenarioSnapshot,
+  ScenarioTemplateOption,
+  type ScenarioRepositoryRecord,
+} from '@/services/scenario';
 import { Toast } from '@/components/ui';
 import { AppNotification } from '@/types/notifications';
+import { ScenarioRunHistoryEntry } from '@/services/scenario';
 
 type Page = 'home' | 'scenario' | 'comparison';
 
@@ -58,6 +77,8 @@ interface ComparisonState {
   detailLanes: ComparisonDetailLane[];
 }
 
+type ScenarioHistoryState = Record<string, ScenarioRunHistoryEntry[]>;
+
 const EMPTY_SCENARIO_STATE: ScenarioState = {
   headers: [],
   configs: [],
@@ -71,6 +92,93 @@ const EMPTY_COMPARISON_STATE: ComparisonState = {
   detailDC: [],
   detailLanes: [],
 };
+
+const EMPTY_SCENARIO_HISTORY: ScenarioHistoryState = {};
+
+const cloneScenarioHeader = (header: ScenarioRunHeader): ScenarioRunHeader => ({
+  ...header,
+});
+
+const cloneScenarioConfig = (config: ScenarioRunConfig): ScenarioRunConfig => ({
+  ...config,
+});
+
+const cloneScenarioResultsDC = (rows: ScenarioRunResultsDC[]): ScenarioRunResultsDC[] =>
+  rows.map((row) => ({ ...row }));
+
+const cloneScenarioResultsLanes = (rows: ScenarioRunResultsLane[]): ScenarioRunResultsLane[] =>
+  rows.map((row) => ({ ...row }));
+
+const mergeScenarioStateWithRecords = (
+  base: ScenarioState,
+  records: ScenarioRepositoryRecord[],
+): ScenarioState => {
+  if (records.length === 0) return base;
+
+  const headers = new Map<string, ScenarioRunHeader>();
+  const configs = new Map<string, ScenarioRunConfig>();
+  const resultsDC = new Map<string, ScenarioRunResultsDC[]>();
+  const resultsLanes = new Map<string, ScenarioRunResultsLane[]>();
+
+  records.forEach((record) => {
+    if (!record.snapshot) return;
+    const scenarioId = record.definition.scenarioId;
+    const hydratedHeader = {
+      ...cloneScenarioHeader(record.snapshot.header),
+      DataflowID: record.snapshot.header.DataflowID || record.definition.dataflowId,
+    };
+    headers.set(scenarioId, hydratedHeader);
+    configs.set(scenarioId, cloneScenarioConfig(record.snapshot.config));
+    resultsDC.set(scenarioId, cloneScenarioResultsDC(record.snapshot.resultsDC));
+    resultsLanes.set(scenarioId, cloneScenarioResultsLanes(record.snapshot.resultsLanes));
+  });
+
+  base.headers.forEach((header) => {
+    if (!headers.has(header.ScenarioRunID)) {
+      headers.set(header.ScenarioRunID, cloneScenarioHeader(header));
+    }
+  });
+
+  base.configs.forEach((config) => {
+    if (!configs.has(config.ScenarioRunID)) {
+      configs.set(config.ScenarioRunID, cloneScenarioConfig(config));
+    }
+  });
+
+  base.resultsDC.forEach((row) => {
+    if (!resultsDC.has(row.ScenarioRunID)) {
+      resultsDC.set(row.ScenarioRunID, cloneScenarioResultsDC(base.resultsDC.filter((item) => item.ScenarioRunID === row.ScenarioRunID)));
+    }
+  });
+
+  base.resultsLanes.forEach((row) => {
+    if (!resultsLanes.has(row.ScenarioRunID)) {
+      resultsLanes.set(row.ScenarioRunID, cloneScenarioResultsLanes(base.resultsLanes.filter((item) => item.ScenarioRunID === row.ScenarioRunID)));
+    }
+  });
+
+  const overrides = [...base.overrides];
+  records.forEach((record) => {
+    const scenarioOverrides = record.overrides.map((override) => ({ ...override }));
+    if (scenarioOverrides.length > 0) {
+      overrides.push(...scenarioOverrides);
+    }
+  });
+
+  return {
+    headers: Array.from(headers.values()),
+    configs: Array.from(configs.values()),
+    resultsDC: Array.from(resultsDC.values()).flat(),
+    resultsLanes: Array.from(resultsLanes.values()).flat(),
+    overrides,
+  };
+};
+
+const buildScenarioHistoryState = (records: ScenarioRepositoryRecord[]): ScenarioHistoryState =>
+  records.reduce<ScenarioHistoryState>((acc, record) => {
+    acc[record.definition.scenarioId] = record.runHistory.map((entry) => ({ ...entry }));
+    return acc;
+  }, {});
 
 const COMPARISON_STORAGE_KEY = 'bissell-comparisons-v1';
 const NOTIFICATIONS_STORAGE_KEY = 'bissell-notifications-v1';
@@ -100,6 +208,7 @@ const loadNotifications = (): AppNotification[] => {
 function App() {
   const [workspace, setWorkspace] = useState<'All' | 'US' | 'Canada'>('All');
   const [scenarioState, setScenarioState] = useState<ScenarioState>(EMPTY_SCENARIO_STATE);
+  const [scenarioHistoryState, setScenarioHistoryState] = useState<ScenarioHistoryState>(EMPTY_SCENARIO_HISTORY);
   const [comparisonState, setComparisonState] = useState<ComparisonState>(() => {
     try {
       const stored = localStorage.getItem(COMPARISON_STORAGE_KEY);
@@ -123,6 +232,7 @@ function App() {
   const [showNewScenario, setShowNewScenario] = useState(false);
   const [showNewComparison, setShowNewComparison] = useState(false);
   const [showDataHealth, setShowDataHealth] = useState(false);
+  const [runningScenarioId, setRunningScenarioId] = useState<string | null>(null);
   const [currentUserDisplayName, setCurrentUserDisplayName] = useState('You');
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
   const [testEmailActive, setTestEmailActive] = useState(false);
@@ -196,6 +306,76 @@ function App() {
       missingDataReasons,
     };
   }, [scenarioState, datasetOptions]);
+
+  const scenarioTemplatesByRegion = useMemo<Record<'US' | 'Canada', ScenarioTemplateOption[]>>(() => {
+    const buildTemplate = (header: ScenarioRunHeader): ScenarioTemplateOption | null => {
+      const dcRows = scenarioState.resultsDC.filter((row) => row.ScenarioRunID === header.ScenarioRunID);
+      const config = scenarioState.configs.find((item) => item.ScenarioRunID === header.ScenarioRunID);
+      if (dcRows.length === 0 && !config) return null;
+      if (!header.DataflowID) return null;
+
+      const availableDcs = Array.from(new Set(dcRows.map((row) => row.DCName).filter(Boolean)));
+      const availableDcCapacity = dcRows.reduce<Record<string, number>>((acc, row) => {
+        if (acc[row.DCName] === undefined) {
+          acc[row.DCName] = row.SpaceRequired;
+        }
+        return acc;
+      }, {});
+
+      const accessorialFlags = config?.AccessorialFlags
+        ? config.AccessorialFlags.split(',').map((flag) => flag.trim()).filter(Boolean)
+        : header.Tags.split(',').map((tag) => tag.trim()).filter(Boolean);
+
+      return {
+        scenarioId: header.ScenarioRunID,
+        region: header.Region,
+        scenarioName: header.RunName,
+        dataflowId: header.DataflowID,
+        entityScope: header.EntityScope || 'NA',
+        scenarioType: header.ScenarioType,
+        channelScopes: header.ChannelScope ? header.ChannelScope.split(',').map((item) => item.trim()).filter(Boolean) : [],
+        termsScopes: header.TermsScope ? header.TermsScope.split(',').map((item) => item.trim()).filter(Boolean) : [],
+        tags: header.Tags ? header.Tags.split(',').map((item) => item.trim()).filter(Boolean) : [],
+        footprintMode: header.FootprintMode || config?.FootprintMode || 'NA',
+        utilCap: config?.UtilCapPct ?? (typeof header.UtilizationCap === 'number' ? header.UtilizationCap : Number(String(header.UtilizationCap ?? '').replace(/[^0-9.-]/g, '')) || 0),
+        levelLoad: (header.LevelLoad || config?.LevelLoadMode) === 'On',
+        leadTimeCap: config?.LeadTimeCapDays ?? 0,
+        excludeBeyondCap: false,
+        costVsService: config?.CostVsServiceWeight ?? 0,
+        fuelSurchargeMode: config?.FuelSurchargeMode || 'NA',
+        fuelSurchargeOverride: config?.FuelSurchargeOverridePct ?? null,
+        accessorialFlags,
+        allowRelocationPrepaid: config?.AllowRelocationPrepaid === 'Y',
+        allowRelocationCollect: config?.AllowRelocationCollect === 'Y',
+        bcvRuleSet: config?.BCVRuleSet || 'NA',
+        allowManualOverride: false,
+        availableDcs,
+        availableDcCapacity,
+      };
+    };
+
+    const grouped: Record<'US' | 'Canada', ScenarioTemplateOption[]> = {
+      US: [],
+      Canada: [],
+    };
+
+    scenarioState.headers.forEach((header) => {
+      const template = buildTemplate(header);
+      if (template) grouped[header.Region].push(template);
+    });
+
+    const sortTemplates = (items: ScenarioTemplateOption[]) =>
+      [...items].sort((a, b) => {
+        const dataflowDiff = Number(a.dataflowId || Number.MAX_SAFE_INTEGER) - Number(b.dataflowId || Number.MAX_SAFE_INTEGER);
+        if (dataflowDiff !== 0) return dataflowDiff;
+        return a.scenarioName.localeCompare(b.scenarioName);
+      });
+
+    return {
+      US: sortTemplates(grouped.US),
+      Canada: sortTemplates(grouped.Canada),
+    };
+  }, [scenarioState.headers, scenarioState.configs, scenarioState.resultsDC]);
 
   const navigateToHome = () => {
     setAppState({
@@ -306,13 +486,8 @@ function App() {
         rows: d.rows.length,
       })));
 
-      if (allRows.length === 0) {
-        setDomoDcLoaded(true);
-        return;
-      }
-
-      const globalEntityOrder = getEntityOrder(allRows);
-      const scenarioPayloads = datasetResults.flatMap((datasetResult) => {
+      const globalEntityOrder = allRows.length > 0 ? getEntityOrder(allRows) : [];
+      const scenarioPayloads = allRows.length > 0 ? datasetResults.flatMap((datasetResult) => {
         const grouped = datasetResult.rows.reduce<Record<string, typeof datasetResult.rows>>((acc, row) => {
           const scenarioType = String(row['scenarioType'] ?? '').trim() || datasetResult.registryItem.scenarioLabel || 'Baseline';
           const region = String(row['dcRegion'] ?? row['DC_region'] ?? row['region'] ?? '').trim() || datasetResult.registryItem.regionDefault || 'US';
@@ -343,7 +518,7 @@ function App() {
           );
           return { header, dcResults };
         });
-      });
+      }) : [];
 
       const dataflowSortValue = (value?: string) => {
         const parsed = Number(value);
@@ -364,7 +539,24 @@ function App() {
         resultsLanes: [],
         overrides: [],
       };
-      setScenarioState(baseScenarioState);
+      const persistedBeforeSeed = listScenarioRecords();
+      const persistedIds = new Set(persistedBeforeSeed.map((record) => record.definition.scenarioId));
+      const legacySeedRecords = baseScenarioState.headers
+        .filter((header) => !persistedIds.has(header.ScenarioRunID))
+        .map((header) =>
+          buildScenarioRepositoryRecordFromState(
+            header,
+            baseScenarioState.resultsDC.filter((row) => row.ScenarioRunID === header.ScenarioRunID),
+            []
+          )
+        );
+      legacySeedRecords.forEach((record) => {
+        createScenarioRecord(record.definition, record.snapshot);
+      });
+
+      const persistedRecords = listScenarioRecords();
+      setScenarioState(mergeScenarioStateWithRecords(baseScenarioState, persistedRecords));
+      setScenarioHistoryState(buildScenarioHistoryState(persistedRecords));
 
       setDomoDcLoaded(true);
     } catch (err) {
@@ -512,213 +704,41 @@ function App() {
     };
   }, []);
 
-  const createScenarioHeader = (payload: NewScenarioSubmit): ScenarioRunHeader => {
-    const now = new Date().toISOString();
-    const numeric = (scenarioState.headers.length + 1).toString().padStart(3, '0');
-    const scenarioId = `SR${numeric}`;
-
-    const baseForRegion = [...scenarioState.headers]
-      .filter(s => s.Region === payload.input.region && s.Status === 'Published')
-      .sort((a, b) => new Date(b.LastUpdatedAt).getTime() - new Date(a.LastUpdatedAt).getTime())[0];
-
-    const baseline =
-      baseForRegion ??
-      scenarioState.headers.find((s) => s.Region === payload.input.region) ??
-      scenarioState.headers[0];
-
-    const hasCostVsService = datasetOptions.costVsServiceWeights.length > 0;
-    const hasUtilCap = datasetOptions.utilCaps.length > 0;
-    const costShift = hasCostVsService ? (payload.input.costVsService - 50) / 500 : 0;
-    const serviceShift = hasCostVsService ? (payload.input.costVsService - 50) / 100 : 0;
-    const utilCapImpact = hasUtilCap
-      ? payload.input.utilCap < 80 ? 0.02 : payload.input.utilCap > 90 ? -0.01 : 0
-      : 0;
-
-    const totalCost = baseline ? Math.round(baseline.TotalCost * (1 + costShift + utilCapImpact)) : 0;
-    const costPerUnit = baseline ? Number((baseline.CostPerUnit * (1 + costShift)).toFixed(2)) : 0;
-    const avgDays = baseline ? Number((baseline.AvgDeliveryDays * (1 - serviceShift * 0.1)).toFixed(1)) : 0;
-    const slaBreach = baseline ? Number((baseline.SLABreachPct * (1 + costShift * 0.5)).toFixed(1)) : 0;
-    const maxUtil = baseline ? Number((baseline.MaxUtilPct * (1 + utilCapImpact)).toFixed(2)) : 0;
-
-    const totalSpace = baseline ? baseline.TotalSpaceRequired : 0;
-    const spaceCore = baseline ? baseline.SpaceCore : 0;
-    const spaceBCV = baseline ? baseline.SpaceBCV : 0;
-
-    const alertFlags = [];
-    if (hasUtilCap && payload.input.utilCap > 90) alertFlags.push('OverCap');
-    if (datasetOptions.leadTimeCaps.length > 0 && payload.input.leadTimeCap <= 5) alertFlags.push('SLA');
-
-    return {
-      ScenarioRunID: scenarioId,
-      RunName: payload.input.runName || `New Scenario ${scenarioId}`,
-      Region: payload.input.region,
-      ScenarioType: (payload.input.scenarioType || baseline?.ScenarioType || 'Baseline') as ScenarioRunHeader['ScenarioType'],
-      EntityScope: payload.input.entityScope,
-      ChannelScope: payload.input.channelScope.length > 0 ? payload.input.channelScope.join(',') : 'NA',
-      TermsScope: (payload.input.termsScope || 'Collect+Prepaid') as ScenarioRunHeader['TermsScope'],
-      CreatedBy: currentUserDisplayName,
-      CreatedAt: now,
-      LastUpdatedAt: now,
-      LastRunBy: null,
-      LastRunAt: null,
-      LastRunExecutionId: null,
-      Status: payload.action === 'draft' ? 'Draft' : 'Running',
-      ApprovedBy: null,
-      ApprovedAt: null,
-      LatestComment: payload.input.notes || 'NA',
-      Tags: payload.input.tags.length > 0 ? payload.input.tags.join(',') : 'NA',
-      DataSnapshotVersion: dataHealthSnapshot?.SnapshotTime || 'NA',
-      AssumptionsSummary: 'NA',
-      AlertFlags: alertFlags.join(','),
-      TotalCost: totalCost,
-      CostPerUnit: costPerUnit,
-      AvgDeliveryDays: avgDays,
-      AvgTransitDays: baseline?.AvgTransitDays ?? null,
-      TotalCount: baseline?.TotalCount ?? 0,
-      SLABreachPct: slaBreach,
-      ExcludedBySLACount: baseline ? Math.round(baseline.ExcludedBySLACount * (1 + costShift)) : 0,
-      MaxUtilPct: maxUtil,
-      TotalSpaceRequired: totalSpace,
-      SpaceCore: spaceCore,
-      SpaceBCV: spaceBCV,
-      FootprintMode: payload.input.footprintMode || baseline?.FootprintMode || 'NA',
-      LevelLoad: payload.input.levelLoad ? 'On' : (baseline?.LevelLoad || 'NA'),
-      UtilizationCap: payload.input.utilCap || baseline?.UtilizationCap || 'NA',
-      CollectTreatment: baseline?.CollectTreatment || 'NA',
-      OverrideCount: 0,
-      LaneCount: baseline ? baseline.LaneCount : 0,
-      ChangedLaneCountVsBaseline: payload.action === 'draft' ? 0 : baseline ? Math.round(baseline.ChangedLaneCountVsBaseline * (1 + costShift)) : 0,
-    };
-  };
-
-  const createScenarioConfig = (payload: NewScenarioSubmit, scenarioId: string): ScenarioRunConfig => ({
-    ScenarioRunID: scenarioId,
-    ActiveDCs: payload.input.activeDCs.join(','),
-    SuppressedDCs: payload.input.suppressedDCs.join(','),
-    FootprintMode: payload.input.footprintMode as ScenarioRunConfig['FootprintMode'],
-    UtilCapPct: payload.input.utilCap,
-    LevelLoadMode: payload.input.levelLoad ? 'On' : 'Off',
-    LeadTimeCapDays: payload.input.leadTimeCap === 0 ? null : payload.input.leadTimeCap,
-    CostVsServiceWeight: payload.input.costVsService,
-    AllowRelocationPrepaid: payload.input.allowRelocationPrepaid ? 'Y' : 'N',
-    AllowRelocationCollect: payload.input.allowRelocationCollect ? 'Y' : 'N',
-    BCVRuleSet: payload.input.bcvRuleSet as ScenarioRunConfig['BCVRuleSet'],
-    FuelSurchargeMode: payload.input.fuelSurchargeMode as ScenarioRunConfig['FuelSurchargeMode'],
-    FuelSurchargeOverridePct: payload.input.fuelSurchargeOverride,
-    AccessorialFlags: [
-      payload.input.accessorials.residential ? 'Residential' : null,
-      payload.input.accessorials.liftgate ? 'Liftgate' : null,
-      payload.input.accessorials.insideDelivery ? 'InsideDelivery' : null,
-    ].filter(Boolean).join(','),
-    Notes: payload.input.notes || 'Created via New Scenario Wizard',
-  });
-
-  const createScenarioResultsDC = (payload: NewScenarioSubmit, scenarioId: string): ScenarioRunResultsDC[] => {
-    const active = new Set(payload.input.activeDCs);
-    const baselineHeader = scenarioState.headers.find((h) => h.Region === payload.input.region) ?? scenarioState.headers[0];
-    const baselineResults = baselineHeader
-      ? scenarioState.resultsDC.filter((r) => r.ScenarioRunID === baselineHeader.ScenarioRunID)
-      : [];
-    const hasUtilCap = datasetOptions.utilCaps.length > 0;
-
-    if (baselineResults.length === 0) return [];
-
-    return baselineResults.map((dc, idx) => ({
-      ...dc,
-      ScenarioRunID: scenarioId,
-      UtilPct: hasUtilCap ? Math.min(dc.UtilPct, payload.input.utilCap) : dc.UtilPct,
-      RankOverall: idx + 1,
-      IsSuppressed: active.has(dc.DCName) ? 'N' : 'Y',
-    }));
-  };
-
-  const summarizeDcResults = (rows: ScenarioRunResultsDC[]) => {
-    if (rows.length === 0) {
-      return {
-        totalCost: 0,
-        totalUnits: 0,
-        costPerUnit: 0,
-        avgDays: 0,
-        maxUtil: 0,
-        totalSpaceRequired: 0,
-        excludedBySla: 0,
-        slaBreachCount: 0,
-        missingAvgDays: 0,
-      };
+  const handleScenarioComplete = (payload: NewScenarioSubmit) => {
+    const selectedTemplate = scenarioTemplatesByRegion[payload.input.region]?.find(
+      (template) => template.scenarioId === payload.input.baselineScenarioId,
+    ) || null;
+    if (!payload.input.baselineDataflowId) {
+      pushToast('Select a baseline scenario with a valid dataflow before creating a new scenario.', 'error');
+      pushNotification({
+        kind: 'error',
+        title: 'Scenario creation blocked',
+        message: 'The selected baseline scenario does not have a valid dataflow mapping.',
+        entity: { type: 'scenario', id: payload.input.baselineScenarioId || 'unknown' },
+      });
+      return;
     }
 
-    const totalCost = rows.reduce((sum, row) => sum + row.TotalCost, 0);
-    const totalUnits = rows.reduce((sum, row) => sum + row.VolumeUnits, 0);
-    let avgDaysNumerator = 0;
-    let avgDaysWeight = 0;
-    rows.forEach((row) => {
-      const weight = row.VolumeUnits > 0 ? row.VolumeUnits : 1;
-      avgDaysNumerator += row.AvgDays * weight;
-      avgDaysWeight += weight;
-    });
-    const avgDays = avgDaysWeight > 0 ? avgDaysNumerator / avgDaysWeight : 0;
-    const maxUtil = rows.reduce((max, row) => Math.max(max, row.UtilPct), 0);
-    const totalSpaceRequired = rows.reduce((sum, row) => sum + row.SpaceRequired, 0);
-    const excludedBySla = rows.reduce((sum, row) => sum + row.ExcludedBySLACount, 0);
-    const slaBreachCount = rows.reduce((sum, row) => sum + row.SLABreachCount, 0);
-    const missingAvgDays = rows.filter((row) => row.AvgDays === 0).length;
-
-    return {
-      totalCost,
-      totalUnits,
-      costPerUnit: totalUnits > 0 ? Number((totalCost / totalUnits).toFixed(2)) : 0,
-      avgDays: Number(avgDays.toFixed(2)),
-      maxUtil: Number(maxUtil.toFixed(2)),
-      totalSpaceRequired,
-      excludedBySla,
-      slaBreachCount,
-      missingAvgDays,
+    const buildContext = {
+      scenarioHeaders: scenarioState.headers,
+      scenarioResultsDC: scenarioState.resultsDC,
+      scenarioResultsLanes: scenarioState.resultsLanes,
+      currentUserDisplayName,
+      dataSnapshotVersion: dataHealthSnapshot?.SnapshotTime || 'NA',
+      hasCostVsServiceWeights: selectedTemplate
+        ? selectedTemplate.costVsService > 0
+        : datasetOptions.costVsServiceWeights.length > 0,
+      hasUtilCaps: selectedTemplate
+        ? selectedTemplate.utilCap > 0
+        : datasetOptions.utilCaps.length > 0,
+      hasLeadTimeCaps: selectedTemplate
+        ? selectedTemplate.leadTimeCap > 0
+        : datasetOptions.leadTimeCaps.length > 0,
     };
-  };
-
-  const buildAlertFlagsFromResults = (summary: ReturnType<typeof summarizeDcResults>) => {
-    const flags: string[] = [];
-    if (summary.maxUtil > 100) flags.push('OverCap');
-    if (summary.totalUnits > 0 && summary.slaBreachCount > 0) flags.push('SLA');
-    if (summary.missingAvgDays > 0) flags.push('MissingRates');
-    return flags.join(',');
-  };
-
-  const createScenarioResultsLanes = (scenarioId: string): ScenarioRunResultsLane[] => {
-    const baselineLanes = scenarioState.resultsLanes.filter(l => l.ScenarioRunID === 'SR001');
-    if (baselineLanes.length === 0) return [];
-
-    return baselineLanes.slice(0, 6).map((lane, idx) => ({
-      ...lane,
-      ScenarioRunID: scenarioId,
-      LaneCost: Number((lane.LaneCost * (1 + idx * 0.02)).toFixed(2)),
-      CostDeltaVsBest: Number((lane.CostDeltaVsBest + idx * 0.05).toFixed(2)),
-      DeliveryDays: Number((lane.DeliveryDays + idx * 0.1).toFixed(1)),
-      OverrideAppliedFlag: 'N',
-      OverrideVersion: null,
-      NotesFlag: '',
-    }));
-  };
-
-  const handleScenarioComplete = (payload: NewScenarioSubmit) => {
-    const headerBase = createScenarioHeader(payload);
-    const config = createScenarioConfig(payload, headerBase.ScenarioRunID);
-    const resultsDC = createScenarioResultsDC(payload, headerBase.ScenarioRunID);
-    const resultsLanes = createScenarioResultsLanes(headerBase.ScenarioRunID);
-    const summary = summarizeDcResults(resultsDC);
-    const header: ScenarioRunHeader = resultsDC.length === 0
-      ? headerBase
-      : {
-          ...headerBase,
-          TotalCost: summary.totalCost,
-          CostPerUnit: summary.costPerUnit,
-          AvgDeliveryDays: summary.avgDays,
-          TotalCount: summary.totalUnits,
-          MaxUtilPct: summary.maxUtil,
-          TotalSpaceRequired: summary.totalSpaceRequired,
-          ExcludedBySLACount: summary.excludedBySla,
-          AlertFlags: buildAlertFlagsFromResults(summary),
-        };
+    const artifact = buildScenarioArtifacts(payload, buildContext);
+    const repositoryRecord = buildScenarioRepositoryRecord(payload, buildContext, artifact);
+    createScenarioRecord(repositoryRecord.definition, repositoryRecord.snapshot);
+    const { header, config, resultsDC, resultsLanes } = artifact;
 
     setScenarioState((prev) => ({
       headers: [header, ...prev.headers],
@@ -727,7 +747,73 @@ function App() {
       resultsLanes: [...resultsLanes, ...prev.resultsLanes],
       overrides: [...prev.overrides],
     }));
+
+    navigateToHome();
   };
+
+  const persistHeaderToRepository = useCallback((
+    scenarioId: string,
+    headerPatch: Partial<ScenarioRunHeader>,
+  ) => {
+    const record = getScenarioRecord(scenarioId);
+    if (!record) return;
+    const nextUpdatedAt = headerPatch.LastUpdatedAt || record.definition.updatedAt || new Date().toISOString();
+    const definitionPatch: Parameters<typeof updateScenario>[1] = {
+      scenarioName: headerPatch.RunName ?? record.definition.scenarioName,
+      region: headerPatch.Region ?? record.definition.region,
+      scenarioType: headerPatch.ScenarioType ?? record.definition.scenarioType,
+      dataflowId: headerPatch.DataflowID ?? record.definition.dataflowId,
+      status: headerPatch.Status ?? record.definition.status,
+      lastRunBy: headerPatch.LastRunBy ?? record.definition.lastRunBy ?? null,
+      lastRunAt: headerPatch.LastRunAt ?? record.definition.lastRunAt ?? null,
+      lastRunExecutionId: headerPatch.LastRunExecutionId ?? record.definition.lastRunExecutionId ?? null,
+      updatedAt: nextUpdatedAt,
+    };
+    updateScenario(scenarioId, definitionPatch);
+    if (record.snapshot) {
+      updateScenarioSnapshot(scenarioId, {
+        ...record.snapshot,
+        header: { ...record.snapshot.header, ...headerPatch },
+        updatedAt: nextUpdatedAt,
+      });
+    }
+  }, []);
+
+  const persistScenarioRecordSnapshot = useCallback((
+    scenarioId: string,
+    patch: Partial<Pick<ScenarioRepositoryRecord, 'snapshot' | 'overrides'>>,
+  ) => {
+    const record = getScenarioRecord(scenarioId);
+    if (!record) return;
+    const nextSnapshot = patch.snapshot ?? record.snapshot;
+    const nextOverrides = patch.overrides ?? record.overrides;
+    saveScenarioRecord({
+      ...record,
+      definition: {
+        ...record.definition,
+        updatedAt: new Date().toISOString(),
+      },
+      snapshot: nextSnapshot,
+      overrides: nextOverrides,
+    });
+  }, []);
+
+  const upsertRunHistoryEntry = useCallback((
+    scenarioId: string,
+    entry: ScenarioRunHistoryEntry,
+  ) => {
+    const record = getScenarioRecord(scenarioId);
+    if (!record) return;
+    const nextHistory = [
+      ...record.runHistory.filter((item) => item.runId !== entry.runId),
+      { ...entry },
+    ].sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
+    updateScenarioRunHistory(scenarioId, nextHistory);
+    setScenarioHistoryState((prev) => ({
+      ...prev,
+      [scenarioId]: nextHistory.map((item) => ({ ...item })),
+    }));
+  }, []);
 
   const refreshData = () => {
     setDomoDcLoaded(false);
@@ -740,6 +826,35 @@ function App() {
     const now = new Date().toISOString();
     const numeric = (scenarioState.headers.length + 1).toString().padStart(3, '0');
     const newId = `SR${numeric}`;
+
+    const sourceRecord = getScenarioRecord(scenarioId);
+    if (sourceRecord) {
+      const clonedRecord = duplicateScenarioRecord(scenarioId, newId, now);
+      if (!clonedRecord) return;
+
+      const newHeader = clonedRecord.snapshot?.header || {
+        ...sourceHeader,
+        ScenarioRunID: newId,
+        RunName: `${sourceHeader.RunName} (Copy)`,
+        CreatedAt: now,
+        LastUpdatedAt: now,
+        Status: 'Draft',
+        ApprovedBy: null,
+        ApprovedAt: null,
+      };
+      const newConfigs = clonedRecord.snapshot ? [clonedRecord.snapshot.config] : [];
+      const newResultsDC = clonedRecord.snapshot ? clonedRecord.snapshot.resultsDC : [];
+      const newResultsLanes = clonedRecord.snapshot ? clonedRecord.snapshot.resultsLanes : [];
+
+      setScenarioState((prev) => ({
+        headers: [newHeader, ...prev.headers],
+        configs: [...newConfigs, ...prev.configs],
+        resultsDC: [...newResultsDC, ...prev.resultsDC],
+        resultsLanes: [...newResultsLanes, ...prev.resultsLanes],
+        overrides: [...clonedRecord.overrides, ...prev.overrides],
+      }));
+      return;
+    }
 
     const newHeader: ScenarioRunHeader = {
       ...sourceHeader,
@@ -775,10 +890,26 @@ function App() {
   };
 
   const archiveScenario = (scenarioId: string) => {
+    const now = new Date().toISOString();
+    const record = getScenarioRecord(scenarioId);
+    if (record) {
+      archiveScenarioRecord(scenarioId, now);
+      if (record.snapshot) {
+        updateScenarioSnapshot(scenarioId, {
+          ...record.snapshot,
+          header: {
+            ...record.snapshot.header,
+            Status: 'Archived',
+            LastUpdatedAt: now,
+          },
+          updatedAt: now,
+        });
+      }
+    }
     setScenarioState((prev) => ({
       ...prev,
       headers: prev.headers.map((s) =>
-        s.ScenarioRunID === scenarioId ? { ...s, Status: 'Archived', LastUpdatedAt: new Date().toISOString() } : s
+        s.ScenarioRunID === scenarioId ? { ...s, Status: 'Archived', LastUpdatedAt: now } : s
       ),
     }));
     setArchivedScenarioPrevStatus((prev) => {
@@ -790,12 +921,29 @@ function App() {
 
   const unarchiveScenario = (scenarioId: string) => {
     const fallbackStatus: ScenarioRunHeader['Status'] = archivedScenarioPrevStatus[scenarioId] || 'Running';
+    const now = new Date().toISOString();
+    const record = getScenarioRecord(scenarioId);
+    if (record) {
+      updateScenario(scenarioId, {
+        status: fallbackStatus,
+        updatedAt: now,
+      });
+      if (record.snapshot) {
+        updateScenarioSnapshot(scenarioId, {
+          ...record.snapshot,
+          header: {
+            ...record.snapshot.header,
+            Status: fallbackStatus,
+            LastUpdatedAt: now,
+          },
+          updatedAt: now,
+        });
+      }
+    }
     setScenarioState((prev) => ({
       ...prev,
       headers: prev.headers.map((s) =>
-        s.ScenarioRunID === scenarioId
-          ? { ...s, Status: fallbackStatus, LastUpdatedAt: new Date().toISOString() }
-          : s
+        s.ScenarioRunID === scenarioId ? { ...s, Status: fallbackStatus, LastUpdatedAt: now } : s
       ),
     }));
   };
@@ -806,10 +954,16 @@ function App() {
       ...prev,
       headers: prev.headers.map((s) =>
         s.ScenarioRunID === scenarioId
-          ? { ...s, Status: 'Published', ApprovedBy: 'You', ApprovedAt: now, LastUpdatedAt: now }
+          ? { ...s, Status: 'Published', ApprovedBy: currentUserDisplayName, ApprovedAt: now, LastUpdatedAt: now }
           : s
       ),
     }));
+    persistHeaderToRepository(scenarioId, {
+      Status: 'Published',
+      ApprovedBy: currentUserDisplayName,
+      ApprovedAt: now,
+      LastUpdatedAt: now,
+    });
   };
 
   const approveScenario = (scenarioId: string) => {
@@ -818,10 +972,15 @@ function App() {
       ...prev,
       headers: prev.headers.map((s) =>
         s.ScenarioRunID === scenarioId
-          ? { ...s, ApprovedBy: 'You', ApprovedAt: now, LastUpdatedAt: now }
+          ? { ...s, ApprovedBy: currentUserDisplayName, ApprovedAt: now, LastUpdatedAt: now }
           : s
       ),
     }));
+    persistHeaderToRepository(scenarioId, {
+      ApprovedBy: currentUserDisplayName,
+      ApprovedAt: now,
+      LastUpdatedAt: now,
+    });
   };
 
   const addScenarioComment = (scenarioId: string, comment: string) => {
@@ -834,6 +993,10 @@ function App() {
           : s
       ),
     }));
+    persistHeaderToRepository(scenarioId, {
+      LatestComment: comment,
+      LastUpdatedAt: now,
+    });
   };
 
   const applyOverride = (
@@ -841,6 +1004,11 @@ function App() {
     overrideInput: Omit<ScenarioOverride, 'ScenarioRunID' | 'OverrideVersion' | 'UpdatedAt' | 'UpdatedBy'>
   ) => {
     const now = new Date().toISOString();
+    let updatedHeaders: ScenarioRunHeader[] = [];
+    let updatedLanes: ScenarioRunResultsLane[] = [];
+    let nextOverrides: ScenarioOverride[] = [];
+    let nextSnapshot: ScenarioRepositoryRecord['snapshot'] = null;
+
     setScenarioState((prev) => {
       const scenarioOverridesForId = prev.overrides.filter(o => o.ScenarioRunID === scenarioId);
       const newVersion = `v${scenarioOverridesForId.length + 1}`;
@@ -849,12 +1017,12 @@ function App() {
         ScenarioRunID: scenarioId,
         OverrideVersion: newVersion,
         UpdatedAt: now,
-        UpdatedBy: 'You',
+        UpdatedBy: currentUserDisplayName || 'You',
         ...overrideInput,
       };
 
       let deltaCost = 0;
-      const updatedLanes = prev.resultsLanes.map((lane) => {
+      updatedLanes = prev.resultsLanes.map((lane) => {
         if (
           lane.ScenarioRunID === scenarioId &&
           lane.Dest3Zip === overrideInput.Dest3Zip &&
@@ -887,7 +1055,7 @@ function App() {
         : 0;
       const excludedCount = scenarioLanes.filter((l) => l.ExcludedBySLAFlag === 'Y').length;
 
-      const updatedHeaders = prev.headers.map((s) =>
+      updatedHeaders = prev.headers.map((s) =>
         s.ScenarioRunID === scenarioId
           ? {
               ...s,
@@ -902,12 +1070,31 @@ function App() {
           : s
       );
 
+      nextOverrides = [newOverride, ...prev.overrides];
+      const updatedScenario = updatedHeaders.find((s) => s.ScenarioRunID === scenarioId);
+      if (updatedScenario) {
+        const currentRecord = getScenarioRecord(scenarioId);
+        if (currentRecord) {
+          nextSnapshot = {
+            ...currentRecord.snapshot,
+            header: { ...updatedScenario },
+            resultsLanes: updatedLanes.filter((lane) => lane.ScenarioRunID === scenarioId).map((lane) => ({ ...lane })),
+            updatedAt: now,
+          } as NonNullable<ScenarioRepositoryRecord['snapshot']>;
+        }
+      }
+
       return {
         ...prev,
         headers: updatedHeaders,
-        overrides: [newOverride, ...prev.overrides],
+        overrides: nextOverrides,
         resultsLanes: updatedLanes,
       };
+    });
+
+    persistScenarioRecordSnapshot(scenarioId, {
+      snapshot: nextSnapshot ?? getScenarioRecord(scenarioId)?.snapshot ?? null,
+      overrides: nextOverrides,
     });
   };
 
@@ -1123,8 +1310,8 @@ function App() {
     console.log('Comparison created successfully');
   };
 
-  const handleRunScenario = async (scenarioId: string) => {
-    const scenario = scenarioState.headers.find((s) => s.ScenarioRunID === scenarioId);
+  const handleRunScenario = async (scenarioId: string, scenarioOverride?: ScenarioRunHeader) => {
+    const scenario = scenarioOverride || scenarioState.headers.find((s) => s.ScenarioRunID === scenarioId);
     if (!scenario) return;
 
     if (activeScenarioRunsRef.current.has(scenarioId)) {
@@ -1139,7 +1326,20 @@ function App() {
     }
 
     const priorStatus = scenario.Status;
+    const storedRecord = getScenarioRecord(scenarioId);
+    if (storedRecord?.snapshot) {
+      const reconciledRecord = reconcileScenarioRepositoryRecordWithSuppressedDcs(storedRecord);
+      saveScenarioRecord(reconciledRecord);
+      setScenarioState((prev) => mergeScenarioStateWithRecords(prev, [reconciledRecord]));
+      setScenarioHistoryState((prev) => ({
+        ...prev,
+        [scenarioId]: reconciledRecord.runHistory.map((entry) => ({ ...entry })),
+      }));
+    }
+
     activeScenarioRunsRef.current.add(scenarioId);
+    const runningAtIso = new Date().toISOString();
+    const runId = `run-${scenarioId}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
     setScenarioState((prev) => ({
       ...prev,
       headers: prev.headers.map((header) =>
@@ -1148,12 +1348,31 @@ function App() {
               ...header,
               Status: 'Running',
               LastRunBy: currentUserDisplayName,
-              LastRunAt: new Date().toISOString(),
-              LastUpdatedAt: new Date().toISOString(),
+              LastRunAt: runningAtIso,
+              LastUpdatedAt: runningAtIso,
             }
           : header
       ),
     }));
+    persistHeaderToRepository(scenarioId, {
+      Status: 'Running',
+      LastRunBy: currentUserDisplayName,
+      LastRunAt: runningAtIso,
+      LastUpdatedAt: runningAtIso,
+    });
+    upsertRunHistoryEntry(scenarioId, {
+      runId,
+      scenarioId,
+      scenarioName: scenario.RunName || scenarioId,
+      dataflowId,
+      executionId: null,
+      status: 'Running',
+      triggeredBy: currentUserDisplayName,
+      startedAt: runningAtIso,
+      completedAt: null,
+      durationMs: null,
+      message: null,
+    });
 
     const runningNotificationId = pushNotification({
       kind: 'info',
@@ -1190,6 +1409,10 @@ function App() {
                 : header
             ),
           }));
+          persistHeaderToRepository(scenarioId, {
+            Status: priorStatus,
+            LastUpdatedAt: new Date().toISOString(),
+          });
           updateNotification(runningNotificationId, {
             kind: 'error',
             title: 'Scenario timed out',
@@ -1226,6 +1449,26 @@ function App() {
                   : header
               ),
             }));
+            persistHeaderToRepository(scenarioId, {
+              Status: 'Completed',
+              LastRunBy: currentUserDisplayName,
+              LastRunAt: completionTimeIso,
+              LastRunExecutionId: String(executionId),
+              LastUpdatedAt: completionTimeIso,
+            });
+            upsertRunHistoryEntry(scenarioId, {
+              runId,
+              scenarioId,
+              scenarioName: scenario.RunName || scenarioId,
+              dataflowId,
+              executionId: String(executionId),
+              status: 'Completed',
+              triggeredBy: currentUserDisplayName,
+              startedAt: runningAtIso,
+              completedAt: completionTimeIso,
+              durationMs: new Date(completionTimeIso).getTime() - new Date(runningAtIso).getTime(),
+              message: 'Dataflow completed successfully.',
+            });
             updateNotification(runningNotificationId, {
               kind: 'success',
               title: 'Scenario completed',
@@ -1284,6 +1527,23 @@ function App() {
                   : header
               ),
             }));
+            persistHeaderToRepository(scenarioId, {
+              Status: priorStatus,
+              LastUpdatedAt: new Date().toISOString(),
+            });
+            upsertRunHistoryEntry(scenarioId, {
+              runId,
+              scenarioId,
+              scenarioName: scenario.RunName || scenarioId,
+              dataflowId,
+              executionId: String(executionId),
+              status: 'Failed',
+              triggeredBy: currentUserDisplayName,
+              startedAt: runningAtIso,
+              completedAt: new Date().toISOString(),
+              durationMs: new Date().getTime() - new Date(runningAtIso).getTime(),
+              message: `${scenario.RunName || scenarioId} failed during execution ${executionId}.`,
+            });
             updateNotification(runningNotificationId, {
               kind: 'error',
               title: 'Scenario failed',
@@ -1311,6 +1571,23 @@ function App() {
                   : header
               ),
             }));
+            persistHeaderToRepository(scenarioId, {
+              Status: priorStatus,
+              LastUpdatedAt: new Date().toISOString(),
+            });
+            upsertRunHistoryEntry(scenarioId, {
+              runId,
+              scenarioId,
+              scenarioName: scenario.RunName || scenarioId,
+              dataflowId,
+              executionId: String(executionId),
+              status: 'Failed',
+              triggeredBy: currentUserDisplayName,
+              startedAt: runningAtIso,
+              completedAt: new Date().toISOString(),
+              durationMs: new Date().getTime() - new Date(runningAtIso).getTime(),
+              message: `Polling stopped after repeated errors.`,
+            });
             updateNotification(runningNotificationId, {
               kind: 'error',
               title: 'Polling stopped',
@@ -1355,6 +1632,7 @@ function App() {
 
       void pollExecution();
     } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
       clearPollingForScenario(scenarioId);
       setScenarioState((prev) => ({
         ...prev,
@@ -1364,7 +1642,23 @@ function App() {
             : header
         ),
       }));
-      const message = err instanceof Error ? err.message : 'Unknown error';
+      persistHeaderToRepository(scenarioId, {
+        Status: priorStatus,
+        LastUpdatedAt: new Date().toISOString(),
+      });
+      upsertRunHistoryEntry(scenarioId, {
+        runId,
+        scenarioId,
+        scenarioName: scenario.RunName || scenarioId,
+        dataflowId,
+        executionId: null,
+        status: 'Failed',
+        triggeredBy: currentUserDisplayName,
+        startedAt: runningAtIso,
+        completedAt: new Date().toISOString(),
+        durationMs: new Date().getTime() - new Date(runningAtIso).getTime(),
+        message,
+      });
       updateNotification(runningNotificationId, {
         kind: 'error',
         title: 'Scenario trigger failed',
@@ -1398,6 +1692,7 @@ function App() {
             onUnarchiveComparison={unarchiveComparison}
             onRefresh={refreshData}
             onRunScenario={handleRunScenario}
+            runningScenarioId={runningScenarioId}
             currentUserDisplayName={currentUserDisplayName}
             currentUserEmail={currentUserEmail}
             notificationCount={unreadNotificationCount}
@@ -1421,6 +1716,7 @@ function App() {
             scenarioRunResultsDC={scenarioState.resultsDC}
             scenarioRunResultsLanes={scenarioState.resultsLanes}
             scenarioOverrides={scenarioState.overrides}
+            recentRuns={scenarioHistoryState[appState.selectedScenarioId] || []}
             onDuplicateScenario={duplicateScenario}
             onPublishScenario={publishScenario}
             onApproveScenario={approveScenario}
@@ -1465,11 +1761,8 @@ function App() {
         onComplete={handleScenarioComplete}
         dataHealthSnapshot={dataHealthSnapshot}
         availableRegions={datasetContext.regions}
-        availableEntities={datasetContext.entities}
-        availableDcsByRegion={datasetContext.dcsByRegion}
-        availableDcCapacity={datasetContext.dcCapacityByName}
         missingDataReasons={datasetContext.missingDataReasons}
-        availableScenarioTypes={datasetContext.scenarioTypes}
+        scenarioTemplatesByRegion={scenarioTemplatesByRegion}
         datasetOptions={datasetOptions}
       />
 

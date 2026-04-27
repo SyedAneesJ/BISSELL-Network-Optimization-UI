@@ -29,6 +29,7 @@ import { ScenarioLaneDetailsModal } from '@/components/modals';
 import { ScenarioCommentModal } from '@/components/modals';
 import { ScenarioOverrideModal } from '@/components/modals';
 import { useScenarioDetails } from '@/hooks';
+import { ScenarioRunHistoryEntry } from '@/services/scenario';
 
 interface ScenarioDetailsProps {
   scenarioId: string;
@@ -38,6 +39,7 @@ interface ScenarioDetailsProps {
   scenarioRunResultsDC: ScenarioRunResultsDC[];
   scenarioRunResultsLanes: ScenarioRunResultsLane[];
   scenarioOverrides: ScenarioOverride[];
+  recentRuns: ScenarioRunHistoryEntry[];
   onDuplicateScenario: (scenarioId: string) => void;
   onPublishScenario: (scenarioId: string) => void;
   onApproveScenario: (scenarioId: string) => void;
@@ -262,6 +264,54 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = (props) => {
       }
     >
       <Tabs tabs={tabs} defaultTab="summary" />
+
+      <div className="mx-0 mt-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <h3 className="text-lg font-semibold text-slate-900">Recent Runs</h3>
+            <p className="text-sm text-slate-500">Loaded from the persisted scenario repository.</p>
+          </div>
+          <span className="rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-600">
+            {props.recentRuns.length} entries
+          </span>
+        </div>
+        {props.recentRuns.length === 0 ? (
+          <p className="text-sm text-slate-500">No run history available yet.</p>
+        ) : (
+          <div className="space-y-3">
+            {props.recentRuns.slice(0, 5).map((run) => (
+              <div
+                key={run.runId}
+                className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium text-slate-900">{run.status}</span>
+                    <span className="rounded-full border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600">
+                      {run.executionId || 'No execution id'}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-sm text-slate-600">
+                    Triggered by {run.triggeredBy} on {new Date(run.startedAt).toLocaleString()}
+                    {run.completedAt ? `, completed ${new Date(run.completedAt).toLocaleString()}` : ''}
+                  </p>
+                  {run.message && (
+                    <p className="mt-1 text-sm text-slate-500">{run.message}</p>
+                  )}
+                </div>
+                <div className="text-xs text-slate-500 sm:text-right">
+                  <p>Dataflow: {run.dataflowId || 'NA'}</p>
+                  <p>
+                    Duration: {typeof run.durationMs === 'number'
+                      ? `${Math.max(0, Math.round(run.durationMs / 1000))}s`
+                      : 'NA'}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       <ScenarioLaneDetailsModal
         isOpen={!!selectedLane}

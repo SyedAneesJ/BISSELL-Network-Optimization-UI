@@ -1,51 +1,20 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Play } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ChevronLeft, ChevronRight, PlusCircle } from 'lucide-react';
 import { Button, Modal } from '../ui';
 import { DataHealthSnapshot } from '@/data';
 import { DatasetOptionSets } from '@/services';
+import { ScenarioTemplateOption, ScenarioWizardInput, ScenarioSubmit } from '@/services/scenario';
 import {
   Step1TemplateScope,
   Step2NetworkCapacity,
   Step3ServiceCost,
   Step4RelocationBcv,
   Step5ValidateRun,
-  NewScenarioFormData,
 } from '@/sections/new-scenario';
+import { NewScenarioFormData } from '@/sections/new-scenario';
 
-export interface NewScenarioInput {
-  region: 'US' | 'Canada';
-  scenarioType: string;
-  entityScope: string;
-  channelScope: string[];
-  termsScope: string;
-  runName: string;
-  tags: string[];
-  notes: string;
-  activeDCs: string[];
-  suppressedDCs: string[];
-  footprintMode: string;
-  utilCap: number;
-  levelLoad: boolean;
-  leadTimeCap: number;
-  excludeBeyondCap: boolean;
-  costVsService: number;
-  fuelSurchargeMode: string;
-  fuelSurchargeOverride: number | null;
-  accessorials: {
-    residential: boolean;
-    liftgate: boolean;
-    insideDelivery: boolean;
-  };
-  allowRelocationPrepaid: boolean;
-  allowRelocationCollect: boolean;
-  bcvRuleSet: string;
-  allowManualOverride: boolean;
-}
-
-export interface NewScenarioSubmit {
-  action: 'run' | 'draft';
-  input: NewScenarioInput;
-}
+export type NewScenarioInput = ScenarioWizardInput;
+export type NewScenarioSubmit = ScenarioSubmit;
 
 interface NewScenarioWizardProps {
   isOpen: boolean;
@@ -53,13 +22,87 @@ interface NewScenarioWizardProps {
   onComplete: (payload: NewScenarioSubmit) => void;
   dataHealthSnapshot: DataHealthSnapshot;
   availableRegions: Array<'US' | 'Canada'>;
-  availableEntities: string[];
-  availableDcsByRegion: Record<string, string[]>;
-  availableDcCapacity: Record<string, number>;
   missingDataReasons: string[];
-  availableScenarioTypes: string[];
+  scenarioTemplatesByRegion: Record<'US' | 'Canada', ScenarioTemplateOption[]>;
   datasetOptions: DatasetOptionSets;
 }
+
+const emptyDatasetOptions: DatasetOptionSets = {
+  scenarioTypes: [],
+  channelScopes: [],
+  termsScopes: [],
+  tags: [],
+  footprintModes: [],
+  utilCaps: [],
+  levelLoadModes: [],
+  leadTimeCaps: [],
+  excludeBeyondCap: [],
+  costVsServiceWeights: [],
+  fuelSurchargeModes: [],
+  accessorialFlags: [],
+  allowRelocationPrepaid: [],
+  allowRelocationCollect: [],
+  bcvRuleSets: [],
+  allowManualOverride: [],
+};
+
+const templateToDatasetOptions = (template?: ScenarioTemplateOption | null): DatasetOptionSets =>
+  template
+    ? {
+        scenarioTypes: [template.scenarioType],
+        channelScopes: template.channelScopes,
+        termsScopes: template.termsScopes,
+        tags: template.tags,
+        footprintModes: [template.footprintMode],
+        utilCaps: [template.utilCap],
+        levelLoadModes: [template.levelLoad ? 'On' : 'Off'],
+        leadTimeCaps: [template.leadTimeCap],
+        excludeBeyondCap: [template.excludeBeyondCap],
+        costVsServiceWeights: [template.costVsService],
+        fuelSurchargeModes: [template.fuelSurchargeMode],
+        accessorialFlags: template.accessorialFlags,
+        allowRelocationPrepaid: [template.allowRelocationPrepaid],
+        allowRelocationCollect: [template.allowRelocationCollect],
+        bcvRuleSets: [template.bcvRuleSet],
+        allowManualOverride: [template.allowManualOverride],
+      }
+    : emptyDatasetOptions;
+
+const templateToFormData = (
+  template: ScenarioTemplateOption | null,
+  fallbackRegion: 'US' | 'Canada',
+  fallbackDatasetOptions: DatasetOptionSets,
+): NewScenarioFormData => ({
+  region: template?.region || fallbackRegion,
+  baselineScenarioId: template?.scenarioId || '',
+  baselineDataflowId: template?.dataflowId || '',
+  scenarioType: template?.scenarioType || fallbackDatasetOptions.scenarioTypes[0] || '',
+  entityScope: template?.entityScope || 'NA',
+  channelScope: template ? [...template.channelScopes] : [...fallbackDatasetOptions.channelScopes],
+  termsScope: template?.termsScopes[0] || fallbackDatasetOptions.termsScopes[0] || '',
+  runName: template ? `${template.scenarioName} - Copy` : '',
+  tags: template ? [...template.tags] : [],
+  notes: '',
+  activeDCs: new Set(template?.availableDcs || []),
+  suppressedDCs: new Set<string>(),
+  footprintMode: template?.footprintMode || fallbackDatasetOptions.footprintModes[0] || 'NA',
+  utilCap: template?.utilCap ?? fallbackDatasetOptions.utilCaps[0] ?? 0,
+  levelLoad: template?.levelLoad ?? (fallbackDatasetOptions.levelLoadModes.includes('On')),
+  leadTimeCap: template?.leadTimeCap ?? fallbackDatasetOptions.leadTimeCaps[0] ?? 0,
+  excludeBeyondCap: template?.excludeBeyondCap ?? (fallbackDatasetOptions.excludeBeyondCap.includes(true)),
+  costVsService: template?.costVsService ?? fallbackDatasetOptions.costVsServiceWeights[0] ?? 0,
+  fuelSurchargeMode: template?.fuelSurchargeMode || fallbackDatasetOptions.fuelSurchargeModes[0] || 'NA',
+  fuelSurchargeOverride: template?.fuelSurchargeOverride ?? null,
+  accessorials: {
+    residential: template ? template.accessorialFlags.includes('Residential') : fallbackDatasetOptions.accessorialFlags.includes('Residential'),
+    liftgate: template ? template.accessorialFlags.includes('Liftgate') : fallbackDatasetOptions.accessorialFlags.includes('Liftgate'),
+    insideDelivery: template ? template.accessorialFlags.includes('InsideDelivery') : fallbackDatasetOptions.accessorialFlags.includes('InsideDelivery'),
+  },
+  allowRelocationPrepaid: template?.allowRelocationPrepaid ?? fallbackDatasetOptions.allowRelocationPrepaid.includes(true),
+  allowRelocationCollect: template?.allowRelocationCollect ?? fallbackDatasetOptions.allowRelocationCollect.includes(true),
+  bcvRuleSet: template?.bcvRuleSet || fallbackDatasetOptions.bcvRuleSets[0] || 'NA',
+  allowManualOverride: template?.allowManualOverride ?? fallbackDatasetOptions.allowManualOverride.includes(true),
+});
 
 export const NewScenarioWizard: React.FC<NewScenarioWizardProps> = ({
   isOpen,
@@ -67,101 +110,56 @@ export const NewScenarioWizard: React.FC<NewScenarioWizardProps> = ({
   onComplete,
   dataHealthSnapshot,
   availableRegions,
-  availableEntities,
-  availableDcsByRegion,
-  availableDcCapacity,
   missingDataReasons,
-  availableScenarioTypes,
+  scenarioTemplatesByRegion,
   datasetOptions,
 }) => {
   const [step, setStep] = useState(1);
   const initialRegion = availableRegions[0] || 'US';
-  const entityScopes = Array.from(
-    new Set(
-      availableEntities.length > 1
-        ? [...availableEntities, availableEntities.join('/')]
-        : availableEntities.length > 0
-          ? availableEntities
-          : ['NA']
-    )
-  );
-  const initialEntities = entityScopes[0] || 'NA';
-  const initialScenarioType = availableScenarioTypes[0] || '';
-  const initialChannelScope = datasetOptions.channelScopes.length > 0 ? datasetOptions.channelScopes : [];
-  const initialTermsScope = datasetOptions.termsScopes[0] || '';
-  const initialFootprintMode = datasetOptions.footprintModes[0] || 'NA';
-  const initialUtilCap = datasetOptions.utilCaps[0] ?? 0;
-  const initialLevelLoad = datasetOptions.levelLoadModes.length > 0
-    ? datasetOptions.levelLoadModes.includes('On')
-    : false;
-  const initialLeadTimeCap = datasetOptions.leadTimeCaps[0] ?? 0;
-  const initialExcludeBeyondCap = datasetOptions.excludeBeyondCap.length > 0
-    ? datasetOptions.excludeBeyondCap.includes(true)
-    : false;
-  const initialCostVsService = datasetOptions.costVsServiceWeights[0] ?? 0;
-  const initialFuelSurchargeMode = datasetOptions.fuelSurchargeModes[0] || 'NA';
-  const initialAccessorials = {
-    residential: datasetOptions.accessorialFlags.includes('Residential'),
-    liftgate: datasetOptions.accessorialFlags.includes('Liftgate'),
-    insideDelivery: datasetOptions.accessorialFlags.includes('InsideDelivery'),
-  };
-  const initialAllowRelocationPrepaid = datasetOptions.allowRelocationPrepaid.includes(true);
-  const initialAllowRelocationCollect = datasetOptions.allowRelocationCollect.includes(true);
-  const initialBcvRuleSet = datasetOptions.bcvRuleSets[0] || 'NA';
-  const initialAllowManualOverride = datasetOptions.allowManualOverride.includes(true);
-  const buildInitialFormData = (): NewScenarioFormData => ({
-    region: initialRegion,
-    scenarioType: initialScenarioType,
-    entityScope: initialEntities,
-    channelScope: initialChannelScope,
-    termsScope: initialTermsScope,
-    runName: '',
-    tags: [] as string[],
-    notes: '',
-    activeDCs: new Set(availableDcsByRegion[initialRegion] || []),
-    suppressedDCs: new Set<string>(),
-    footprintMode: initialFootprintMode,
-    utilCap: initialUtilCap,
-    levelLoad: initialLevelLoad,
-    leadTimeCap: initialLeadTimeCap,
-    excludeBeyondCap: initialExcludeBeyondCap,
-    costVsService: initialCostVsService,
-    fuelSurchargeMode: initialFuelSurchargeMode,
-    fuelSurchargeOverride: null as number | null,
-    accessorials: initialAccessorials,
-    allowRelocationPrepaid: initialAllowRelocationPrepaid,
-    allowRelocationCollect: initialAllowRelocationCollect,
-    bcvRuleSet: initialBcvRuleSet,
-    allowManualOverride: initialAllowManualOverride,
-  });
-  const [formData, setFormData] = useState<NewScenarioFormData>(buildInitialFormData);
+  const getTemplatesForRegion = (region: 'US' | 'Canada') => scenarioTemplatesByRegion[region] || [];
+  const initialTemplate = getTemplatesForRegion(initialRegion)[0] || null;
+  const [formData, setFormData] = useState<NewScenarioFormData>(() => templateToFormData(initialTemplate, initialRegion, datasetOptions));
   const prevIsOpenRef = useRef(isOpen);
-  const utilCapMin = datasetOptions.utilCaps.length > 0
-    ? Math.min(60, ...datasetOptions.utilCaps)
-    : 30;
+
+  const selectedTemplate = useMemo(() => {
+    const templates = getTemplatesForRegion(formData.region);
+    return templates.find((template) => template.scenarioId === formData.baselineScenarioId) || templates[0] || null;
+  }, [formData.region, formData.baselineScenarioId, scenarioTemplatesByRegion]);
+
+  const effectiveDatasetOptions = useMemo(() => templateToDatasetOptions(selectedTemplate), [selectedTemplate]);
+  const regionDcs = selectedTemplate?.availableDcs || [];
+  const regionDcCapacity = selectedTemplate?.availableDcCapacity || {};
+  const entityScopes = selectedTemplate ? [selectedTemplate.entityScope] : ['NA'];
+  const utilCapMin = selectedTemplate ? Math.min(60, selectedTemplate.utilCap) : 30;
   const utilCapMax = 100;
 
   useEffect(() => {
     const wasOpen = prevIsOpenRef.current;
     if (!wasOpen && isOpen) {
       setStep(1);
-      setFormData(buildInitialFormData());
+      setFormData(templateToFormData(getTemplatesForRegion(initialRegion)[0] || null, initialRegion, datasetOptions));
     }
     prevIsOpenRef.current = isOpen;
-  }, [isOpen]);
+  }, [isOpen, initialRegion, datasetOptions]);
 
   useEffect(() => {
-    const dcsForRegion = availableDcsByRegion[formData.region] || [];
+    const templates = getTemplatesForRegion(formData.region);
+    if (templates.length === 0) return;
+    const current = templates.find((template) => template.scenarioId === formData.baselineScenarioId);
+    const nextTemplate = current || templates[0];
+    if (!nextTemplate) return;
+    if (current && formData.baselineDataflowId === nextTemplate.dataflowId) return;
     setFormData((prev) => ({
-      ...prev,
-      activeDCs: new Set(dcsForRegion),
-      suppressedDCs: new Set<string>(),
+      ...templateToFormData(nextTemplate, formData.region, datasetOptions),
+      runName: prev.runName || `${nextTemplate.scenarioName} - Copy`,
+      notes: prev.notes,
     }));
-  }, [formData.region, availableDcsByRegion]);
+  }, [formData.region, formData.baselineScenarioId, formData.baselineDataflowId, datasetOptions]);
 
   const totalSteps = 5;
   const isStep1Valid =
     Boolean(formData.region) &&
+    Boolean(formData.baselineScenarioId) &&
     Boolean(formData.scenarioType) &&
     Boolean(formData.entityScope) &&
     formData.runName.trim().length > 0;
@@ -191,26 +189,22 @@ export const NewScenarioWizard: React.FC<NewScenarioWizardProps> = ({
 
   const handleChannelToggle = (channel: string) => {
     const next = new Set(formData.channelScope);
-    if (next.has(channel)) {
-      next.delete(channel);
-    } else {
-      next.add(channel);
-    }
+    if (next.has(channel)) next.delete(channel);
+    else next.add(channel);
     setFormData({ ...formData, channelScope: Array.from(next) });
   };
 
   const handleTagToggle = (tag: string) => {
     const next = new Set(formData.tags);
-    if (next.has(tag)) {
-      next.delete(tag);
-    } else {
-      next.add(tag);
-    }
+    if (next.has(tag)) next.delete(tag);
+    else next.add(tag);
     setFormData({ ...formData, tags: Array.from(next) });
   };
 
   const buildInput = (): NewScenarioInput => ({
     region: formData.region as 'US' | 'Canada',
+    baselineScenarioId: formData.baselineScenarioId,
+    baselineDataflowId: formData.baselineDataflowId,
     scenarioType: formData.scenarioType,
     entityScope: formData.entityScope,
     channelScope: [...formData.channelScope],
@@ -235,8 +229,8 @@ export const NewScenarioWizard: React.FC<NewScenarioWizardProps> = ({
     allowManualOverride: formData.allowManualOverride,
   });
 
-  const handleRun = () => {
-    onComplete({ action: 'run', input: buildInput() });
+  const handleCreate = () => {
+    onComplete({ action: 'draft', input: buildInput() });
     onClose();
   };
 
@@ -253,9 +247,9 @@ export const NewScenarioWizard: React.FC<NewScenarioWizardProps> = ({
             formData={formData}
             onFormDataChange={setFormData}
             availableRegions={availableRegions}
-            availableScenarioTypes={availableScenarioTypes}
+            baselineOptions={getTemplatesForRegion(formData.region)}
             entityScopes={entityScopes}
-            datasetOptions={datasetOptions}
+            datasetOptions={effectiveDatasetOptions}
             onChannelToggle={handleChannelToggle}
             onTagToggle={handleTagToggle}
           />
@@ -265,9 +259,9 @@ export const NewScenarioWizard: React.FC<NewScenarioWizardProps> = ({
           <Step2NetworkCapacity
             formData={formData}
             onFormDataChange={setFormData}
-            datasetOptions={datasetOptions}
-            availableDcsByRegion={availableDcsByRegion}
-            availableDcCapacity={availableDcCapacity}
+            datasetOptions={effectiveDatasetOptions}
+            availableDcsByRegion={{ [formData.region]: regionDcs }}
+            availableDcCapacity={regionDcCapacity}
             onDCToggle={handleDCToggle}
             utilCapMin={utilCapMin}
             utilCapMax={utilCapMax}
@@ -278,7 +272,7 @@ export const NewScenarioWizard: React.FC<NewScenarioWizardProps> = ({
           <Step3ServiceCost
             formData={formData}
             onFormDataChange={setFormData}
-            datasetOptions={datasetOptions}
+            datasetOptions={effectiveDatasetOptions}
           />
         );
       case 4:
@@ -286,16 +280,16 @@ export const NewScenarioWizard: React.FC<NewScenarioWizardProps> = ({
           <Step4RelocationBcv
             formData={formData}
             onFormDataChange={setFormData}
-            datasetOptions={datasetOptions}
+            datasetOptions={effectiveDatasetOptions}
           />
         );
       case 5:
         return (
           <Step5ValidateRun
             formData={formData}
-            datasetOptions={datasetOptions}
+            datasetOptions={effectiveDatasetOptions}
             dataHealthSnapshot={dataHealthSnapshot}
-            availableDcsByRegion={availableDcsByRegion}
+            availableDcsByRegion={{ [formData.region]: regionDcs }}
           />
         );
       default:
@@ -358,8 +352,8 @@ export const NewScenarioWizard: React.FC<NewScenarioWizardProps> = ({
                 Next
               </Button>
             ) : (
-              <Button onClick={handleRun} variant="primary" icon={<Play className="w-4 h-4" />}>
-                Run Scenario
+              <Button onClick={handleCreate} variant="primary" icon={<PlusCircle className="w-4 h-4" />}>
+                Create Scenario
               </Button>
             )}
           </div>

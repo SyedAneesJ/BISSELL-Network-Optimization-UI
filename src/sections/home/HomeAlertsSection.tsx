@@ -62,13 +62,13 @@ export const HomeAlertsSection: React.FC<HomeAlertsSectionProps> = ({
       </div>
 
       <div className="mt-4 p-4 bg-slate-50 rounded-lg">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <div className="flex flex-wrap items-center gap-2 mb-1">
               <h3 className="font-semibold text-slate-900">Data Snapshot</h3>
               <StatusBadge status={dataHealthSnapshot.ForecastFreshness} size="small" />
             </div>
-            <p className="text-sm text-slate-600">
+            <p className="text-sm text-slate-600 break-words">
               Version: {dataHealthSnapshot.SnapshotTime} |
               Rates Coverage: {dataHealthSnapshot.RatesCoveragePct}% |
               BCV Dims: {dataHealthSnapshot.BCVDimsAvailability}

@@ -7,7 +7,7 @@ interface AppPageProps {
 
 export const AppPage: React.FC<AppPageProps> = ({ header, children }) => {
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-slate-50 overflow-x-hidden">
       {header && (
         <div className="bg-white border-b border-slate-200 shadow-sm">
           {header}

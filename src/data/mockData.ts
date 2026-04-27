@@ -11,6 +11,7 @@ export interface ScenarioRunHeader {
   LastUpdatedAt: string;
 
   DataflowID?: string;
+  BaselineScenarioID?: string | null;
   LastRunBy?: string | null;
   LastRunAt?: string | null;
   LastRunExecutionId?: string | null;

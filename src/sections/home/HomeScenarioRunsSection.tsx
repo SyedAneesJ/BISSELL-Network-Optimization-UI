@@ -69,9 +69,9 @@ export const HomeScenarioRunsSection: React.FC<HomeScenarioRunsSectionProps> = (
 
   return (
     <div className="bg-white rounded-lg border border-slate-200 shadow-sm mb-6 p-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
+      <div className="flex flex-col gap-2 xs:flex-row xs:items-center xs:justify-between mb-4">
         <h2 className="text-lg font-semibold text-slate-900">Scenario Runs</h2>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {onRunSelected && (
             <Button onClick={onRunSelected} variant="primary" size="small" disabled={!canRun} icon={<Play className="w-4 h-4" />}>
               Run Selected
@@ -85,9 +85,9 @@ export const HomeScenarioRunsSection: React.FC<HomeScenarioRunsSectionProps> = (
         </div>
       </div>
 
-      <div className="flex gap-2 mb-4 flex-wrap">
+      <div className="flex flex-wrap items-center gap-2 mb-4">
         <div className="flex items-center gap-2">
-          <label className="text-sm text-slate-600">Status:</label>
+          <label className="text-sm text-slate-600 whitespace-nowrap">Status:</label>
           <select
             value={statusFilter}
             className="px-3 py-1.5 border border-slate-300 rounded text-sm bg-white"
@@ -110,7 +110,7 @@ export const HomeScenarioRunsSection: React.FC<HomeScenarioRunsSectionProps> = (
             onChange={(e) => onOnlyAlertsChange(e.target.checked)}
             className="rounded"
           />
-          <span className="text-sm text-slate-700">Only Runs with Alerts</span>
+          <span className="text-sm text-slate-700 whitespace-nowrap">Only Runs with Alerts</span>
         </label>
 
         <label className="flex items-center gap-2 px-3 py-1 bg-slate-100 rounded cursor-pointer">
@@ -120,7 +120,7 @@ export const HomeScenarioRunsSection: React.FC<HomeScenarioRunsSectionProps> = (
             onChange={(e) => onOnlyPublishedChange(e.target.checked)}
             className="rounded"
           />
-          <span className="text-sm text-slate-700">Only Published</span>
+          <span className="text-sm text-slate-700 whitespace-nowrap">Only Published</span>
         </label>
 
         <Button

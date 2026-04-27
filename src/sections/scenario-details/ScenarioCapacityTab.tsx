@@ -50,11 +50,11 @@ export const ScenarioCapacityTab: React.FC<ScenarioCapacityTabProps> = ({
         <h3 className="text-lg font-semibold text-slate-900 mb-4">Top Footprint Contributors</h3>
         <div className="space-y-2 text-sm">
           {topFootprintLanes.map((lane) => (
-            <div key={`${lane.Dest3Zip}-${lane.Channel}-${lane.Terms}-${lane.CustomerGroup}`} className="flex justify-between">
-              <div className="text-slate-700">
+            <div key={`${lane.Dest3Zip}-${lane.Channel}-${lane.Terms}-${lane.CustomerGroup}`} className="flex justify-between gap-2">
+              <div className="text-slate-700 flex-1 min-w-0 truncate">
                 {lane.Dest3Zip} {lane.DestState} | {lane.Channel} {lane.Terms} | {lane.CustomerGroup}
               </div>
-              <div className="font-medium text-slate-900">{lane.FootprintContribution.toLocaleString()}</div>
+              <div className="font-medium text-slate-900 flex-shrink-0">{lane.FootprintContribution.toLocaleString()}</div>
             </div>
           ))}
           {topFootprintLanes.length === 0 && (

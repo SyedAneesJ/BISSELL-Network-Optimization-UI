@@ -65,7 +65,7 @@ export function DataTable<T>({
   }
 
   return (
-    <div className="overflow-x-auto border border-slate-200 rounded-xl shadow-sm bg-white/70" style={{ maxHeight }}>
+    <div className="overflow-x-auto border border-slate-200 rounded-xl shadow-sm bg-white/70 min-w-0" style={{ maxHeight }}>
       <table className="min-w-max w-full">
         <thead className="bg-white/80 backdrop-blur sticky top-0 z-10 border-b border-slate-200">
           <tr>

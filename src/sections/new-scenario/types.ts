@@ -1,5 +1,7 @@
 export interface NewScenarioFormData {
   region: 'US' | 'Canada';
+  baselineScenarioId: string;
+  baselineDataflowId: string;
   scenarioType: string;
   entityScope: string;
   channelScope: string[];

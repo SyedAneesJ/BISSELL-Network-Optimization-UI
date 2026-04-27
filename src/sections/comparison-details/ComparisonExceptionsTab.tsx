@@ -75,7 +75,7 @@ export const ComparisonExceptionsTab: React.FC<ComparisonExceptionsTabProps> = (
             },
           ].map((item) => (
             <div key={item.label} className="border border-slate-200 rounded-lg p-4">
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
                 <h4 className="font-medium text-slate-900">{item.label}</h4>
                 <div className="text-sm text-slate-700">
                   Count: <strong className="text-slate-900">{item.count}</strong>

@@ -29,9 +29,9 @@ export const ScenarioNetworkTab: React.FC<ScenarioNetworkTabProps> = ({
   return (
     <div className="space-y-6">
       <div className="bg-white border border-slate-200 rounded-lg p-6">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
           <h3 className="text-lg font-semibold text-slate-900">Network Map</h3>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button
               variant="secondary"
               size="small"
@@ -54,7 +54,7 @@ export const ScenarioNetworkTab: React.FC<ScenarioNetworkTabProps> = ({
         </div>
 
         <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-          <div className="grid grid-cols-1 sm:grid-cols-1 lg:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
             {networkLaneEntries.map((entry) => (
               <div key={entry.dc} className="flex items-center justify-between p-3 bg-white rounded border border-slate-200">
                 <span className="text-slate-700">{entry.dc}</span>

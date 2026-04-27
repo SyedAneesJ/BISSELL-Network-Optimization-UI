@@ -65,7 +65,7 @@ export const KPICard: React.FC<KPICardProps> = ({
               </div>
             )}
           </div>
-          <p className={`${valueSizeClasses[size]} font-semibold text-slate-900 mt-1 leading-tight break-all`}>
+          <p className={`${valueSizeClasses[size]} font-semibold text-slate-900 mt-1 leading-tight break-words`}>
             {formatValue(value)}
           </p>
           {delta !== undefined && (

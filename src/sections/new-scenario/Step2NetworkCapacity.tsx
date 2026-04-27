@@ -90,7 +90,18 @@ export const Step2NetworkCapacity: React.FC<Step2NetworkCapacityProps> = ({
               <p className="text-xs text-slate-500 mt-1">No footprint mode data available.</p>
             </>
           ) : (
-            <div className="flex gap-4">
+            <div className="flex gap-4 flex-wrap">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="footprintMode"
+                  value=""
+                  checked={formData.footprintMode === ''}
+                  onChange={() => onFormDataChange({ ...formData, footprintMode: '' })}
+                  className="text-blue-600"
+                />
+                <span className="text-sm text-slate-700">Use baseline default</span>
+              </label>
               {datasetOptions.footprintModes.map((mode) => (
                 <label key={mode} className="flex items-center gap-2 cursor-pointer">
                   <input
@@ -132,7 +143,7 @@ export const Step2NetworkCapacity: React.FC<Step2NetworkCapacityProps> = ({
       <div>
         <div className="flex items-center gap-2 mb-2">
           <label className="text-sm font-medium text-slate-700">
-            Utilization Cap{datasetOptions.utilCaps.length === 0 ? ': NA' : `: ${100}%`}
+            Utilization Cap{datasetOptions.utilCaps.length === 0 ? ': NA' : `: ${formData.utilCap}%`}
           </label>
           <Tooltip content="Maximum DC utilization percentage allowed. Lanes that would exceed this will be assigned to alternate DCs." />
         </div>
@@ -147,6 +158,7 @@ export const Step2NetworkCapacity: React.FC<Step2NetworkCapacityProps> = ({
         />
         <div className="flex justify-between text-xs text-slate-500">
           <span>{utilCapMin}%</span>
+          <span className="font-medium text-slate-700">{formData.utilCap}%</span>
           <span>{utilCapMax}%</span>
         </div>
         {datasetOptions.utilCaps.length === 0 && (

@@ -1,12 +1,13 @@
 import React from 'react';
 import { DatasetOptionSets } from '@/services';
+import { ScenarioTemplateOption } from '@/services/scenario';
 import { NewScenarioFormData } from './types';
 
 interface Step1TemplateScopeProps {
   formData: NewScenarioFormData;
   onFormDataChange: (next: NewScenarioFormData) => void;
   availableRegions: Array<'US' | 'Canada'>;
-  availableScenarioTypes: string[];
+  baselineOptions: ScenarioTemplateOption[];
   entityScopes: string[];
   datasetOptions: DatasetOptionSets;
   onChannelToggle: (channel: string) => void;
@@ -17,7 +18,7 @@ export const Step1TemplateScope: React.FC<Step1TemplateScopeProps> = ({
   formData,
   onFormDataChange,
   availableRegions,
-  availableScenarioTypes,
+  baselineOptions,
   entityScopes,
   datasetOptions,
   onChannelToggle,
@@ -25,6 +26,59 @@ export const Step1TemplateScope: React.FC<Step1TemplateScopeProps> = ({
 }) => {
   return (
     <div className="space-y-6">
+      <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <div>
+            <div className="text-xs uppercase tracking-wide text-slate-500">Region</div>
+            <div className="text-sm font-semibold text-slate-900">{formData.region || 'NA'}</div>
+          </div>
+          <div className="h-8 w-px bg-slate-200" />
+          <div>
+            <div className="text-xs uppercase tracking-wide text-slate-500">Scenario Type</div>
+            <div className="text-sm font-semibold text-slate-900">{formData.scenarioType || 'NA'}</div>
+          </div>
+          <div className="h-8 w-px bg-slate-200" />
+          <div>
+            <div className="text-xs uppercase tracking-wide text-slate-500">Baseline</div>
+            <div className="text-sm font-semibold text-slate-900">
+              {baselineOptions.find((item) => item.scenarioId === formData.baselineScenarioId)?.scenarioName || 'Select baseline'}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-slate-700 mb-2">
+          Baseline Scenario
+        </label>
+        <select
+          value={formData.baselineScenarioId}
+          onChange={(e) => {
+            const option = baselineOptions.find((item) => item.scenarioId === e.target.value);
+            onFormDataChange({
+              ...formData,
+              baselineScenarioId: e.target.value,
+              baselineDataflowId: option?.dataflowId || '',
+            });
+          }}
+          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          disabled={baselineOptions.length === 0}
+        >
+          {baselineOptions.length === 0 ? (
+            <option value="">No scenarios for this region</option>
+          ) : (
+            baselineOptions.map((scenario) => (
+              <option key={scenario.scenarioId} value={scenario.scenarioId}>
+                {scenario.scenarioName} {scenario.dataflowId ? `(Dataflow ${scenario.dataflowId})` : ''}
+              </option>
+            ))
+          )}
+        </select>
+        {baselineOptions.length === 0 && (
+          <p className="text-xs text-slate-500 mt-1">Select a region with available scenarios first.</p>
+        )}
+      </div>
+
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-2">
@@ -49,17 +103,17 @@ export const Step1TemplateScope: React.FC<Step1TemplateScopeProps> = ({
             value={formData.scenarioType}
             onChange={(e) => onFormDataChange({ ...formData, scenarioType: e.target.value })}
             className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            disabled={availableScenarioTypes.length === 0}
+            disabled={baselineOptions.length === 0}
           >
-            {availableScenarioTypes.length === 0 ? (
+            {baselineOptions.length === 0 ? (
               <option value="">NA</option>
             ) : (
-              availableScenarioTypes.map((type) => (
+              Array.from(new Set(baselineOptions.map((option) => option.scenarioType))).map((type) => (
                 <option key={type} value={type}>{type}</option>
               ))
             )}
           </select>
-          {availableScenarioTypes.length === 0 && (
+          {baselineOptions.length === 0 && (
             <p className="text-xs text-slate-500 mt-1">No scenario type data available.</p>
           )}
         </div>

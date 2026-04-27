@@ -38,34 +38,34 @@ export const ComparisonHeader: React.FC<ComparisonHeaderProps> = ({
 }) => {
   return (
     <div className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8 py-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4 mb-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4 mb-4">
         <button
           onClick={onBack}
-          className="flex items-center gap-2 text-slate-600 hover:text-slate-900"
+          className="flex items-center gap-2 text-slate-600 hover:text-slate-900 flex-shrink-0"
         >
           <ArrowLeft className="w-5 h-5" />
           <span>Back to Home</span>
         </button>
-        <div className="h-6 w-px bg-slate-300" />
-        <div className="flex-1">
-          <div className="flex items-center gap-3">
-            <h1 className="text-xl font-semibold text-slate-900">{comparison.ComparisonName}</h1>
+        <div className="hidden sm:block h-6 w-px bg-slate-300 mt-0.5" />
+        <div className="flex-1 min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-lg sm:text-xl font-semibold text-slate-900 break-words">{comparison.ComparisonName}</h1>
             <StatusBadge status={comparison.Status} />
           </div>
-          <div className="text-sm text-slate-600 mt-1 flex items-center gap-2">
-            <span className="font-medium text-blue-600">{scenarioA?.RunName}</span>
-            <ArrowLeftRight className="w-4 h-4" />
-            <span className="font-medium text-blue-600">{scenarioB?.RunName}</span>
+          <div className="text-sm text-slate-600 mt-1 flex flex-wrap items-center gap-1">
+            <span className="font-medium text-blue-600 truncate max-w-[200px]">{scenarioA?.RunName}</span>
+            <ArrowLeftRight className="w-4 h-4 flex-shrink-0" />
+            <span className="font-medium text-blue-600 truncate max-w-[200px]">{scenarioB?.RunName}</span>
           </div>
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-4">
+      <div className="flex flex-wrap items-center gap-2 sm:gap-4">
         <div className="text-sm text-slate-600">
-          Run A: <span className="font-medium text-slate-900">{scenarioA?.RunName}</span>
+          Run A: <span className="font-medium text-slate-900 truncate">{scenarioA?.RunName}</span>
         </div>
         <div className="text-sm text-slate-600">
-          Run B: <span className="font-medium text-slate-900">{scenarioB?.RunName}</span>
+          Run B: <span className="font-medium text-slate-900 truncate">{scenarioB?.RunName}</span>
         </div>
 
         <div className="hidden sm:block flex-1" />

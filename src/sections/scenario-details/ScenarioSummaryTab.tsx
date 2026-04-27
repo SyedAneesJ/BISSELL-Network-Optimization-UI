@@ -124,9 +124,9 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
                       style={{ width: `${(dc.SpaceBCV / dc.SpaceRequired) * 100}%` }}
                     />
                   </div>
-                  <div className="flex justify-between text-xs text-slate-600 mt-1">
-                    <span>Square Footage: {dc.SpaceCore.toLocaleString()}</span>
-                    <span>Working Capacity: {dc.SpaceBCV.toLocaleString()}</span>
+                  <div className="flex justify-between text-xs text-slate-600 mt-1 gap-1">
+                    <span className="truncate">Square Footage: {dc.SpaceCore.toLocaleString()}</span>
+                    <span className="truncate text-right">Working Capacity: {dc.SpaceBCV.toLocaleString()}</span>
                   </div>
                 </div>
 

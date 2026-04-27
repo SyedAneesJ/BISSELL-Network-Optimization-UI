@@ -31,9 +31,9 @@ export const ScenarioOverridesTab: React.FC<ScenarioOverridesTabProps> = ({
           <div className="space-y-3">
             {overrides.map((override, idx) => (
               <div key={idx} className="border border-slate-200 rounded-lg p-3">
-                <div className="flex items-start justify-between mb-2">
-                  <div>
-                    <div className="font-medium text-slate-900">
+                <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-slate-900 break-words">
                       {override.Dest3Zip} | {override.Channel} | {override.Terms} | {override.CustomerGroup}
                     </div>
                     <div className="text-sm text-slate-600 mt-1">
@@ -42,7 +42,7 @@ export const ScenarioOverridesTab: React.FC<ScenarioOverridesTabProps> = ({
                       <span className="text-green-600">{override.NewDC}</span>
                     </div>
                   </div>
-                  <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded">
+                  <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded flex-shrink-0">
                     {override.OverrideVersion}
                   </span>
                 </div>

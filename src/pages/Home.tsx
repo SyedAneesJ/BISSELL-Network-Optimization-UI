@@ -38,6 +38,7 @@ interface HomeProps {
   onUnarchiveComparison: (comparisonId: string) => void;
   onRefresh: () => void;
   onRunScenario: (scenarioId: string) => void;
+  runningScenarioId?: string | null;
   currentUserDisplayName: string;
   currentUserEmail?: string | null;
   notificationCount: number;
@@ -66,6 +67,7 @@ export const Home: React.FC<HomeProps> = ({
   onUnarchiveComparison,
   onRefresh,
   onRunScenario,
+  runningScenarioId,
   currentUserDisplayName,
   currentUserEmail,
   notificationCount,
@@ -174,6 +176,12 @@ export const Home: React.FC<HomeProps> = ({
     () => (scenarioMonitorId ? scenarioRunHeaders.find((s) => s.ScenarioRunID === scenarioMonitorId) || null : null),
     [scenarioMonitorId, scenarioRunHeaders]
   );
+
+  useEffect(() => {
+    if (runningScenarioId) {
+      setScenarioMonitorId(runningScenarioId);
+    }
+  }, [runningScenarioId]);
 
   useEffect(() => {
     if (!scenarioMonitorId || !monitoredScenario || monitoredScenario.Status !== 'Running') return undefined;
@@ -420,7 +428,7 @@ export const Home: React.FC<HomeProps> = ({
             searchTerm={searchTerm}
             onSearchTermChange={setSearchTerm}
             currentUserDisplayName={currentUserDisplayName}
-            // currentUserEmail={currentUserEmail}
+            currentUserEmail={currentUserEmail}
             notificationCount={notificationCount}
             onOpenNotifications={onOpenNotifications}
             onDataHealth={onDataHealth}
@@ -472,7 +480,7 @@ export const Home: React.FC<HomeProps> = ({
         onDataHealth={onDataHealth}
       />
 
-      <div className="bg-white rounded-lg border border-slate-200 shadow-sm mb-6 p-4">
+      {/* <div className="bg-white rounded-lg border border-slate-200 shadow-sm mb-6 p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-lg font-semibold text-slate-900">Email Test</h2>
@@ -488,7 +496,7 @@ export const Home: React.FC<HomeProps> = ({
             {testEmailActive ? 'Sending...' : 'Send Test Email'}
           </Button>
         </div>
-      </div>
+      </div> */}
 
       <Modal
         isOpen={!!scenarioToRun}
