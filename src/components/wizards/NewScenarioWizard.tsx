@@ -76,7 +76,7 @@ const templateToFormData = (
   region: template?.region || fallbackRegion,
   baselineScenarioId: template?.scenarioId || '',
   baselineDataflowId: template?.dataflowId || '',
-  scenarioType: template?.scenarioType || fallbackDatasetOptions.scenarioTypes[0] || '',
+  scenarioType: '',
   entityScope: template?.entityScope || 'NA',
   channelScope: template ? [...template.channelScopes] : [...fallbackDatasetOptions.channelScopes],
   termsScope: template?.termsScopes[0] || fallbackDatasetOptions.termsScopes[0] || '',
@@ -121,16 +121,28 @@ export const NewScenarioWizard: React.FC<NewScenarioWizardProps> = ({
   const [formData, setFormData] = useState<NewScenarioFormData>(() => templateToFormData(initialTemplate, initialRegion, datasetOptions));
   const prevIsOpenRef = useRef(isOpen);
 
-  const selectedTemplate = useMemo(() => {
+  const sortedTemplatesForRegion = useMemo(() => {
     const templates = getTemplatesForRegion(formData.region);
+    const filteredByType = formData.scenarioType
+      ? templates.filter((template) => template.scenarioType === formData.scenarioType)
+      : templates;
+    return [...filteredByType].sort((a, b) => {
+      const dataflowDiff = Number(a.dataflowId || Number.MAX_SAFE_INTEGER) - Number(b.dataflowId || Number.MAX_SAFE_INTEGER);
+      if (dataflowDiff !== 0) return dataflowDiff;
+      return a.scenarioName.localeCompare(b.scenarioName);
+    });
+  }, [formData.region, formData.scenarioType, scenarioTemplatesByRegion]);
+
+  const selectedTemplate = useMemo(() => {
+    const templates = sortedTemplatesForRegion;
     return templates.find((template) => template.scenarioId === formData.baselineScenarioId) || templates[0] || null;
-  }, [formData.region, formData.baselineScenarioId, scenarioTemplatesByRegion]);
+  }, [formData.baselineScenarioId, sortedTemplatesForRegion]);
 
   const effectiveDatasetOptions = useMemo(() => templateToDatasetOptions(selectedTemplate), [selectedTemplate]);
   const regionDcs = selectedTemplate?.availableDcs || [];
   const regionDcCapacity = selectedTemplate?.availableDcCapacity || {};
   const entityScopes = selectedTemplate ? [selectedTemplate.entityScope] : ['NA'];
-  const utilCapMin = selectedTemplate ? Math.min(60, selectedTemplate.utilCap) : 30;
+  const utilCapMin = selectedTemplate ? Math.min(50, selectedTemplate.utilCap) : 30;
   const utilCapMax = 100;
 
   useEffect(() => {
@@ -145,22 +157,25 @@ export const NewScenarioWizard: React.FC<NewScenarioWizardProps> = ({
   useEffect(() => {
     const templates = getTemplatesForRegion(formData.region);
     if (templates.length === 0) return;
-    const current = templates.find((template) => template.scenarioId === formData.baselineScenarioId);
-    const nextTemplate = current || templates[0];
+    const filtered = formData.scenarioType
+      ? templates.filter((template) => template.scenarioType === formData.scenarioType)
+      : templates;
+    const current = filtered.find((template) => template.scenarioId === formData.baselineScenarioId);
+    const nextTemplate = current || filtered[0];
     if (!nextTemplate) return;
     if (current && formData.baselineDataflowId === nextTemplate.dataflowId) return;
     setFormData((prev) => ({
       ...templateToFormData(nextTemplate, formData.region, datasetOptions),
+      scenarioType: prev.scenarioType || nextTemplate.scenarioType || '',
       runName: prev.runName || `${nextTemplate.scenarioName} - Copy`,
       notes: prev.notes,
     }));
-  }, [formData.region, formData.baselineScenarioId, formData.baselineDataflowId, datasetOptions]);
+  }, [formData.region, formData.baselineScenarioId, formData.baselineDataflowId, formData.scenarioType, datasetOptions, scenarioTemplatesByRegion]);
 
   const totalSteps = 5;
   const isStep1Valid =
     Boolean(formData.region) &&
     Boolean(formData.baselineScenarioId) &&
-    Boolean(formData.scenarioType) &&
     Boolean(formData.entityScope) &&
     formData.runName.trim().length > 0;
 
@@ -205,7 +220,7 @@ export const NewScenarioWizard: React.FC<NewScenarioWizardProps> = ({
     region: formData.region as 'US' | 'Canada',
     baselineScenarioId: formData.baselineScenarioId,
     baselineDataflowId: formData.baselineDataflowId,
-    scenarioType: formData.scenarioType,
+    scenarioType: formData.scenarioType || selectedTemplate?.scenarioType || '',
     entityScope: formData.entityScope,
     channelScope: [...formData.channelScope],
     termsScope: formData.termsScope,
@@ -247,7 +262,7 @@ export const NewScenarioWizard: React.FC<NewScenarioWizardProps> = ({
             formData={formData}
             onFormDataChange={setFormData}
             availableRegions={availableRegions}
-            baselineOptions={getTemplatesForRegion(formData.region)}
+            baselineOptions={sortedTemplatesForRegion}
             entityScopes={entityScopes}
             datasetOptions={effectiveDatasetOptions}
             onChannelToggle={handleChannelToggle}

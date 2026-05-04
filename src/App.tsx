@@ -51,8 +51,14 @@ import {
   ScenarioTemplateOption,
   type ScenarioRepositoryRecord,
 } from '@/services/scenario';
+import {
+  APPDB_COLLECTIONS,
+  createCollectionDocument,
+  listCollectionDocuments,
+  upsertCollectionDocumentByField,
+} from '@/services/domo';
 import { Toast } from '@/components/ui';
-import { AppNotification } from '@/types/notifications';
+import { AppNotification, NotificationStatus } from '@/types/notifications';
 import { ScenarioRunHistoryEntry } from '@/services/scenario';
 
 type Page = 'home' | 'scenario' | 'comparison';
@@ -94,6 +100,7 @@ const EMPTY_COMPARISON_STATE: ComparisonState = {
 };
 
 const EMPTY_SCENARIO_HISTORY: ScenarioHistoryState = {};
+const DEBUG_DOMO_MAPPING = import.meta.env.VITE_ENABLE_DATA_TRACE !== 'false';
 
 const cloneScenarioHeader = (header: ScenarioRunHeader): ScenarioRunHeader => ({
   ...header,
@@ -120,9 +127,56 @@ const mergeScenarioStateWithRecords = (
   const resultsDC = new Map<string, ScenarioRunResultsDC[]>();
   const resultsLanes = new Map<string, ScenarioRunResultsLane[]>();
 
+  base.headers.forEach((header) => {
+    headers.set(header.ScenarioRunID, cloneScenarioHeader(header));
+  });
+
+  base.configs.forEach((config) => {
+    configs.set(config.ScenarioRunID, cloneScenarioConfig(config));
+  });
+
+  base.resultsDC.forEach((row) => {
+    if (!resultsDC.has(row.ScenarioRunID)) {
+      resultsDC.set(
+        row.ScenarioRunID,
+        cloneScenarioResultsDC(base.resultsDC.filter((item) => item.ScenarioRunID === row.ScenarioRunID)),
+      );
+    }
+  });
+
+  base.resultsLanes.forEach((row) => {
+    if (!resultsLanes.has(row.ScenarioRunID)) {
+      resultsLanes.set(
+        row.ScenarioRunID,
+        cloneScenarioResultsLanes(base.resultsLanes.filter((item) => item.ScenarioRunID === row.ScenarioRunID)),
+      );
+    }
+  });
+
   records.forEach((record) => {
     if (!record.snapshot) return;
     const scenarioId = record.definition.scenarioId;
+    const existingHeader = headers.get(scenarioId);
+
+    if (existingHeader) {
+      const snapshotHeader = record.snapshot.header;
+      headers.set(scenarioId, {
+        ...existingHeader,
+        Status: snapshotHeader.Status || existingHeader.Status,
+        CreatedBy: snapshotHeader.CreatedBy || existingHeader.CreatedBy,
+        CreatedAt: snapshotHeader.CreatedAt || existingHeader.CreatedAt,
+        LastUpdatedAt: snapshotHeader.LastUpdatedAt || existingHeader.LastUpdatedAt,
+        LastRunBy: snapshotHeader.LastRunBy ?? existingHeader.LastRunBy,
+        LastRunAt: snapshotHeader.LastRunAt ?? existingHeader.LastRunAt,
+        LastRunExecutionId: snapshotHeader.LastRunExecutionId ?? existingHeader.LastRunExecutionId,
+        ApprovedBy: snapshotHeader.ApprovedBy ?? existingHeader.ApprovedBy,
+        ApprovedAt: snapshotHeader.ApprovedAt ?? existingHeader.ApprovedAt,
+        LatestComment: snapshotHeader.LatestComment ?? existingHeader.LatestComment,
+        Tags: snapshotHeader.Tags ?? existingHeader.Tags,
+      });
+      return;
+    }
+
     const hydratedHeader = {
       ...cloneScenarioHeader(record.snapshot.header),
       DataflowID: record.snapshot.header.DataflowID || record.definition.dataflowId,
@@ -131,30 +185,6 @@ const mergeScenarioStateWithRecords = (
     configs.set(scenarioId, cloneScenarioConfig(record.snapshot.config));
     resultsDC.set(scenarioId, cloneScenarioResultsDC(record.snapshot.resultsDC));
     resultsLanes.set(scenarioId, cloneScenarioResultsLanes(record.snapshot.resultsLanes));
-  });
-
-  base.headers.forEach((header) => {
-    if (!headers.has(header.ScenarioRunID)) {
-      headers.set(header.ScenarioRunID, cloneScenarioHeader(header));
-    }
-  });
-
-  base.configs.forEach((config) => {
-    if (!configs.has(config.ScenarioRunID)) {
-      configs.set(config.ScenarioRunID, cloneScenarioConfig(config));
-    }
-  });
-
-  base.resultsDC.forEach((row) => {
-    if (!resultsDC.has(row.ScenarioRunID)) {
-      resultsDC.set(row.ScenarioRunID, cloneScenarioResultsDC(base.resultsDC.filter((item) => item.ScenarioRunID === row.ScenarioRunID)));
-    }
-  });
-
-  base.resultsLanes.forEach((row) => {
-    if (!resultsLanes.has(row.ScenarioRunID)) {
-      resultsLanes.set(row.ScenarioRunID, cloneScenarioResultsLanes(base.resultsLanes.filter((item) => item.ScenarioRunID === row.ScenarioRunID)));
-    }
   });
 
   const overrides = [...base.overrides];
@@ -180,8 +210,6 @@ const buildScenarioHistoryState = (records: ScenarioRepositoryRecord[]): Scenari
     return acc;
   }, {});
 
-const COMPARISON_STORAGE_KEY = 'bissell-comparisons-v1';
-const NOTIFICATIONS_STORAGE_KEY = 'bissell-notifications-v1';
 const DATAFLOW_POLL_INTERVAL_MS = 5000;
 const DATAFLOW_MAX_POLL_ATTEMPTS = 360;
 const DATAFLOW_MAX_CONSECUTIVE_POLL_ERRORS = 3;
@@ -193,31 +221,341 @@ interface AppToast {
   message: string;
 }
 
-const loadNotifications = (): AppNotification[] => {
-  try {
-    const stored = localStorage.getItem(NOTIFICATIONS_STORAGE_KEY);
-    if (!stored) return [];
-    const parsed = JSON.parse(stored);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (error) {
-    console.warn('Failed to parse notifications from localStorage', error);
-    return [];
+const parseAppDbPayload = <T,>(value: unknown): T | null => {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value) as T;
+    } catch {
+      return null;
+    }
   }
+  return value as T;
+};
+
+const docTimestamp = (doc: any): number => {
+  const raw = String(doc?.updatedAt || doc?.createdAt || '');
+  const parsed = Date.parse(raw);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const cloneComparisonState = (state: ComparisonState): ComparisonState => ({
+  headers: state.headers.map((header) => ({ ...header })),
+  detailDC: state.detailDC.map((row) => ({ ...row })),
+  detailLanes: state.detailLanes.map((row) => ({ ...row })),
+});
+
+const cloneNotifications = (items: AppNotification[]): AppNotification[] =>
+  items.map((item) => ({
+    ...item,
+    entity: item.entity ? { ...item.entity } : undefined,
+    metadata: item.metadata ? { ...item.metadata } : undefined,
+  }));
+
+const resolveNotificationStatus = (notification: Partial<AppNotification> & { dismissedAt?: string | null }): NotificationStatus => {
+  if (notification.status === 'Unread' || notification.status === 'Read' || notification.status === 'Dismissed') {
+    return notification.status;
+  }
+  if (notification.dismissedAt) return 'Dismissed';
+  if (notification.readAt) return 'Read';
+  return 'Unread';
+};
+
+const normalizeNotificationPayload = (payload: any): AppNotification[] => {
+  if (!payload) return [];
+  if (Array.isArray(payload)) {
+    return payload.filter(Boolean).map((item: any) => ({
+      ...item,
+      status: resolveNotificationStatus(item),
+      entity: item?.entity ? { ...item.entity } : undefined,
+      metadata: item?.metadata ? { ...item.metadata } : undefined,
+    }));
+  }
+  return [{
+    ...payload,
+    status: resolveNotificationStatus(payload),
+    entity: payload?.entity ? { ...payload.entity } : undefined,
+    metadata: payload?.metadata ? { ...payload.metadata } : undefined,
+  }];
+};
+
+const serializeComparisonRecord = (record: {
+  header: ComparisonHeader;
+  detailDC: ComparisonDetailDC[];
+  detailLanes: ComparisonDetailLane[];
+}) => JSON.stringify(record);
+
+const serializeNotification = (notification: AppNotification) => JSON.stringify(notification);
+
+const loadAppDbNotifications = async (
+  userId: string | null,
+  userEmail: string | null,
+): Promise<AppNotification[] | null> => {
+  const docs = await listCollectionDocuments(APPDB_COLLECTIONS.notifications);
+  const visibleDocs = docs
+    .map((doc: any) => doc?.content || doc)
+    .filter(Boolean)
+    .filter((doc: any) => {
+      const ownerId = String(doc?.recipientUserId || '').trim();
+      const ownerEmail = String(doc?.recipientUserEmail || '').trim();
+      return (userId && ownerId && ownerId === userId) || (userEmail && ownerEmail && ownerEmail === userEmail);
+    })
+    .sort((a: any, b: any) => docTimestamp(b) - docTimestamp(a));
+
+  const latestByNotificationId = new Map<string, AppNotification | null>();
+
+  visibleDocs.forEach((doc: any) => {
+    const rawPayload = parseAppDbPayload<any>(doc.payload);
+    const payloadItems = normalizeNotificationPayload(rawPayload);
+
+    payloadItems.forEach((item: AppNotification & { deletedAt?: string }) => {
+      const notificationId = String(item.id || doc.notificationId || doc.id || '').trim();
+      if (!notificationId || latestByNotificationId.has(notificationId)) return;
+      const mergedNotification = {
+        ...doc,
+        ...item,
+        id: notificationId,
+      } as AppNotification & { deletedAt?: string };
+      mergedNotification.status = resolveNotificationStatus({
+        ...doc,
+        ...item,
+        id: notificationId,
+      });
+      const isDismissed =
+        mergedNotification.status === 'Dismissed' ||
+        item.deletedAt ||
+        item.dismissedAt ||
+        String((doc as any)?.deletedAt || '').trim() ||
+        String((doc as any)?.dismissedAt || '').trim();
+      if (isDismissed) {
+        latestByNotificationId.set(notificationId, null);
+        return;
+      }
+      latestByNotificationId.set(notificationId, {
+        ...mergedNotification,
+      });
+    });
+  });
+
+  const notifications = Array.from(latestByNotificationId.values()).filter(Boolean) as AppNotification[];
+  if (notifications.length === 0) return null;
+
+  return notifications.sort((a, b) => Date.parse(b.createdAt || '') - Date.parse(a.createdAt || ''));
+};
+
+const loadAppDbComparisonState = async (
+  userId: string | null,
+  userEmail: string | null,
+): Promise<ComparisonState | null> => {
+  const docs = await listCollectionDocuments(APPDB_COLLECTIONS.comparisons);
+  const mappedDocs = docs
+    .map((doc: any) => doc?.content || doc)
+    .filter(Boolean);
+
+  const filteredDocs: Array<{ comparisonId: string; reason: string }> = [];
+  const visibleDocs = mappedDocs.filter((doc: any) => {
+    const comparisonId = String(doc?.comparisonId || doc?.id || '').trim();
+    const ownerId = String(doc?.ownerUserId || '').trim();
+    const ownerEmail = String(doc?.ownerUserEmail || '').trim();
+    const isPublishedFlag = String(doc?.isPublished || '').trim().toLowerCase();
+    const isPublished = String(doc?.status || '').trim() === 'Published' || isPublishedFlag === 'true';
+    const isOwner = (userId && ownerId && ownerId === userId) || (userEmail && ownerEmail && ownerEmail === userEmail);
+
+    if (isPublished || isOwner) return true;
+    filteredDocs.push({
+      comparisonId,
+      reason: `hidden (status=${String(doc?.status || 'NA')}, owner=${ownerId || ownerEmail || 'NA'})`,
+    });
+    return false;
+  });
+
+  if (visibleDocs.length === 0) return null;
+
+  const latestByComparisonId = new Map<string, any>();
+  visibleDocs
+    .sort((a: any, b: any) => docTimestamp(b) - docTimestamp(a))
+    .forEach((doc: any) => {
+      const comparisonId = String(doc?.comparisonId || doc?.id || '').trim();
+      if (!comparisonId || latestByComparisonId.has(comparisonId)) return;
+      const rawPayload = parseAppDbPayload<any>(doc.payload);
+      if (rawPayload?.deletedAt || String(doc?.deletedAt || '').trim() !== '') return;
+      latestByComparisonId.set(comparisonId, doc);
+    });
+
+  if (DEBUG_DOMO_MAPPING) {
+    console.groupCollapsed('[AppDB] comparison hydration');
+    console.log('collection', APPDB_COLLECTIONS.comparisons);
+    console.log('user', { userId, userEmail });
+    console.table(
+      docs.map((doc: any) => ({
+        appDbId: doc?.id || '',
+        comparisonId: String(doc?.content?.comparisonId || doc?.content?.id || '').trim(),
+        status: String(doc?.content?.status || '').trim(),
+        isPublished: String(doc?.content?.isPublished || '').trim(),
+        ownerUserId: String(doc?.content?.ownerUserId || '').trim(),
+        ownerUserEmail: String(doc?.content?.ownerUserEmail || '').trim(),
+        updatedOn: String(doc?.updatedOn || '').trim(),
+      }))
+    );
+    console.table(
+      Array.from(latestByComparisonId.values()).map((doc: any) => ({
+        comparisonId: String(doc?.comparisonId || doc?.id || '').trim(),
+        status: String(doc?.status || '').trim(),
+        ownerUserId: String(doc?.ownerUserId || '').trim(),
+        ownerUserEmail: String(doc?.ownerUserEmail || '').trim(),
+      }))
+    );
+    if (filteredDocs.length > 0) {
+      console.table(filteredDocs);
+    }
+    console.groupEnd();
+  }
+
+  const headers: ComparisonHeader[] = [];
+  const detailDC: ComparisonDetailDC[] = [];
+  const detailLanes: ComparisonDetailLane[] = [];
+
+  latestByComparisonId.forEach((doc) => {
+    const payload = parseAppDbPayload<{ header?: ComparisonHeader; detailDC?: ComparisonDetailDC[]; detailLanes?: ComparisonDetailLane[] }>(doc.payload);
+    if (!payload?.header) return;
+    headers.push({ ...payload.header });
+    if (Array.isArray(payload.detailDC)) {
+      detailDC.push(...payload.detailDC.map((row) => ({ ...row })));
+    }
+    if (Array.isArray(payload.detailLanes)) {
+      detailLanes.push(...payload.detailLanes.map((row) => ({ ...row })));
+    }
+  });
+
+  return {
+    headers,
+    detailDC,
+    detailLanes,
+  };
+};
+
+const persistAppDbNotifications = async (
+  userId: string | null,
+  userEmail: string | null,
+  previousNotifications: AppNotification[],
+  notifications: AppNotification[],
+) => {
+  if (!userId && !userEmail) return;
+  const nowIso = new Date().toISOString();
+  const previousById = new Map(previousNotifications.map((item) => [item.id, item]));
+  const nextById = new Map(notifications.map((item) => [item.id, item]));
+
+  const writes = notifications.map((notification) => {
+    const previous = previousById.get(notification.id);
+    if (previous && serializeNotification(previous) === serializeNotification(notification)) return Promise.resolve();
+    return upsertCollectionDocumentByField(
+      APPDB_COLLECTIONS.notifications,
+      'notificationId',
+      notification.id,
+      {
+        id: notification.id,
+        notificationId: notification.id,
+        kind: 'notification-record',
+        recipientUserId: userId || null,
+        recipientUserEmail: userEmail || null,
+        status: notification.status || resolveNotificationStatus(notification),
+        payload: JSON.stringify(notification),
+        createdAt: previous?.createdAt || nowIso,
+        updatedAt: nowIso,
+      },
+    );
+  });
+
+  previousById.forEach((previous, notificationId) => {
+    if (nextById.has(notificationId)) return;
+    writes.push(
+      upsertCollectionDocumentByField(
+        APPDB_COLLECTIONS.notifications,
+        'notificationId',
+        notificationId,
+        {
+          id: notificationId,
+          notificationId,
+          kind: 'notification-record',
+          recipientUserId: userId || null,
+          recipientUserEmail: userEmail || null,
+          status: 'Dismissed',
+          payload: JSON.stringify({
+            ...previous,
+            status: 'Dismissed',
+            dismissedAt: nowIso,
+          }),
+          createdAt: previous?.createdAt || nowIso,
+          updatedAt: nowIso,
+        },
+      ),
+    );
+  });
+
+  await Promise.all(writes);
+};
+
+const persistAppDbComparisonState = async (
+  userId: string | null,
+  userName: string,
+  userEmail: string | null,
+  previousComparisonState: ComparisonState,
+  comparisonState: ComparisonState,
+) => {
+  if (!userId && !userEmail) return;
+  const nowIso = new Date().toISOString();
+  const previousById = new Map(previousComparisonState.headers.map((header) => [header.ComparisonID, header]));
+  const nextById = new Map(comparisonState.headers.map((header) => [header.ComparisonID, header]));
+  const writes: Promise<any>[] = [];
+
+  nextById.forEach((header, comparisonId) => {
+    const payload = {
+      header,
+      detailDC: comparisonState.detailDC.filter((row) => row.ComparisonID === comparisonId).map((row) => ({ ...row })),
+      detailLanes: comparisonState.detailLanes.filter((row) => row.ComparisonID === comparisonId).map((row) => ({ ...row })),
+    };
+    const previousHeader = previousById.get(comparisonId);
+    const previousPayload = previousHeader
+      ? {
+          header: previousHeader,
+          detailDC: previousComparisonState.detailDC.filter((row) => row.ComparisonID === comparisonId).map((row) => ({ ...row })),
+          detailLanes: previousComparisonState.detailLanes.filter((row) => row.ComparisonID === comparisonId).map((row) => ({ ...row })),
+        }
+      : null;
+
+    if (previousPayload && serializeComparisonRecord(previousPayload) === serializeComparisonRecord(payload)) return;
+
+    writes.push(
+      upsertCollectionDocumentByField(
+        APPDB_COLLECTIONS.comparisons,
+        'comparisonId',
+        comparisonId,
+        {
+          id: comparisonId,
+          kind: 'comparison-record',
+          comparisonId,
+          ownerUserId: userId || null,
+          ownerUserName: userName,
+          ownerUserEmail: userEmail || null,
+          status: header.Status,
+          isPublished: String(header.Status === 'Published'),
+          payload: JSON.stringify(payload),
+          createdAt: nowIso,
+          updatedAt: nowIso,
+        },
+      ),
+    );
+  });
+
+  if (writes.length === 0) return;
+  await Promise.all(writes);
 };
 
 function App() {
   const [workspace, setWorkspace] = useState<'All' | 'US' | 'Canada'>('All');
   const [scenarioState, setScenarioState] = useState<ScenarioState>(EMPTY_SCENARIO_STATE);
   const [scenarioHistoryState, setScenarioHistoryState] = useState<ScenarioHistoryState>(EMPTY_SCENARIO_HISTORY);
-  const [comparisonState, setComparisonState] = useState<ComparisonState>(() => {
-    try {
-      const stored = localStorage.getItem(COMPARISON_STORAGE_KEY);
-      if (stored) return JSON.parse(stored);
-    } catch (e) {
-      console.warn('Failed to parse comparisons from localStorage', e);
-    }
-    return EMPTY_COMPARISON_STATE;
-  });
+  const [comparisonState, setComparisonState] = useState<ComparisonState>(EMPTY_COMPARISON_STATE);
   const [domoDcLoaded, setDomoDcLoaded] = useState(false);
   const [dataHealthSnapshot, setDataHealthSnapshot] = useState(() => buildDataHealthSnapshotFromRows([]));
   const [preselectedRuns, setPreselectedRuns] = useState<{ a?: string; b?: string }>({});
@@ -234,15 +572,21 @@ function App() {
   const [showDataHealth, setShowDataHealth] = useState(false);
   const [runningScenarioId, setRunningScenarioId] = useState<string | null>(null);
   const [currentUserDisplayName, setCurrentUserDisplayName] = useState('You');
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
   const [testEmailActive, setTestEmailActive] = useState(false);
-  const [notifications, setNotifications] = useState<AppNotification[]>(loadNotifications);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [comparisonsRefreshActive, setComparisonsRefreshActive] = useState(false);
+  const [notificationsRefreshActive, setNotificationsRefreshActive] = useState(false);
   const [toasts, setToasts] = useState<AppToast[]>([]);
   const toastIdRef = useRef(0);
   const toastTimersRef = useRef<Record<number, number>>({});
   const activeScenarioRunsRef = useRef<Set<string>>(new Set());
   const pollingTimersRef = useRef<Record<string, number>>({});
+  const persistenceHydratedRef = useRef(false);
+  const lastPersistedComparisonStateRef = useRef<ComparisonState>(EMPTY_COMPARISON_STATE);
+  const lastPersistedNotificationsRef = useRef<AppNotification[]>([]);
 
   const [datasetOptions, setDatasetOptions] = useState<DatasetOptionSets>(() => ({
     scenarioTypes: [],
@@ -432,7 +776,7 @@ function App() {
   }, [dismissToast]);
 
   const pushNotification = useCallback((
-    notification: Omit<AppNotification, 'id' | 'createdAt' | 'readAt'>
+    notification: Omit<AppNotification, 'id' | 'createdAt' | 'readAt' | 'status'>
   ) => {
     const id = `notif-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
     const createdAt = new Date().toISOString();
@@ -441,6 +785,7 @@ function App() {
         id,
         createdAt,
         readAt: null,
+        status: 'Unread',
         ...notification,
       },
       ...prev,
@@ -449,11 +794,19 @@ function App() {
   }, []);
 
   const updateNotification = useCallback((id: string, patch: Partial<AppNotification>) => {
-    setNotifications((prev) => prev.map((item) => (item.id === id ? { ...item, ...patch } : item)));
+    setNotifications((prev) => prev.map((item) => (
+      item.id === id
+        ? {
+            ...item,
+            ...patch,
+            status: patch.status || resolveNotificationStatus({ ...item, ...patch }),
+          }
+        : item
+    )));
   }, []);
 
   const markNotificationRead = useCallback((id: string) => {
-    updateNotification(id, { readAt: new Date().toISOString() });
+    updateNotification(id, { readAt: new Date().toISOString(), status: 'Read' });
   }, [updateNotification]);
 
   const dismissNotification = useCallback((id: string) => {
@@ -473,7 +826,7 @@ function App() {
     activeScenarioRunsRef.current.delete(scenarioId);
   }, []);
 
-  const unreadNotificationCount = notifications.filter((notification) => !notification.readAt).length;
+  const unreadNotificationCount = notifications.filter((notification) => notification.status === 'Unread').length;
 
   const loadDomoDc = useCallback(async () => {
     try {
@@ -516,6 +869,75 @@ function App() {
             globalEntityOrder,
             effectiveRegistryInfo
           );
+
+          if (DEBUG_DOMO_MAPPING) {
+            const rawPreview = rows.slice(0, 5).map((row, index) => ({
+              '#': index + 1,
+              DC: String(row.DC ?? row.dc ?? row['DC Name'] ?? row['DCName'] ?? '').trim(),
+              dcRegion: String(row.dcRegion ?? row.DC_region ?? row.region ?? '').trim(),
+              dcEntity: String(row.dcEntity ?? row.DC_entity ?? row.entityScope ?? '').trim(),
+              totalCost: row.totalCost ?? '',
+              costPerUnit: row.costPerUnit ?? '',
+              coreSpace: row.coreSpace ?? '',
+              bcvSpace: row.bcvSpace ?? '',
+              totalcount: row.totalcount ?? '',
+              spaceRequired: row.spaceRequired ?? '',
+              sqft: row.sqft ?? '',
+              averageDeliveryDays: row.averageDeliveryDays ?? '',
+              averageTransitDays: row.averageTransitDays ?? '',
+              slaBreach: row.slaBreach ?? '',
+              maxUtilizationPct: row['maxUtilization%'] ?? row['maxUtilization %'] ?? row.maxUtilization ?? '',
+              scenarioType: row.scenarioType ?? '',
+            }));
+
+            const mappedPreview = dcResults.slice(0, 5).map((dc, index) => ({
+              '#': index + 1,
+              DCName: dc.DCName,
+              TotalCost: dc.TotalCost,
+              VolumeUnits: dc.VolumeUnits,
+              AvgDays: dc.AvgDays,
+              UtilPct: dc.UtilPct,
+              SpaceRequired: dc.SpaceRequired,
+              SpaceCore: dc.SpaceCore,
+              SpaceBCV: dc.SpaceBCV,
+              SLABreachCount: dc.SLABreachCount,
+              ExcludedBySLACount: dc.ExcludedBySLACount,
+              RankOverall: dc.RankOverall,
+              IsSuppressed: dc.IsSuppressed,
+            }));
+
+            console.groupCollapsed(
+              `[Domo Mapping] ${effectiveRegistryInfo.scenarioLabel} / ${identity.region} / ${identity.scenarioType} / ${identity.entityScope} / ${identity.scenarioId}`
+            );
+            console.log('Dataset', {
+              datasetId: datasetResult.datasetId,
+              dataflowId: effectiveRegistryInfo.dataflowId,
+              scenarioKey: effectiveRegistryInfo.scenarioKey,
+              scenarioLabel: effectiveRegistryInfo.scenarioLabel,
+            });
+            console.table(rawPreview);
+            console.table(mappedPreview);
+            console.log('Derived header', {
+              ScenarioRunID: header.ScenarioRunID,
+              RunName: header.RunName,
+              Region: header.Region,
+              ScenarioType: header.ScenarioType,
+              EntityScope: header.EntityScope,
+              DataflowID: header.DataflowID,
+              TotalCost: header.TotalCost,
+              CostPerUnit: header.CostPerUnit,
+              AvgDeliveryDays: header.AvgDeliveryDays,
+              AvgTransitDays: header.AvgTransitDays,
+              MaxUtilPct: header.MaxUtilPct,
+              TotalSpaceRequired: header.TotalSpaceRequired,
+              SpaceCore: header.SpaceCore,
+              SpaceBCV: header.SpaceBCV,
+              CollectTreatment: header.CollectTreatment,
+              UtilizationCap: header.UtilizationCap,
+            });
+            console.groupEnd();
+          }
+
           return { header, dcResults };
         });
       }) : [];
@@ -576,6 +998,10 @@ function App() {
     DomoApi.getCurrentUser()
       .then((user) => {
         if (!isMounted) return;
+        const userId = String(user?.userId || user?.id || user?.user?.id || '').trim();
+        if (userId) {
+          setCurrentUserId(userId);
+        }
         const displayName = String(user?.displayName || user?.userName || user?.name || '').trim();
         if (displayName) {
           setCurrentUserDisplayName(displayName);
@@ -604,6 +1030,54 @@ function App() {
       };
     });
   }, [currentUserDisplayName]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const hydrateAppDbState = async () => {
+      try {
+        const [persistedComparisons, persistedNotifications] = await Promise.all([
+          loadAppDbComparisonState(currentUserId, currentUserEmail),
+          loadAppDbNotifications(currentUserId, currentUserEmail),
+        ]);
+
+        if (!isMounted) return;
+
+        if (persistedComparisons) {
+          setComparisonState(persistedComparisons);
+        }
+
+        if (persistedNotifications) {
+          setNotifications(Array.isArray(persistedNotifications) ? persistedNotifications : []);
+        }
+
+        const comparisonSource = persistedComparisons ? 'AppDB' : 'fallback';
+        const notificationSource = persistedNotifications ? 'AppDB' : 'fallback';
+
+        console.log('[AppDB] comparisons source:', comparisonSource);
+        console.log('[AppDB] notifications source:', notificationSource);
+
+        lastPersistedComparisonStateRef.current = cloneComparisonState(
+          persistedComparisons || comparisonState,
+        );
+        lastPersistedNotificationsRef.current = cloneNotifications(
+          persistedNotifications || notifications,
+        );
+      } catch (error) {
+        console.warn('Failed to hydrate AppDB collections', error);
+      } finally {
+        if (isMounted) {
+          persistenceHydratedRef.current = true;
+        }
+      }
+    };
+
+    hydrateAppDbState();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentUserId, currentUserEmail]);
 
   const triggerScenarioCompletionEmail = useCallback(async (params: {
     scenarioName: string;
@@ -679,20 +1153,32 @@ function App() {
   }, [currentUserDisplayName, currentUserEmail, pushNotification, pushToast]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(COMPARISON_STORAGE_KEY, JSON.stringify(comparisonState));
-    } catch (e) {
-      console.warn('Failed to save comparisons to localStorage', e);
-    }
-  }, [comparisonState]);
+    if (!persistenceHydratedRef.current) return;
+    if (!currentUserId && !currentUserEmail) return;
+    const previousComparisonState = lastPersistedComparisonStateRef.current;
+    const nextComparisonState = cloneComparisonState(comparisonState);
+    lastPersistedComparisonStateRef.current = nextComparisonState;
+    void persistAppDbComparisonState(
+      currentUserId,
+      currentUserDisplayName,
+      currentUserEmail,
+      previousComparisonState,
+      nextComparisonState,
+    ).catch((error) => {
+      console.warn('Failed to save comparisons to AppDB', error);
+    });
+  }, [comparisonState, currentUserId, currentUserEmail, currentUserDisplayName]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(NOTIFICATIONS_STORAGE_KEY, JSON.stringify(notifications.slice(0, 200)));
-    } catch (e) {
-      console.warn('Failed to save notifications to localStorage', e);
-    }
-  }, [notifications]);
+    if (!persistenceHydratedRef.current) return;
+    if (!currentUserId && !currentUserEmail) return;
+    const previousNotifications = lastPersistedNotificationsRef.current;
+    const nextNotifications = cloneNotifications(notifications.slice(0, 200));
+    lastPersistedNotificationsRef.current = nextNotifications;
+    void persistAppDbNotifications(currentUserId, currentUserEmail, previousNotifications, nextNotifications).catch((error) => {
+      console.warn('Failed to save notifications to AppDB', error);
+    });
+  }, [notifications, currentUserId, currentUserEmail]);
 
   useEffect(() => {
     return () => {
@@ -819,6 +1305,48 @@ function App() {
     setDomoDcLoaded(false);
     loadDomoDc().catch(() => undefined);
   };
+
+  const refreshComparisonsFromAppDb = useCallback(async () => {
+    setComparisonsRefreshActive(true);
+    try {
+      const persistedComparisons = await loadAppDbComparisonState(currentUserId, currentUserEmail);
+      if (!persistenceHydratedRef.current) return;
+      if (persistedComparisons) {
+        setComparisonState(persistedComparisons);
+        lastPersistedComparisonStateRef.current = cloneComparisonState(persistedComparisons);
+        console.log('[AppDB] comparisons refreshed from AppDB');
+      } else {
+        setComparisonState(EMPTY_COMPARISON_STATE);
+        lastPersistedComparisonStateRef.current = cloneComparisonState(EMPTY_COMPARISON_STATE);
+        console.log('[AppDB] comparisons refreshed: empty');
+      }
+    } catch (error) {
+      console.warn('Failed to refresh comparisons from AppDB', error);
+    } finally {
+      setComparisonsRefreshActive(false);
+    }
+  }, [currentUserId, currentUserEmail]);
+
+  const refreshNotificationsFromAppDb = useCallback(async () => {
+    setNotificationsRefreshActive(true);
+    try {
+      const persistedNotifications = await loadAppDbNotifications(currentUserId, currentUserEmail);
+      if (!persistenceHydratedRef.current) return;
+      if (persistedNotifications) {
+        setNotifications(Array.isArray(persistedNotifications) ? persistedNotifications : []);
+        lastPersistedNotificationsRef.current = cloneNotifications(persistedNotifications);
+        console.log('[AppDB] notifications refreshed from AppDB');
+      } else {
+        setNotifications([]);
+        lastPersistedNotificationsRef.current = [];
+        console.log('[AppDB] notifications refreshed: empty');
+      }
+    } catch (error) {
+      console.warn('Failed to refresh notifications from AppDB', error);
+    } finally {
+      setNotificationsRefreshActive(false);
+    }
+  }, [currentUserId, currentUserEmail]);
 
   const duplicateScenario = (scenarioId: string) => {
     const sourceHeader = scenarioState.headers.find(s => s.ScenarioRunID === scenarioId);
@@ -1103,7 +1631,11 @@ function App() {
     if (!sourceHeader) return;
     const now = new Date().toISOString();
     const numeric = (comparisonState.headers.length + 1).toString().padStart(3, '0');
-    const newId = `CMP${numeric}`;
+    const ownerPrefix = String(currentUserId || currentUserDisplayName || 'anon')
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .slice(0, 8)
+      .toUpperCase() || 'ANON';
+    const newId = `CMP-${ownerPrefix}-${numeric}`;
 
     const newHeader: ComparisonHeader = {
       ...sourceHeader,
@@ -1173,8 +1705,11 @@ function App() {
 
   const buildComparisonHeader = (payload: NewComparisonSubmit): ComparisonHeader => {
     const now = new Date().toISOString();
-    const numeric = (comparisonState.headers.length + 1).toString().padStart(3, '0');
-    const comparisonId = `CMP${numeric}`;
+    const ownerPrefix = String(currentUserId || currentUserDisplayName || 'anon')
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .slice(0, 8)
+      .toUpperCase() || 'ANON';
+    const comparisonId = `CMP-${ownerPrefix}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
 
     const scenarioA = scenarioState.headers.find(s => s.ScenarioRunID === payload.runA);
     const scenarioB = scenarioState.headers.find(s => s.ScenarioRunID === payload.runB);
@@ -1307,7 +1842,12 @@ function App() {
       detailLanes: [...detailLanes, ...prev.detailLanes],
     }));
 
-    console.log('Comparison created successfully');
+    console.log('Comparison created successfully', {
+      comparisonId: header.ComparisonID,
+      comparisonName: header.ComparisonName,
+      runA: header.ScenarioRunID_A,
+      runB: header.ScenarioRunID_B,
+    });
   };
 
   const handleRunScenario = async (scenarioId: string, scenarioOverride?: ScenarioRunHeader) => {
@@ -1691,6 +2231,8 @@ function App() {
             onArchiveComparison={archiveComparison}
             onUnarchiveComparison={unarchiveComparison}
             onRefresh={refreshData}
+            onRefreshComparisons={refreshComparisonsFromAppDb}
+            comparisonsRefreshActive={comparisonsRefreshActive}
             onRunScenario={handleRunScenario}
             runningScenarioId={runningScenarioId}
             currentUserDisplayName={currentUserDisplayName}
@@ -1699,6 +2241,8 @@ function App() {
             onOpenNotifications={() => setShowNotifications(true)}
             onSendTestEmail={handleSendTestEmail}
             testEmailActive={testEmailActive}
+            onRefreshNotifications={refreshNotificationsFromAppDb}
+            notificationsRefreshActive={notificationsRefreshActive}
           />
         );
 
@@ -1797,6 +2341,8 @@ function App() {
         isOpen={showNotifications}
         notifications={notifications}
         onClose={() => setShowNotifications(false)}
+        onRefresh={refreshNotificationsFromAppDb}
+        refreshActive={notificationsRefreshActive}
         onMarkRead={markNotificationRead}
         onDismiss={dismissNotification}
         onClearAll={clearNotifications}

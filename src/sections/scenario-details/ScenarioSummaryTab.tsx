@@ -25,6 +25,11 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
   laneResults,
   topFootprintLanes,
 }) => {
+  const clampBarWidth = (numerator: number, denominator: number) => {
+    if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || denominator <= 0) return 0;
+    return Math.max(0, Math.min(100, (numerator / denominator) * 100));
+  };
+
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
@@ -117,11 +122,11 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
                   <div className="flex gap-1 h-2">
                     <div
                       className="bg-blue-500 rounded-l"
-                      style={{ width: `${(dc.SpaceCore / dc.SpaceRequired) * 100}%` }}
+                      style={{ width: `${clampBarWidth(dc.SpaceCore, dc.SpaceRequired)}%` }}
                     />
                     <div
                       className="bg-green-500 rounded-r"
-                      style={{ width: `${(dc.SpaceBCV / dc.SpaceRequired) * 100}%` }}
+                      style={{ width: `${clampBarWidth(dc.SpaceBCV, dc.SpaceRequired)}%` }}
                     />
                   </div>
                   <div className="flex justify-between text-xs text-slate-600 mt-1 gap-1">

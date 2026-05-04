@@ -133,10 +133,12 @@ export const ScenarioHeader: React.FC<ScenarioHeaderProps> = ({
           variant="secondary"
           size="small"
           icon={<Copy className="w-4 h-4" />}
-          onClick={() => onDuplicateScenario(scenarioId)}
-          className={duplicateActive ? 'bg-amber-100 text-amber-800' : ''}
+          onClick={() => undefined}
+          disabled
+          title="Duplicate is temporarily disabled"
+          className="opacity-50 cursor-not-allowed"
         >
-          {duplicateActive ? 'Duplicated' : 'Duplicate'}
+          Duplicate
         </Button>
 
         {scenario.Status !== 'Published' && (

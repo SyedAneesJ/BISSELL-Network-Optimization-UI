@@ -24,6 +24,11 @@ export const Step1TemplateScope: React.FC<Step1TemplateScopeProps> = ({
   onChannelToggle,
   onTagToggle,
 }) => {
+  const selectedScenarioType = formData.scenarioType || '';
+  const visibleOptions = selectedScenarioType
+    ? baselineOptions.filter((option) => option.scenarioType === selectedScenarioType)
+    : baselineOptions;
+
   return (
     <div className="space-y-6">
       <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
@@ -47,38 +52,6 @@ export const Step1TemplateScope: React.FC<Step1TemplateScopeProps> = ({
         </div>
       </div>
 
-      <div>
-        <label className="block text-sm font-medium text-slate-700 mb-2">
-          Baseline Scenario
-        </label>
-        <select
-          value={formData.baselineScenarioId}
-          onChange={(e) => {
-            const option = baselineOptions.find((item) => item.scenarioId === e.target.value);
-            onFormDataChange({
-              ...formData,
-              baselineScenarioId: e.target.value,
-              baselineDataflowId: option?.dataflowId || '',
-            });
-          }}
-          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          disabled={baselineOptions.length === 0}
-        >
-          {baselineOptions.length === 0 ? (
-            <option value="">No scenarios for this region</option>
-          ) : (
-            baselineOptions.map((scenario) => (
-              <option key={scenario.scenarioId} value={scenario.scenarioId}>
-                {scenario.scenarioName} {scenario.dataflowId ? `(Dataflow ${scenario.dataflowId})` : ''}
-              </option>
-            ))
-          )}
-        </select>
-        {baselineOptions.length === 0 && (
-          <p className="text-xs text-slate-500 mt-1">Select a region with available scenarios first.</p>
-        )}
-      </div>
-
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-2">
@@ -86,7 +59,15 @@ export const Step1TemplateScope: React.FC<Step1TemplateScopeProps> = ({
           </label>
           <select
             value={formData.region}
-            onChange={(e) => onFormDataChange({ ...formData, region: e.target.value as 'US' | 'Canada' })}
+            onChange={(e) => {
+              onFormDataChange({
+                ...formData,
+                region: e.target.value as 'US' | 'Canada',
+                scenarioType: '',
+                baselineScenarioId: '',
+                baselineDataflowId: '',
+              });
+            }}
             className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             {availableRegions.map((region) => (
@@ -100,23 +81,97 @@ export const Step1TemplateScope: React.FC<Step1TemplateScopeProps> = ({
             Scenario Type
           </label>
           <select
-            value={formData.scenarioType}
-            onChange={(e) => onFormDataChange({ ...formData, scenarioType: e.target.value })}
+            value={selectedScenarioType}
+            onChange={(e) => {
+              const nextType = e.target.value;
+              const matchingOptions = nextType
+                ? baselineOptions.filter((item) => item.scenarioType === nextType)
+                : baselineOptions;
+              const nextScenario = matchingOptions.find((item) => item.scenarioId === formData.baselineScenarioId) || matchingOptions[0] || null;
+              onFormDataChange({
+                ...formData,
+                scenarioType: nextType,
+                baselineScenarioId: nextScenario?.scenarioId || '',
+                baselineDataflowId: nextScenario?.dataflowId || '',
+              });
+            }}
             className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            disabled={baselineOptions.length === 0}
           >
-            {baselineOptions.length === 0 ? (
-              <option value="">NA</option>
-            ) : (
-              Array.from(new Set(baselineOptions.map((option) => option.scenarioType))).map((type) => (
-                <option key={type} value={type}>{type}</option>
-              ))
-            )}
+            <option value="">All scenario types</option>
+            {Array.from(new Set(baselineOptions.map((option) => option.scenarioType).filter(Boolean))).map((type) => (
+              <option key={type} value={type}>{type}</option>
+            ))}
           </select>
+          <p className="text-xs text-slate-500 mt-1">Optional filter. Leave empty to show all scenarios in the selected region.</p>
           {baselineOptions.length === 0 && (
-            <p className="text-xs text-slate-500 mt-1">No scenario type data available.</p>
+            <p className="text-xs text-slate-500 mt-1">No scenario data available for this region.</p>
           )}
         </div>
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between gap-3 mb-2">
+          <label className="block text-sm font-medium text-slate-700">
+            Scenario List
+          </label>
+          <span className="text-xs text-slate-500">
+            Sorted by Dataflow ID ascending
+          </span>
+        </div>
+        {baselineOptions.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+            No scenarios for the selected region.
+          </div>
+        ) : visibleOptions.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-sm text-slate-500">
+            No scenarios match the selected scenario type.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {visibleOptions.map((scenario) => {
+              const selected = formData.baselineScenarioId === scenario.scenarioId;
+              return (
+                <button
+                  key={scenario.scenarioId}
+                  type="button"
+                  onClick={() => onFormDataChange({
+                    ...formData,
+                    baselineScenarioId: scenario.scenarioId,
+                    baselineDataflowId: scenario.dataflowId,
+                    scenarioType: scenario.scenarioType,
+                  })}
+                  className={`w-full rounded-xl border px-4 py-3 text-left transition-all ${
+                    selected
+                      ? 'border-blue-500 bg-blue-50 shadow-sm ring-1 ring-blue-200'
+                      : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                  }`}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-slate-900 truncate">
+                        {scenario.scenarioName}
+                      </div>
+                      <div className="mt-1 flex flex-wrap gap-2 text-xs text-slate-500">
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5">
+                          Type: {scenario.scenarioType}
+                        </span>
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5">
+                          Dataflow ID: {scenario.dataflowId}
+                        </span>
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5">
+                          Entity: {scenario.entityScope}
+                        </span>
+                      </div>
+                    </div>
+                    <div className={`rounded-full px-3 py-1 text-xs font-semibold ${selected ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'}`}>
+                      {selected ? 'Selected' : 'Select'}
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <div>

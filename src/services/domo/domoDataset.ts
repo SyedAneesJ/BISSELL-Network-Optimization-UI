@@ -67,8 +67,8 @@ const FIELD_ALIASES = {
   slaBreachPct: ['slaBreach%', ' slaBreach%'],
   maxUtilizationPct: ['maxUtilization%', 'maxUtilization %', 'maxUtilization'],
   palletUtilizationPct: ['Pallet Pos Util %', 'Pallet Pos Util % '],
-  squareFootage: ['Square Footage', 'SquareFootage', 'Square Footage ', 'sqft'],
-  workingCapacity: ['Working Capacity Sq Ft', 'WorkingCapacitySqFt', 'Working Capacity Sq Ft ', 'spaceRequired'],
+  squareFootage: ['sqft', 'Square Footage', 'SquareFootage', 'Square Footage ', 'coreSpace'],
+  workingCapacity: ['spaceRequired', 'Working Capacity Sq Ft', 'WorkingCapacitySqFt', 'Working Capacity Sq Ft ', 'sqft'],
   coreSpace: ['coreSpace'],
   bcvSpace: ['bcvSpace'],
   scenarioType: ['scenarioType'],
@@ -332,7 +332,7 @@ export const mapDcResultsFromRows = (
   return rows.map((row, idx) => {
     const squareFootage = asNumber(getField(row, FIELD_ALIASES.squareFootage));
     const workingCapacity = asNumber(getField(row, FIELD_ALIASES.workingCapacity));
-    const explicitCoreSpace = asNumberOptional(getField(row, FIELD_ALIASES.coreSpace));
+    const rawCoreSpace = asNumberOptional(getField(row, FIELD_ALIASES.coreSpace));
     const explicitBcvSpace = asNumberOptional(getField(row, FIELD_ALIASES.bcvSpace));
     const spaceRequired = asNumberOptional(getField(row, FIELD_ALIASES.workingCapacity)) ?? workingCapacity;
     const maxUtil = asNumber(getField(row, FIELD_ALIASES.maxUtilizationPct));
@@ -348,7 +348,7 @@ export const mapDcResultsFromRows = (
       AvgDays: avgDaysRaw ?? 0,
       UtilPct: Number((maxUtil || asPercent(getField(row, FIELD_ALIASES.palletUtilizationPct))).toFixed(2)),
       SpaceRequired: Number(spaceRequired.toFixed(2)),
-      SpaceCore: Number((explicitCoreSpace ?? squareFootage).toFixed(2)),
+      SpaceCore: Number(((squareFootage > 0 ? squareFootage : (rawCoreSpace ?? 0))).toFixed(2)),
       SpaceBCV: Number((explicitBcvSpace ?? workingCapacity).toFixed(2)),
       SLABreachCount: asNumber(getField(row, FIELD_ALIASES.slaBreachCount)),
       ExcludedBySLACount: Math.max(0, Math.round(squareFootage - spaceRequired)),
@@ -438,10 +438,7 @@ export const buildScenarioHeaderFromRows = (
   ));
   const excludedBySla = Math.max(0, totalSquareFootage - totalWorkingCapacity);
 
-  const totalCoreSpace = rows.reduce((sum, row) => {
-    const explicit = asNumberOptional(getField(row, FIELD_ALIASES.coreSpace));
-    return sum + (explicit ?? asNumber(getField(row, FIELD_ALIASES.squareFootage)));
-  }, 0);
+  const totalCoreSpace = rows.reduce((sum, row) => sum + asNumber(getField(row, FIELD_ALIASES.squareFootage)), 0);
   const totalBcvSpace = rows.reduce((sum, row) => {
     const explicit = asNumberOptional(getField(row, FIELD_ALIASES.bcvSpace));
     return sum + (explicit ?? asNumber(getField(row, FIELD_ALIASES.workingCapacity)));

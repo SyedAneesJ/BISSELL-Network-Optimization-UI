@@ -225,15 +225,15 @@ export const createScenarioColumns = ({
     render: (row) => (
       <div className="flex gap-1">
         <button
-          className={`p-1 hover:bg-slate-100 rounded ${isActionActive(`scenario_dup_${row.ScenarioRunID}`) ? 'bg-amber-50' : ''}`}
-          title={isActionActive(`scenario_dup_${row.ScenarioRunID}`) ? 'Duplicated' : 'Duplicate'}
+          className="p-1 rounded opacity-40 cursor-not-allowed"
+          title="Duplicate is temporarily disabled"
+          disabled
           onClick={(e) => {
             e.stopPropagation();
-            onDuplicateScenario(row.ScenarioRunID);
-            triggerAction(`scenario_dup_${row.ScenarioRunID}`);
+            return;
           }}
         >
-          <Copy className={`w-4 h-4 ${isActionActive(`scenario_dup_${row.ScenarioRunID}`) ? 'text-amber-700' : 'text-slate-600'}`} />
+          <Copy className="w-4 h-4 text-slate-400" />
         </button>
         <button
           className={`p-1 hover:bg-slate-100 rounded ${isActionActive(`scenario_export_${row.ScenarioRunID}`) ? 'bg-amber-50' : ''}`}
@@ -438,15 +438,15 @@ export const createComparisonColumns = ({
     render: (row) => (
       <div className="flex gap-1">
         <button
-          className={`p-1 hover:bg-slate-100 rounded ${isActionActive(`comparison_dup_${row.ComparisonID}`) ? 'bg-amber-50' : ''}`}
-          title={isActionActive(`comparison_dup_${row.ComparisonID}`) ? 'Duplicated' : 'Duplicate'}
+          className="p-1 rounded opacity-40 cursor-not-allowed"
+          title="Duplicate is temporarily disabled"
+          disabled
           onClick={(e) => {
             e.stopPropagation();
-            onDuplicateComparison(row.ComparisonID);
-            triggerAction(`comparison_dup_${row.ComparisonID}`);
+            return;
           }}
         >
-          <Copy className={`w-4 h-4 ${isActionActive(`comparison_dup_${row.ComparisonID}`) ? 'text-amber-700' : 'text-slate-600'}`} />
+          <Copy className="w-4 h-4 text-slate-400" />
         </button>
         <button
           className={`p-1 hover:bg-slate-100 rounded ${isActionActive(`comparison_export_${row.ComparisonID}`) ? 'bg-amber-50' : ''}`}

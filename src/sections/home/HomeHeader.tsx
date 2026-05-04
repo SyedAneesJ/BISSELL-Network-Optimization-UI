@@ -67,7 +67,7 @@ export const HomeHeader: React.FC<HomeHeaderProps> = ({
         {/* LEFT: Brand + workspace selector */}
         <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
           <h1 className="text-base sm:text-lg lg:text-xl font-semibold text-slate-900 whitespace-nowrap truncate leading-tight">
-            BISSELL&nbsp;Network&nbsp;Opt.
+            BISSELL&nbsp;Network&nbsp;Optimization
           </h1>
 
           <select

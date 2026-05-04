@@ -8,7 +8,45 @@
   "fileName": "manifest.json",
   "allowPopups": true,
   "datasetsMapping": [],
-  "collectionsMapping": [],
+  "collectionsMapping": [
+    {
+      "name": "comparision_scenarios",
+      "schema": {
+        "columns": [
+          { "name": "id", "type": "STRING" },
+          { "name": "kind", "type": "STRING" },
+          { "name": "comparisonId", "type": "STRING" },
+          { "name": "notificationId", "type": "STRING" },
+          { "name": "ownerUserId", "type": "STRING" },
+          { "name": "ownerUserName", "type": "STRING" },
+          { "name": "ownerUserEmail", "type": "STRING" },
+          { "name": "status", "type": "STRING" },
+          { "name": "isPublished", "type": "STRING" },
+          { "name": "payload", "type": "STRING" },
+          { "name": "createdAt", "type": "DATETIME" },
+          { "name": "updatedAt", "type": "DATETIME" }
+        ]
+      },
+      "syncEnabled": true
+    },
+    {
+      "name": "notification",
+      "schema": {
+        "columns": [
+          { "name": "id", "type": "STRING" },
+          { "name": "kind", "type": "STRING" },
+          { "name": "notificationId", "type": "STRING" },
+          { "name": "recipientUserId", "type": "STRING" },
+          { "name": "recipientUserEmail", "type": "STRING" },
+          { "name": "status", "type": "STRING" },
+          { "name": "payload", "type": "STRING" },
+          { "name": "createdAt", "type": "DATETIME" },
+          { "name": "updatedAt", "type": "DATETIME" }
+        ]
+      },
+      "syncEnabled": true
+    }
+  ],
   "packagesMapping": [
     {
       "name": "DOMO DataFlows",

@@ -1,4 +1,5 @@
 export type NotificationKind = 'success' | 'error' | 'info' | 'warning';
+export type NotificationStatus = 'Unread' | 'Read' | 'Dismissed';
 
 export type NotificationEntity =
   | { type: 'scenario'; id: string }
@@ -9,6 +10,7 @@ export type NotificationEntity =
 export interface AppNotification {
   id: string;
   kind: NotificationKind;
+  status: NotificationStatus;
   title: string;
   message: string;
   createdAt: string;

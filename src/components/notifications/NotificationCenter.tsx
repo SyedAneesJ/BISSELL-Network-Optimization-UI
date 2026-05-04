@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle2, Circle, Clock3, ExternalLink, Mail, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Circle, Clock3, ExternalLink, Mail, RefreshCw, X } from 'lucide-react';
 import { AppNotification } from '@/types/notifications';
 import { Button, Modal } from '@/components/ui';
 
@@ -7,6 +7,8 @@ interface NotificationCenterProps {
   isOpen: boolean;
   notifications: AppNotification[];
   onClose: () => void;
+  onRefresh: () => void;
+  refreshActive: boolean;
   onMarkRead: (id: string) => void;
   onDismiss: (id: string) => void;
   onClearAll: () => void;
@@ -54,6 +56,8 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
   isOpen,
   notifications,
   onClose,
+  onRefresh,
+  refreshActive,
   onMarkRead,
   onDismiss,
   onClearAll,
@@ -61,11 +65,11 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
   onOpenComparison,
 }) => {
   const [filter, setFilter] = useState<Filter>('All');
-  const unreadCount = notifications.filter((item) => !item.readAt).length;
+  const unreadCount = notifications.filter((item) => item.status === 'Unread').length;
 
   const filteredNotifications = useMemo(() => {
     return notifications.filter((notification) => {
-      if (filter === 'Unread') return !notification.readAt;
+      if (filter === 'Unread') return notification.status === 'Unread';
       if (filter === 'Success') return notification.kind === 'success';
       if (filter === 'Error') return notification.kind === 'error';
       return true;
@@ -94,6 +98,14 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
       size="large"
       footer={
         <>
+          <Button
+            variant="secondary"
+            onClick={onRefresh}
+            disabled={refreshActive}
+            icon={<RefreshCw className={`h-4 w-4 ${refreshActive ? 'animate-spin' : ''}`} />}
+          >
+            {refreshActive ? 'Refreshing...' : 'Refresh'}
+          </Button>
           <Button variant="ghost" onClick={onClearAll} disabled={notifications.length === 0}>
             Clear All
           </Button>
@@ -140,7 +152,9 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
           filteredNotifications.map((notification) => {
             const meta = kindMeta[notification.kind];
             const Icon = meta.icon;
-            const isUnread = !notification.readAt;
+            const isUnread = notification.status === 'Unread';
+            const statusLabel =
+              notification.status === 'Unread' ? 'Unread' : notification.status === 'Read' ? 'Read' : 'Dismissed';
 
             return (
               <div
@@ -160,6 +174,15 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
                       <h3 className="text-sm font-semibold text-slate-900">{notification.title}</h3>
                       <span className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${meta.pill}`}>
                         {meta.label}
+                      </span>
+                      <span className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${
+                        notification.status === 'Unread'
+                          ? 'bg-slate-900 text-white border-slate-900'
+                          : notification.status === 'Read'
+                            ? 'bg-slate-100 text-slate-700 border-slate-200'
+                            : 'bg-slate-200 text-slate-700 border-slate-300'
+                      }`}>
+                        {statusLabel}
                       </span>
                       {isUnread && (
                         <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[11px] font-semibold text-white">

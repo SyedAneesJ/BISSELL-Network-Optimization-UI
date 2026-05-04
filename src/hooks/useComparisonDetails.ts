@@ -141,6 +141,13 @@ export const useComparisonDetails = ({
 
   const handleExportComparisonPack = () => {
     if (!comparison) return;
+    const kpiRows = kpiComparisons.map((kpi) => ({
+      ComparisonID: comparison.ComparisonID,
+      KPI: kpi.label,
+      Value_A: kpi.valueA,
+      Value_B: kpi.valueB,
+      Delta: (kpi.valueB || 0) - (kpi.valueA || 0),
+    }));
     const rows = [{
       ComparisonID: comparison.ComparisonID,
       ComparisonName: comparison.ComparisonName,
@@ -159,7 +166,7 @@ export const useComparisonDetails = ({
       DecisionVerdict: comparison.DecisionVerdict || '',
       DecisionReason: comparison.DecisionReason || '',
     }];
-    const csv = toCSV(rows);
+    const csv = [toCSV(rows), '', 'KPI Comparison', toCSV(kpiRows)].join('\n');
     downloadBlob(csv, `${comparison.ComparisonID}_comparison_pack.csv`, 'text/csv;charset=utf-8;');
     triggerAction('comparison_export_pack');
   };

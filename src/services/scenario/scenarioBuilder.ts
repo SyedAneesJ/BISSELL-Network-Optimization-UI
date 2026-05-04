@@ -61,7 +61,7 @@ const buildScenarioHeader = (
   const costPerUnit = baseline ? Number((baseline.CostPerUnit * (1 + costShift)).toFixed(2)) : 0;
   const avgDays = baseline ? Number((baseline.AvgDeliveryDays * (1 - serviceShift * 0.1)).toFixed(1)) : 0;
   const slaBreach = baseline ? Number((baseline.SLABreachPct * (1 + costShift * 0.5)).toFixed(1)) : 0;
-  const maxUtil = baseline ? Number((baseline.MaxUtilPct * (1 + utilCapImpact)).toFixed(2)) : 0;
+  const maxUtil = baseline ? Math.min(100, Number((baseline.MaxUtilPct * (1 + utilCapImpact)).toFixed(2))) : 0;
   const totalSpace = baseline ? baseline.TotalSpaceRequired : 0;
   const spaceCore = baseline ? baseline.SpaceCore : 0;
   const spaceBCV = baseline ? baseline.SpaceBCV : 0;
@@ -202,6 +202,7 @@ const buildScenarioResultsDC = (
   scenarioId: string,
   context: ScenarioBuildContext,
 ): ScenarioRunResultsDC[] => {
+  const clampPercent = (value: number) => Math.max(0, Math.min(100, Number(value.toFixed(2))));
   const active = new Set(payload.input.activeDCs);
   const baselineHeader = getBaselineHeader(context.scenarioHeaders, payload.input.region);
   const baselineResults = baselineHeader
@@ -223,7 +224,7 @@ const buildScenarioResultsDC = (
       ? dc.AvgDays
       : 0,
     UtilPct: active.has(dc.DCName)
-      ? (context.hasUtilCaps ? Math.min(dc.UtilPct, payload.input.utilCap) : dc.UtilPct)
+      ? clampPercent(context.hasUtilCaps ? Math.min(dc.UtilPct, payload.input.utilCap) : dc.UtilPct)
       : 0,
     SpaceRequired: active.has(dc.DCName) ? dc.SpaceRequired : 0,
     SpaceCore: active.has(dc.DCName) ? dc.SpaceCore : 0,

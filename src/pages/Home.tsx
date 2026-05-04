@@ -37,6 +37,8 @@ interface HomeProps {
   onArchiveComparison: (comparisonId: string) => void;
   onUnarchiveComparison: (comparisonId: string) => void;
   onRefresh: () => void;
+  onRefreshComparisons: () => void;
+  comparisonsRefreshActive: boolean;
   onRunScenario: (scenarioId: string) => void;
   runningScenarioId?: string | null;
   currentUserDisplayName: string;
@@ -66,6 +68,8 @@ export const Home: React.FC<HomeProps> = ({
   onArchiveComparison,
   onUnarchiveComparison,
   onRefresh,
+  onRefreshComparisons,
+  comparisonsRefreshActive,
   onRunScenario,
   runningScenarioId,
   currentUserDisplayName,
@@ -76,6 +80,14 @@ export const Home: React.FC<HomeProps> = ({
   testEmailActive,
 }) => {
   const { trigger: triggerAction, isActive: isActionActive } = useActionFeedback();
+  const handleRefresh = () => {
+    onRefresh();
+    triggerAction('refresh_data');
+  };
+  const handleRefreshComparisons = () => {
+    onRefreshComparisons();
+    triggerAction('refresh_comparisons');
+  };
   const [scenarioToRun, setScenarioToRun] = useState<string | null>(null);
   const [scenarioMonitorId, setScenarioMonitorId] = useState<string | null>(null);
   const [runningIconIndex, setRunningIconIndex] = useState(0);
@@ -104,7 +116,7 @@ export const Home: React.FC<HomeProps> = ({
     };
   }, [scenarioRunHeaders]);
   const filteredScenarios = useMemo(() => {
-    return scenarioRunHeaders.filter(scenario => {
+    const filtered = scenarioRunHeaders.filter(scenario => {
       if (workspace !== 'All' && scenario.Region !== workspace) return false;
       if (searchTerm && !scenario.RunName.toLowerCase().includes(searchTerm.toLowerCase())) return false;
       if (statusFilter !== 'All' && scenario.Status !== statusFilter) return false;
@@ -112,6 +124,12 @@ export const Home: React.FC<HomeProps> = ({
       if (onlyAlerts && !scenario.AlertFlags) return false;
       if (onlyPublished && scenario.Status !== 'Published') return false;
       return true;
+    });
+    return [...filtered].sort((a, b) => {
+      const dataflowA = Number(a.DataflowID || Number.MAX_SAFE_INTEGER);
+      const dataflowB = Number(b.DataflowID || Number.MAX_SAFE_INTEGER);
+      if (dataflowA !== dataflowB) return dataflowA - dataflowB;
+      return a.RunName.localeCompare(b.RunName);
     });
   }, [scenarioRunHeaders, workspace, searchTerm, statusFilter, scenarioTypeFilter, onlyAlerts, onlyPublished]);
 
@@ -129,6 +147,26 @@ export const Home: React.FC<HomeProps> = ({
       return true;
     });
   }, [comparisonHeaders, scenarioRunHeaders, searchTerm, workspace]);
+
+  const comparisonEmptyStateMessage = useMemo(() => {
+    if (comparisonHeaders.length === 0) {
+      return 'No comparisons have been created yet.';
+    }
+
+    const reasons: string[] = [];
+    if (workspace !== 'All') {
+      reasons.push(`workspace "${workspace}"`);
+    }
+    if (searchTerm.trim()) {
+      reasons.push(`search "${searchTerm.trim()}"`);
+    }
+
+    if (reasons.length === 0) {
+      return 'No comparisons match the current filters.';
+    }
+
+    return `No comparisons match the current filters (${reasons.join(' and ')}).`;
+  }, [comparisonHeaders.length, workspace, searchTerm]);
 
   const handleSelectScenario = (scenarioId: string) => {
     const newSelected = new Set(selectedScenarios);
@@ -461,10 +499,7 @@ export const Home: React.FC<HomeProps> = ({
         canCompare={selectedScenarios.size === 2}
         onRunSelected={handleRunSelected}
         canRun={canRunSelected}
-        onRefresh={() => {
-          onRefresh();
-          triggerAction('refresh_data');
-        }}
+        onRefresh={handleRefresh}
         refreshActive={isActionActive('refresh_data')}
       />
 
@@ -472,6 +507,9 @@ export const Home: React.FC<HomeProps> = ({
         comparisonColumns={comparisonColumns}
         filteredComparisons={filteredComparisons}
         onOpenComparison={onOpenComparison}
+        emptyStateMessage={comparisonEmptyStateMessage}
+        onRefresh={handleRefreshComparisons}
+        refreshActive={comparisonsRefreshActive}
       />
 
       <HomeAlertsSection
@@ -541,23 +579,23 @@ export const Home: React.FC<HomeProps> = ({
         }
       >
         {monitoredScenario ? (
-          <div className="space-y-4">
+          <div className="min-w-0 space-y-4">
             <div className="flex items-center gap-3">
               {monitoredScenario.Status === 'Running'
                 ? runningIcons[runningIconIndex]
                 : <CheckCircle2 className="w-8 h-8 text-emerald-600" />}
-              <div>
-                <p className="font-semibold text-slate-900">{monitoredScenario.RunName}</p>
+              <div className="min-w-0">
+                <p className="break-words font-semibold text-slate-900">{monitoredScenario.RunName}</p>
                 <p className={`text-sm ${monitoredScenario.Status === 'Running' ? 'text-blue-700' : 'text-emerald-700'}`}>
                   {monitoredScenario.Status === 'Running' ? 'Running...' : `Status: ${monitoredScenario.Status}`}
                 </p>
               </div>
             </div>
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 space-y-1">
-              <p><span className="font-medium">Scenario ID:</span> {monitoredScenario.ScenarioRunID}</p>
-              <p><span className="font-medium">Dataflow ID:</span> {monitoredScenario.DataflowID || 'NA'}</p>
-              <p><span className="font-medium">Last Run By:</span> {monitoredScenario.LastRunBy || monitoredScenario.CreatedBy || 'NA'}</p>
-              <p><span className="font-medium">Last Updated:</span> {new Date(monitoredScenario.LastUpdatedAt).toLocaleString()}</p>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 space-y-1 break-words">
+              <p className="break-words"><span className="font-medium">Scenario ID:</span> {monitoredScenario.ScenarioRunID}</p>
+              <p className="break-words"><span className="font-medium">Dataflow ID:</span> {monitoredScenario.DataflowID || 'NA'}</p>
+              <p className="break-words"><span className="font-medium">Last Run By:</span> {monitoredScenario.LastRunBy || monitoredScenario.CreatedBy || 'NA'}</p>
+              <p className="break-words"><span className="font-medium">Last Updated:</span> {new Date(monitoredScenario.LastUpdatedAt).toLocaleString()}</p>
             </div>
           </div>
         ) : (
