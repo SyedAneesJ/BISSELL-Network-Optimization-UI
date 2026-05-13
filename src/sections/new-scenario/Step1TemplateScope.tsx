@@ -1,4 +1,5 @@
 import React from 'react';
+import { ChevronDown, Lock } from 'lucide-react';
 import { DatasetOptionSets } from '@/services';
 import { ScenarioTemplateOption } from '@/services/scenario';
 import { NewScenarioFormData } from './types';
@@ -6,28 +7,72 @@ import { NewScenarioFormData } from './types';
 interface Step1TemplateScopeProps {
   formData: NewScenarioFormData;
   onFormDataChange: (next: NewScenarioFormData) => void;
-  availableRegions: Array<'US' | 'Canada'>;
+  availableRegions: Array<'All' | 'US' | 'Canada'>;
   baselineOptions: ScenarioTemplateOption[];
+  templatesByRegion: Record<'US' | 'Canada', ScenarioTemplateOption[]>;
   entityScopes: string[];
   datasetOptions: DatasetOptionSets;
   onChannelToggle: (channel: string) => void;
   onTagToggle: (tag: string) => void;
 }
 
+const buildFormDataFromTemplate = (
+  template: ScenarioTemplateOption | null,
+  fallbackRegion: 'US' | 'Canada',
+  fallbackDatasetOptions: DatasetOptionSets,
+): NewScenarioFormData => ({
+  region: template?.region || fallbackRegion,
+  baselineScenarioId: template?.scenarioId || '',
+  baselineDataflowId: template?.dataflowId || '',
+  scenarioType: template?.scenarioType || '',
+  entityScope: template?.entityScope || 'NA',
+  channelScope: template ? [...template.channelScopes] : [...fallbackDatasetOptions.channelScopes],
+  termsScope: template?.termsScopes[0] || fallbackDatasetOptions.termsScopes[0] || '',
+  runName: '',
+  tags: template ? [...template.tags] : [],
+  notes: '',
+  activeDCs: new Set(template?.availableDcs || []),
+  suppressedDCs: new Set<string>(),
+  footprintMode: template?.footprintMode || fallbackDatasetOptions.footprintModes[0] || 'NA',
+  utilCap: template?.utilCap ?? fallbackDatasetOptions.utilCaps[0] ?? 0,
+  levelLoad: template?.levelLoad ?? (fallbackDatasetOptions.levelLoadModes.includes('On')),
+  leadTimeCap: template?.leadTimeCap ?? fallbackDatasetOptions.leadTimeCaps[0] ?? 0,
+  excludeBeyondCap: template?.excludeBeyondCap ?? (fallbackDatasetOptions.excludeBeyondCap.includes(true)),
+  costVsService: template?.costVsService ?? fallbackDatasetOptions.costVsServiceWeights[0] ?? 0,
+  fuelSurchargeMode: template?.fuelSurchargeMode || fallbackDatasetOptions.fuelSurchargeModes[0] || 'NA',
+  fuelSurchargeOverride: template?.fuelSurchargeOverride ?? null,
+  accessorials: {
+    residential: template ? template.accessorialFlags.includes('Residential') : fallbackDatasetOptions.accessorialFlags.includes('Residential'),
+    liftgate: template ? template.accessorialFlags.includes('Liftgate') : fallbackDatasetOptions.accessorialFlags.includes('Liftgate'),
+    insideDelivery: template ? template.accessorialFlags.includes('InsideDelivery') : fallbackDatasetOptions.accessorialFlags.includes('InsideDelivery'),
+  },
+  allowRelocationPrepaid: template?.allowRelocationPrepaid ?? fallbackDatasetOptions.allowRelocationPrepaid.includes(true),
+  allowRelocationCollect: template?.allowRelocationCollect ?? fallbackDatasetOptions.allowRelocationCollect.includes(true),
+  bcvRuleSet: template?.bcvRuleSet || fallbackDatasetOptions.bcvRuleSets[0] || 'NA',
+  allowManualOverride: template?.allowManualOverride ?? fallbackDatasetOptions.allowManualOverride.includes(true),
+});
+
 export const Step1TemplateScope: React.FC<Step1TemplateScopeProps> = ({
   formData,
   onFormDataChange,
   availableRegions,
   baselineOptions,
+  templatesByRegion,
   entityScopes,
   datasetOptions,
   onChannelToggle,
   onTagToggle,
 }) => {
+  const regionTemplates = templatesByRegion[formData.region] || baselineOptions;
   const selectedScenarioType = formData.scenarioType || '';
-  const visibleOptions = selectedScenarioType
-    ? baselineOptions.filter((option) => option.scenarioType === selectedScenarioType)
-    : baselineOptions;
+  const scenarioTypeOptions = Array.from(
+    new Set(regionTemplates.map((option) => option.scenarioType).filter(Boolean))
+  );
+  const selectedBaseScenario =
+    baselineOptions.find((item) => item.scenarioId === formData.baselineScenarioId)
+    || baselineOptions.find((item) => item.scenarioType === selectedScenarioType)
+    || baselineOptions[0]
+    || null;
 
   return (
     <div className="space-y-6">
@@ -44,9 +89,9 @@ export const Step1TemplateScope: React.FC<Step1TemplateScopeProps> = ({
           </div>
           <div className="h-8 w-px bg-slate-200" />
           <div>
-            <div className="text-xs uppercase tracking-wide text-slate-500">Baseline</div>
+            <div className="text-xs uppercase tracking-wide text-slate-500">Base Scenario</div>
             <div className="text-sm font-semibold text-slate-900">
-              {baselineOptions.find((item) => item.scenarioId === formData.baselineScenarioId)?.scenarioName || 'Select baseline'}
+              {selectedBaseScenario?.scenarioName || 'Select scenario type'}
             </div>
           </div>
         </div>
@@ -57,23 +102,41 @@ export const Step1TemplateScope: React.FC<Step1TemplateScopeProps> = ({
           <label className="block text-sm font-medium text-slate-700 mb-2">
             Region
           </label>
-          <select
-            value={formData.region}
-            onChange={(e) => {
-              onFormDataChange({
-                ...formData,
-                region: e.target.value as 'US' | 'Canada',
-                scenarioType: '',
-                baselineScenarioId: '',
-                baselineDataflowId: '',
-              });
-            }}
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            {availableRegions.map((region) => (
-              <option key={region} value={region}>{region}</option>
-            ))}
-          </select>
+          <div className="relative group max-w-sm">
+            <select
+              value={formData.region === 'US' ? 'US' : 'US'}
+              onChange={(e) => {
+                const nextRegion = e.target.value as 'All' | 'US' | 'Canada';
+                if (nextRegion !== 'US') return;
+                const nextRegionTemplates = templatesByRegion.US || baselineOptions;
+                const nextType = nextRegionTemplates[0]?.scenarioType || '';
+                const nextTemplate = nextType
+                  ? nextRegionTemplates.find((item) => item.scenarioType === nextType) || nextRegionTemplates[0] || null
+                  : nextRegionTemplates[0] || null;
+                onFormDataChange({
+                  ...buildFormDataFromTemplate(nextTemplate, 'US', datasetOptions),
+                  region: 'US',
+                  scenarioType: nextType,
+                  runName: formData.runName,
+                  notes: formData.notes,
+                });
+              }}
+              className="w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 py-2 pr-10 text-sm font-medium text-slate-700 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:bg-slate-100"
+              title="Only US is selectable for now"
+            >
+              {availableRegions.map((region) => (
+                <option key={region} value={region} disabled={region !== 'US'}>
+                  {region === 'All' ? 'All Workspaces' : region}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <span className="pointer-events-none absolute right-9 top-1/2 hidden -translate-y-1/2 items-center gap-1 rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-500 shadow-sm transition group-hover:flex">
+              <Lock className="h-3 w-3" />
+              Disabled
+            </span>
+            <p className="mt-1 text-xs text-slate-500">All Workspaces and Canada are visible but disabled.</p>
+          </div>
         </div>
 
         <div>
@@ -85,93 +148,28 @@ export const Step1TemplateScope: React.FC<Step1TemplateScopeProps> = ({
             onChange={(e) => {
               const nextType = e.target.value;
               const matchingOptions = nextType
-                ? baselineOptions.filter((item) => item.scenarioType === nextType)
-                : baselineOptions;
-              const nextScenario = matchingOptions.find((item) => item.scenarioId === formData.baselineScenarioId) || matchingOptions[0] || null;
+                ? regionTemplates.filter((item) => item.scenarioType === nextType)
+                : regionTemplates;
+              const nextScenario = matchingOptions[0] || null;
               onFormDataChange({
-                ...formData,
+                ...buildFormDataFromTemplate(nextScenario, formData.region as 'US' | 'Canada', datasetOptions),
                 scenarioType: nextType,
-                baselineScenarioId: nextScenario?.scenarioId || '',
-                baselineDataflowId: nextScenario?.dataflowId || '',
+                runName: formData.runName,
+                notes: formData.notes,
               });
             }}
             className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-            <option value="">All scenario types</option>
-            {Array.from(new Set(baselineOptions.map((option) => option.scenarioType).filter(Boolean))).map((type) => (
+            <option value="">Select a scenario type</option>
+            {scenarioTypeOptions.map((type) => (
               <option key={type} value={type}>{type}</option>
             ))}
           </select>
-          <p className="text-xs text-slate-500 mt-1">Optional filter. Leave empty to show all scenarios in the selected region.</p>
+          <p className="text-xs text-slate-500 mt-1">Choose one scenario type. The base scenario will be picked automatically from the original scenarios in that type.</p>
           {baselineOptions.length === 0 && (
             <p className="text-xs text-slate-500 mt-1">No scenario data available for this region.</p>
           )}
         </div>
-      </div>
-
-      <div>
-        <div className="flex items-center justify-between gap-3 mb-2">
-          <label className="block text-sm font-medium text-slate-700">
-            Scenario List
-          </label>
-          <span className="text-xs text-slate-500">
-            Sorted by Dataflow ID ascending
-          </span>
-        </div>
-        {baselineOptions.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-sm text-slate-500">
-            No scenarios for the selected region.
-          </div>
-        ) : visibleOptions.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-sm text-slate-500">
-            No scenarios match the selected scenario type.
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {visibleOptions.map((scenario) => {
-              const selected = formData.baselineScenarioId === scenario.scenarioId;
-              return (
-                <button
-                  key={scenario.scenarioId}
-                  type="button"
-                  onClick={() => onFormDataChange({
-                    ...formData,
-                    baselineScenarioId: scenario.scenarioId,
-                    baselineDataflowId: scenario.dataflowId,
-                    scenarioType: scenario.scenarioType,
-                  })}
-                  className={`w-full rounded-xl border px-4 py-3 text-left transition-all ${
-                    selected
-                      ? 'border-blue-500 bg-blue-50 shadow-sm ring-1 ring-blue-200'
-                      : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
-                  }`}
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="text-sm font-semibold text-slate-900 truncate">
-                        {scenario.scenarioName}
-                      </div>
-                      <div className="mt-1 flex flex-wrap gap-2 text-xs text-slate-500">
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5">
-                          Type: {scenario.scenarioType}
-                        </span>
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5">
-                          Dataflow ID: {scenario.dataflowId}
-                        </span>
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5">
-                          Entity: {scenario.entityScope}
-                        </span>
-                      </div>
-                    </div>
-                    <div className={`rounded-full px-3 py-1 text-xs font-semibold ${selected ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'}`}>
-                      {selected ? 'Selected' : 'Select'}
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        )}
       </div>
 
       <div>

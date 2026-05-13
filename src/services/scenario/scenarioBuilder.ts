@@ -4,6 +4,7 @@ import {
   ScenarioRunResultsDC,
   ScenarioRunResultsLane,
 } from '@/data';
+import { allocateScenarioOutputs } from './scenarioAllocator';
 import {
   ScenarioBuildContext,
   ScenarioBuildResult,
@@ -15,6 +16,28 @@ import {
 } from './scenarioModels';
 
 const buildScenarioId = (existingCount: number) => `SR${(existingCount + 1).toString().padStart(3, '0')}`;
+
+const dedupeRowsByKey = <T>(rows: T[], getKey: (row: T) => string): T[] => {
+  const seen = new Set<string>();
+  const result: T[] = [];
+  rows.forEach((row) => {
+    const key = String(getKey(row) || '').trim();
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    result.push(row);
+  });
+  return result;
+};
+
+const buildLaneGroupKey = (lane: ScenarioRunResultsLane): string =>
+  [
+    lane.Dest3Zip || '',
+    lane.Channel || '',
+    lane.Terms || '',
+    lane.DestState || '',
+    lane.ScenarioType || '',
+    lane.AssignedDC || lane.CostingWarehouse || lane.DefaultShipFrom || '',
+  ].join('|');
 
 const getBaselineHeader = (
   scenarioHeaders: ScenarioRunHeader[],
@@ -211,29 +234,42 @@ const buildScenarioResultsDC = (
 
   if (baselineResults.length === 0) return [];
 
-  return baselineResults.map((dc, idx) => ({
-    ScenarioRunID: scenarioId,
-    DCName: dc.DCName,
-    TotalCost: active.has(dc.DCName)
-      ? dc.TotalCost
-      : 0,
-    VolumeUnits: active.has(dc.DCName)
-      ? dc.VolumeUnits
-      : 0,
-    AvgDays: active.has(dc.DCName)
-      ? dc.AvgDays
-      : 0,
-    UtilPct: active.has(dc.DCName)
-      ? clampPercent(context.hasUtilCaps ? Math.min(dc.UtilPct, payload.input.utilCap) : dc.UtilPct)
-      : 0,
-    SpaceRequired: active.has(dc.DCName) ? dc.SpaceRequired : 0,
-    SpaceCore: active.has(dc.DCName) ? dc.SpaceCore : 0,
-    SpaceBCV: active.has(dc.DCName) ? dc.SpaceBCV : 0,
-    SLABreachCount: active.has(dc.DCName) ? dc.SLABreachCount : 0,
-    ExcludedBySLACount: active.has(dc.DCName) ? dc.ExcludedBySLACount : 0,
-    RankOverall: idx + 1,
-    IsSuppressed: active.has(dc.DCName) ? 'N' : 'Y',
-  }));
+  return dedupeRowsByKey(
+    [...baselineResults]
+      .sort((a, b) => {
+        const activeA = active.has(a.DCName);
+        const activeB = active.has(b.DCName);
+        if (activeA !== activeB) return activeA ? -1 : 1;
+        const costA = activeA ? a.TotalCost : Number.MAX_SAFE_INTEGER;
+        const costB = activeB ? b.TotalCost : Number.MAX_SAFE_INTEGER;
+        if (costA !== costB) return costA - costB;
+        return a.DCName.localeCompare(b.DCName);
+      })
+      .map((dc, idx) => ({
+        ScenarioRunID: scenarioId,
+        DCName: dc.DCName,
+        TotalCost: active.has(dc.DCName)
+          ? dc.TotalCost
+          : 0,
+        VolumeUnits: active.has(dc.DCName)
+          ? dc.VolumeUnits
+          : 0,
+        AvgDays: active.has(dc.DCName)
+          ? dc.AvgDays
+          : 0,
+        UtilPct: active.has(dc.DCName)
+          ? clampPercent(context.hasUtilCaps ? Math.min(dc.UtilPct, payload.input.utilCap) : dc.UtilPct)
+          : 0,
+        SpaceRequired: active.has(dc.DCName) ? dc.SpaceRequired : 0,
+        SpaceCore: active.has(dc.DCName) ? dc.SpaceCore : 0,
+        SpaceBCV: active.has(dc.DCName) ? dc.SpaceBCV : 0,
+        SLABreachCount: active.has(dc.DCName) ? dc.SLABreachCount : 0,
+        ExcludedBySLACount: active.has(dc.DCName) ? dc.ExcludedBySLACount : 0,
+        RankOverall: idx + 1,
+        IsSuppressed: active.has(dc.DCName) ? 'N' : 'Y',
+      })),
+    (dc) => dc.DCName,
+  );
 };
 
 const buildScenarioResultsLanes = (
@@ -247,6 +283,8 @@ const buildScenarioResultsLanes = (
     ?? 'SR001';
   const baselineLanes = context.scenarioResultsLanes
     .filter((lane) => lane.ScenarioRunID === baselineId)
+    .filter((lane) => Boolean(buildLaneGroupKey(lane)))
+    .filter((lane, index, rows) => rows.findIndex((item) => buildLaneGroupKey(item) === buildLaneGroupKey(lane)) === index)
     .slice(0, 6);
 
   return baselineLanes.map((lane, idx) => ({
@@ -382,9 +420,20 @@ export const buildScenarioArtifacts = (
   const baseline = getBaselineHeader(context.scenarioHeaders, payload.input.region, payload.input.baselineScenarioId);
   const headerBase = buildScenarioHeader(payload, context, scenarioId);
   const config = buildScenarioConfig(payload, scenarioId);
-  const resultsDC = buildScenarioResultsDC(payload, scenarioId, context);
-  const resultsLanes = buildScenarioResultsLanes(scenarioId, context, baseline?.ScenarioRunID ?? null);
-  const summary = summarizeDcResults(resultsDC);
+  const baselineLaneRows = baseline
+    ? context.scenarioResultsLanes.filter((row) => row.ScenarioRunID === baseline.ScenarioRunID)
+    : context.scenarioResultsLanes;
+  const allocation = allocateScenarioOutputs({
+    scenarioId,
+    lanes: baselineLaneRows.length > 0 ? baselineLaneRows : context.scenarioResultsLanes,
+    activeDcs: payload.input.activeDCs,
+    suppressedDcs: payload.input.suppressedDCs,
+    dcCapacityRows: context.dcCapacityRows,
+    utilCap: payload.input.utilCap,
+  });
+  const resultsDC = allocation.resultsDC;
+  const resultsLanes = allocation.resultsLanes;
+  const summary = allocation.summary;
 
   const header: ScenarioRunHeader = resultsDC.length === 0
     ? headerBase

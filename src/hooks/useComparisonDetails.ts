@@ -85,7 +85,7 @@ export const useComparisonDetails = ({
     if (a.length === 0 && b.length === 0) return laneComparisonStored;
 
     const key = (lane: ScenarioRunResultsLane) =>
-      `${lane.Dest3Zip}|${lane.Channel}|${lane.Terms}|${lane.CustomerGroup}`;
+      `${lane.Dest3Zip}|${lane.Channel}`;
     const byA = new Map(a.map(l => [key(l), l]));
     const byB = new Map(b.map(l => [key(l), l]));
     const keys = Array.from(new Set([...byA.keys(), ...byB.keys()]));
@@ -102,7 +102,7 @@ export const useComparisonDetails = ({
         ComparisonID: comparisonId,
         Dest3Zip: laneA?.Dest3Zip || laneB?.Dest3Zip || '',
         Channel: laneA?.Channel || laneB?.Channel || '',
-        Terms: laneA?.Terms || laneB?.Terms || '',
+        Terms: laneA?.Terms || laneB?.Terms || 'NA',
         CustomerGroup: laneA?.CustomerGroup || laneB?.CustomerGroup || '',
         DC_A: laneA?.AssignedDC || '',
         DC_B: laneB?.AssignedDC || '',

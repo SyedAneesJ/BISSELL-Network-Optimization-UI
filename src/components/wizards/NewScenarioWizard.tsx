@@ -21,7 +21,7 @@ interface NewScenarioWizardProps {
   onClose: () => void;
   onComplete: (payload: NewScenarioSubmit) => void;
   dataHealthSnapshot: DataHealthSnapshot;
-  availableRegions: Array<'US' | 'Canada'>;
+  availableRegions: Array<'All' | 'US' | 'Canada'>;
   missingDataReasons: string[];
   scenarioTemplatesByRegion: Record<'US' | 'Canada', ScenarioTemplateOption[]>;
   datasetOptions: DatasetOptionSets;
@@ -80,7 +80,7 @@ const templateToFormData = (
   entityScope: template?.entityScope || 'NA',
   channelScope: template ? [...template.channelScopes] : [...fallbackDatasetOptions.channelScopes],
   termsScope: template?.termsScopes[0] || fallbackDatasetOptions.termsScopes[0] || '',
-  runName: template ? `${template.scenarioName} - Copy` : '',
+  runName: '',
   tags: template ? [...template.tags] : [],
   notes: '',
   activeDCs: new Set(template?.availableDcs || []),
@@ -115,7 +115,7 @@ export const NewScenarioWizard: React.FC<NewScenarioWizardProps> = ({
   datasetOptions,
 }) => {
   const [step, setStep] = useState(1);
-  const initialRegion = availableRegions[0] || 'US';
+  const initialRegion: 'US' = 'US';
   const getTemplatesForRegion = (region: 'US' | 'Canada') => scenarioTemplatesByRegion[region] || [];
   const initialTemplate = getTemplatesForRegion(initialRegion)[0] || null;
   const [formData, setFormData] = useState<NewScenarioFormData>(() => templateToFormData(initialTemplate, initialRegion, datasetOptions));
@@ -154,27 +154,10 @@ export const NewScenarioWizard: React.FC<NewScenarioWizardProps> = ({
     prevIsOpenRef.current = isOpen;
   }, [isOpen, initialRegion, datasetOptions]);
 
-  useEffect(() => {
-    const templates = getTemplatesForRegion(formData.region);
-    if (templates.length === 0) return;
-    const filtered = formData.scenarioType
-      ? templates.filter((template) => template.scenarioType === formData.scenarioType)
-      : templates;
-    const current = filtered.find((template) => template.scenarioId === formData.baselineScenarioId);
-    const nextTemplate = current || filtered[0];
-    if (!nextTemplate) return;
-    if (current && formData.baselineDataflowId === nextTemplate.dataflowId) return;
-    setFormData((prev) => ({
-      ...templateToFormData(nextTemplate, formData.region, datasetOptions),
-      scenarioType: prev.scenarioType || nextTemplate.scenarioType || '',
-      runName: prev.runName || `${nextTemplate.scenarioName} - Copy`,
-      notes: prev.notes,
-    }));
-  }, [formData.region, formData.baselineScenarioId, formData.baselineDataflowId, formData.scenarioType, datasetOptions, scenarioTemplatesByRegion]);
-
   const totalSteps = 5;
   const isStep1Valid =
     Boolean(formData.region) &&
+    Boolean(formData.scenarioType) &&
     Boolean(formData.baselineScenarioId) &&
     Boolean(formData.entityScope) &&
     formData.runName.trim().length > 0;
@@ -263,6 +246,7 @@ export const NewScenarioWizard: React.FC<NewScenarioWizardProps> = ({
             onFormDataChange={setFormData}
             availableRegions={availableRegions}
             baselineOptions={sortedTemplatesForRegion}
+            templatesByRegion={scenarioTemplatesByRegion}
             entityScopes={entityScopes}
             datasetOptions={effectiveDatasetOptions}
             onChannelToggle={handleChannelToggle}

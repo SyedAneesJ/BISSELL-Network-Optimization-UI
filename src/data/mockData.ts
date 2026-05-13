@@ -15,7 +15,7 @@ export interface ScenarioRunHeader {
   LastRunBy?: string | null;
   LastRunAt?: string | null;
   LastRunExecutionId?: string | null;
-  Status: 'Draft' | 'Running' | 'Completed' | 'Reviewed' | 'Published' | 'Archived';
+  Status: 'Draft' | 'Running' | 'Completed' | 'Failed' | 'Reviewed' | 'Published' | 'Archived';
   ApprovedBy: string | null;
   ApprovedAt: string | null;
   LatestComment: string;
@@ -81,8 +81,8 @@ export interface ScenarioRunResultsLane {
   ScenarioRunID: string;
   Dest3Zip: string;
   DestState: string;
-  Channel: 'B2C' | 'B2B' | 'D2C';
-  Terms: 'Collect' | 'Prepaid';
+  Channel: 'B2C' | 'B2B' | 'D2C' | string;
+  Terms: 'Collect' | 'Prepaid' | 'Collect+Prepaid' | 'NA';
   CustomerGroup: string;
   AssignedDC: string;
   RankedOption1DC: string;
@@ -105,6 +105,26 @@ export interface ScenarioRunResultsLane {
   OverrideAppliedFlag: 'Y' | 'N';
   OverrideVersion: string | null;
   NotesFlag: string;
+  ScenarioType?: string;
+  RunName?: string;
+  CostingWarehouse?: string;
+  DefaultShipFrom?: string;
+  InboundSpend?: number;
+  ParcelSpend?: number;
+  LtlSpend?: number;
+  TotalCost?: number;
+  CostRank?: number;
+  CostPerUnit?: number;
+  WorkingCapacity?: number;
+  DistributionCost?: number;
+  TlSpend?: number;
+  BreachFlag?: string;
+  OrderToDeliverCalendarDays?: number;
+  ShipToDeliverCalendarDays?: number;
+  State?: string;
+  PartyName?: string;
+  Threshold?: number;
+  SourceDatasetId?: string;
 }
 
 export interface ScenarioOverride {

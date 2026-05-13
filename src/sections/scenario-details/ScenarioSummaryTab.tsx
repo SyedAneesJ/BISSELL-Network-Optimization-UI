@@ -30,6 +30,22 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
     return Math.max(0, Math.min(100, (numerator / denominator) * 100));
   };
 
+  const getSegmentStyle = (value: number, total: number) => {
+    if (value <= 0 || total <= 0) {
+      return {
+        flex: '0 0 0%',
+        minWidth: '0px',
+      };
+    }
+  
+    const pct = (value / total) * 100;
+  
+    return {
+      flex: `${Math.max(pct, 0.1)} 1 0%`,
+      minWidth: '8px',
+    };
+  };
+
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
@@ -119,19 +135,28 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
 
                 <div className="pt-2 border-t border-slate-200">
                   <div className="text-xs text-slate-500 mb-1">Square Footage/Working Capacity</div>
-                  <div className="flex gap-1 h-2">
+                  <div
+                    className="flex gap-1 h-3 overflow-hidden rounded-full bg-slate-200"
+                    title={`Square Footage ${dc.SpaceCore.toLocaleString()} vs Working Capacity ${dc.SpaceBCV.toLocaleString()}`}
+                  >
                     <div
                       className="bg-blue-500 rounded-l"
-                      style={{ width: `${clampBarWidth(dc.SpaceCore, dc.SpaceRequired)}%` }}
+                      style={getSegmentStyle(dc.SpaceCore, Math.max(dc.SpaceCore, dc.SpaceBCV, dc.SpaceRequired, 1))}
+                      aria-label={`Square Footage ${clampBarWidth(dc.SpaceCore, Math.max(dc.SpaceCore, dc.SpaceBCV, dc.SpaceRequired, 1)).toFixed(2)}%`}
                     />
                     <div
                       className="bg-green-500 rounded-r"
-                      style={{ width: `${clampBarWidth(dc.SpaceBCV, dc.SpaceRequired)}%` }}
+                      style={getSegmentStyle(dc.SpaceBCV, Math.max(dc.SpaceCore, dc.SpaceBCV, dc.SpaceRequired, 1))}
+                      aria-label={`Working Capacity ${clampBarWidth(dc.SpaceBCV, Math.max(dc.SpaceCore, dc.SpaceBCV, dc.SpaceRequired, 1)).toFixed(2)}%`}
                     />
                   </div>
                   <div className="flex justify-between text-xs text-slate-600 mt-1 gap-1">
-                    <span className="truncate">Square Footage: {dc.SpaceCore.toLocaleString()}</span>
-                    <span className="truncate text-right">Working Capacity: {dc.SpaceBCV.toLocaleString()}</span>
+                    <span className="truncate">{dc.SpaceCore.toLocaleString()}</span>
+                    <span className="truncate text-right">{dc.SpaceBCV.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between text-[11px] text-slate-500 mt-0.5 gap-1">
+                    <span>Square Footage: {clampBarWidth(dc.SpaceCore, Math.max(dc.SpaceCore, dc.SpaceBCV, dc.SpaceRequired, 1)).toFixed(2)}%</span>
+                    <span>Working Capacity: {clampBarWidth(dc.SpaceBCV, Math.max(dc.SpaceCore, dc.SpaceBCV, dc.SpaceRequired, 1)).toFixed(2)}%</span>
                   </div>
                 </div>
 

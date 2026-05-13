@@ -30,6 +30,11 @@ const METADATA_DATAFLOW_ENDPOINTS = [
   `/domo/codeengine/v2/packages/${DATAFLOW_PACKAGE_ID}/versions/${DATAFLOW_PACKAGE_VERSION}/functions/getDataFlowMetadata`,
 ] as const;
 
+const LOGIC_DATAFLOW_ENDPOINTS = [
+  '/domo/codeengine/v2/packages/dataflowlogic',
+  `/domo/codeengine/v2/packages/${DATAFLOW_PACKAGE_ID}/versions/${DATAFLOW_PACKAGE_VERSION}/functions/extractDataflowLogic`,
+] as const;
+
 const parseExecutionId = (response: any): number | string => {
   const rawId = response?.id ?? response?.executionId ?? response?.dapDataFlowExecutionId;
   if (rawId === undefined || rawId === null || rawId === '') {
@@ -194,6 +199,18 @@ export const checkDataflowStatus = async (dataflowId: string, _executionId: numb
     };
   } catch (err) {
     console.error('Error checking dataflow status:', err);
+    throw err;
+  }
+};
+
+export const extractDataflowLogic = async (dataflowId: string): Promise<any> => {
+  try {
+    const response = await callPostWithFallback(LOGIC_DATAFLOW_ENDPOINTS, {
+      dataFlowId: String(dataflowId),
+    });
+    return parsePackageResult(response);
+  } catch (err) {
+    console.error('Error extracting dataflow logic:', err);
     throw err;
   }
 };

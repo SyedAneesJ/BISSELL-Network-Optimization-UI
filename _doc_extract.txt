@@ -1,0 +1,1911 @@
+BISSELL Network Optimization
+All Scenarios Build Guide — Scenarios 2 to 22
+1. How to Use This Document
+This document covers Scenarios 2 through 22. Scenario 1 (Baseline) is complete. Each scenario section contains: exact ETL clone source, all tile changes with exact values, pre-run checklist, post-run SQL verification, and UI wizard settings.
+Credit Usage Rules:
+Use tile PREVIEW for all debugging — 0 credits
+Use SQL tiles on existing datasets to check numbers — 0 credits
+Only run full ETL when ALL previews confirmed — 1 credit per run
+Expected total runs for Scenarios 2-11: 10 runs (1 per scenario)
+Expected total runs for Canada Scenarios 12-22: 11 runs (1 per scenario)
+NEVER run ETL to test a change — always preview the specific tile first
+The Four ETL Levers — Only These Ever Change:
+[TABLE]
+Lever | ETL Tile | Baseline Value | What Changes
+1 - DC Scope Filter | Filter Rows 2 | `Costing Warehouse` IN ('Los Angeles','Dallas','Elwood','R Virginia') | Add Pharr/Stratford for Sc 4-11, BRM/RIC for Canada
+2 - Ship From Scenarios | LoadFromVault - Network Analysis . Ship From Scenarios | da1e2e74 - 4 DC pairs | Add new DC rows for Pharr/Stratford/Canada
+3 - Collect Treatment | Filter Rows 7 (LTL) + TL&DC_Filter + parcel path | Freight Terms = PP only | Remove PP filter for Collect Relo scenarios 7-11, 18-22
+4 - scenarioType Constant | Add Constants tile | Baseline | Change to Tactical Pro Forma / Strategic Pro Forma / etc
+[/TABLE]
+Lever
+ETL Tile
+Baseline Value
+What Changes
+1 - DC Scope Filter
+Filter Rows 2
+`Costing Warehouse` IN ('Los Angeles','Dallas','Elwood','R Virginia')
+Add Pharr/Stratford for Sc 4-11, BRM/RIC for Canada
+2 - Ship From Scenarios
+LoadFromVault - Network Analysis . Ship From Scenarios
+da1e2e74 - 4 DC pairs
+Add new DC rows for Pharr/Stratford/Canada
+3 - Collect Treatment
+Filter Rows 7 (LTL) + TL&DC_Filter + parcel path
+Freight Terms = PP only
+Remove PP filter for Collect Relo scenarios 7-11, 18-22
+4 - scenarioType Constant
+Add Constants tile
+Baseline
+Change to Tactical Pro Forma / Strategic Pro Forma / etc
+What NEVER Changes Across Scenarios:
+All rate files — Ocean Rates, FedEx Net Rates, Fulfillment Rates.xlsx
+All cost calculation formulas — Distribution Cost, Inbound allocation, Parcel spend
+All global filters — date range 2025, line status, country, channel assignment
+Join Data 10 keys — always 3-zip + Channel + Costing Warehouse
+Output grain — always 3-zip x Channel x Costing Warehouse
+Master Scenario Reference:
+[TABLE]
+# | Name | Clone From | DCs | Collect | Footprint | scenarioType | Status
+1 | US Baseline | — | 4 US | N/A | Fixed | Baseline | ✅ Complete
+2 | Tactical Pro Forma | Baseline | 4 US | Fixed | Fixed | Tactical Pro Forma | ⬜ Build
+3 | Strategic Pro Forma | Baseline | 4 US | Fixed | Unconstrained | Strategic Pro Forma | ⬜ Build
+4 | BCV Ingestion Only | Scenario 3 | 5 US+Pharr | Fixed | Unconstrained | BCV Ingestion | ⬜ Blocked*
+5 | Consolidation Tactical | Scenario 4 | 6 US | Fixed | Fixed | Tactical Consolidation | ⬜ Blocked*
+6 | Consolidation Strategic | Scenario 5 | 6 US | Fixed | Unconstrained | Strategic Consolidation | ⬜ Blocked*
+7 | Tactical — Collect Relo | Scenario 2 | 4 US | Can Relo | Fixed | Tactical Pro Forma | ⬜ Build
+8 | Strategic — Collect Relo | Scenario 3 | 4 US | Can Relo | Unconstrained | Strategic Pro Forma | ⬜ Build
+9 | BCV — Collect Relo | Scenario 4 | 5 US+Pharr | Can Relo | Unconstrained | BCV Ingestion | ⬜ Blocked*
+10 | Consolidation Tactical Relo | Scenario 5 | 6 US | Can Relo | Fixed | Tactical Consolidation | ⬜ Blocked*
+11 | Consolidation Strategic Relo | Scenario 6 | 6 US | Can Relo | Unconstrained | Strategic Consolidation | ⬜ Blocked*
+12 | Canada Baseline | US Baseline | BRM+RIC | N/A | Fixed | Baseline | ⬜ Blocked**
+13 | Canada Tactical | Canada 12 | BRM+RIC | Fixed | Fixed | Tactical Pro Forma | ⬜ Blocked**
+14 | Canada Strategic | Canada 12 | BRM+RIC | Fixed | Unconstrained | Strategic Pro Forma | ⬜ Blocked**
+15 | Canada BCV | Canada 14 | BRM+RIC+CT | Fixed | Unconstrained | BCV Ingestion | ⬜ Blocked**
+16 | Canada Consolidation Tactical | Canada 15 | BRM+RIC+CT | Fixed | Fixed | Tactical Consolidation | ⬜ Blocked**
+17 | Canada Consolidation Strategic | Canada 15 | BRM+RIC+CT | Fixed | Unconstrained | Strategic Consolidation | ⬜ Blocked**
+18 | Canada Tactical Relo | Canada 13 | BRM+RIC+CT | Can Relo | Fixed | Tactical Pro Forma | ⬜ Blocked**
+19 | Canada Strategic Relo | Canada 14 | BRM+RIC+CT | Can Relo | Unconstrained | Strategic Pro Forma | ⬜ Blocked**
+20 | Canada BCV Relo | Canada 15 | BRM+RIC+CT | Can Relo | Unconstrained | BCV Ingestion | ⬜ Blocked**
+21 | Canada Consolidation Tactical Relo | Canada 16 | BRM+RIC+CT | Can Relo | Fixed | Tactical Consolidation | ⬜ Blocked**
+22 | Canada Consolidation Strategic Relo | Canada 17 | BRM+RIC+CT | Can Relo | Unconstrained | Strategic Consolidation | ⬜ Blocked**
+[/TABLE]
+#
+Name
+Clone From
+DCs
+Collect
+Footprint
+scenarioType
+Status
+1
+US Baseline
+—
+4 US
+N/A
+Fixed
+Baseline
+✅ Complete
+2
+Tactical Pro Forma
+Baseline
+4 US
+Fixed
+Fixed
+Tactical Pro Forma
+⬜ Build
+3
+Strategic Pro Forma
+Baseline
+4 US
+Fixed
+Unconstrained
+Strategic Pro Forma
+⬜ Build
+4
+BCV Ingestion Only
+Scenario 3
+5 US+Pharr
+Fixed
+Unconstrained
+BCV Ingestion
+⬜ Blocked*
+5
+Consolidation Tactical
+Scenario 4
+6 US
+Fixed
+Fixed
+Tactical Consolidation
+⬜ Blocked*
+6
+Consolidation Strategic
+Scenario 5
+6 US
+Fixed
+Unconstrained
+Strategic Consolidation
+⬜ Blocked*
+7
+Tactical — Collect Relo
+Scenario 2
+4 US
+Can Relo
+Fixed
+Tactical Pro Forma
+⬜ Build
+8
+Strategic — Collect Relo
+Scenario 3
+4 US
+Can Relo
+Unconstrained
+Strategic Pro Forma
+⬜ Build
+9
+BCV — Collect Relo
+Scenario 4
+5 US+Pharr
+Can Relo
+Unconstrained
+BCV Ingestion
+⬜ Blocked*
+10
+Consolidation Tactical Relo
+Scenario 5
+6 US
+Can Relo
+Fixed
+Tactical Consolidation
+⬜ Blocked*
+11
+Consolidation Strategic Relo
+Scenario 6
+6 US
+Can Relo
+Unconstrained
+Strategic Consolidation
+⬜ Blocked*
+12
+Canada Baseline
+US Baseline
+BRM+RIC
+N/A
+Fixed
+Baseline
+⬜ Blocked**
+13
+Canada Tactical
+Canada 12
+BRM+RIC
+Fixed
+Fixed
+Tactical Pro Forma
+⬜ Blocked**
+14
+Canada Strategic
+Canada 12
+BRM+RIC
+Fixed
+Unconstrained
+Strategic Pro Forma
+⬜ Blocked**
+15
+Canada BCV
+Canada 14
+BRM+RIC+CT
+Fixed
+Unconstrained
+BCV Ingestion
+⬜ Blocked**
+16
+Canada Consolidation Tactical
+Canada 15
+BRM+RIC+CT
+Fixed
+Fixed
+Tactical Consolidation
+⬜ Blocked**
+17
+Canada Consolidation Strategic
+Canada 15
+BRM+RIC+CT
+Fixed
+Unconstrained
+Strategic Consolidation
+⬜ Blocked**
+18
+Canada Tactical Relo
+Canada 13
+BRM+RIC+CT
+Can Relo
+Fixed
+Tactical Pro Forma
+⬜ Blocked**
+19
+Canada Strategic Relo
+Canada 14
+BRM+RIC+CT
+Can Relo
+Unconstrained
+Strategic Pro Forma
+⬜ Blocked**
+20
+Canada BCV Relo
+Canada 15
+BRM+RIC+CT
+Can Relo
+Unconstrained
+BCV Ingestion
+⬜ Blocked**
+21
+Canada Consolidation Tactical Relo
+Canada 16
+BRM+RIC+CT
+Can Relo
+Fixed
+Tactical Consolidation
+⬜ Blocked**
+22
+Canada Consolidation Strategic Relo
+Canada 17
+BRM+RIC+CT
+Can Relo
+Unconstrained
+Strategic Consolidation
+⬜ Blocked**
+* Scenarios 4-11 blocked until Griffin confirms Pharr TX capacity and Stratford CT capacity values
+** Canada Scenarios 12-22 blocked until Kim/Abby confirm: Canadian FedEx zone table, Canadian fulfillment rates, Canadian DC capacity dataset
+US SCENARIOS 2-11
+2. US Scenario ETL and UI Build Steps
+Scenario 2 — Tactical Pro Forma — Fixed Footprint
+[TABLE]
+Field | Value
+Scenario Number | 2
+Full Name | Tactical Pro Forma — Fixed Footprint
+Clone From | DEV | ETL | Networkanalysis application flow - FIX TEST (Baseline)
+DC Scope | Elwood, Dallas, Los Angeles, R Virginia (4 DCs — unchanged)
+Collect Treatment | Fixed — Collect lanes stay at current DC. Only Prepaid lanes can be reassigned.
+Footprint Mode | Fixed — DC sizes cannot change. No new DCs.
+scenarioType Constant | Tactical Pro Forma
+[/TABLE]
+Field
+Value
+Scenario Number
+2
+Full Name
+Tactical Pro Forma — Fixed Footprint
+Clone From
+DEV | ETL | Networkanalysis application flow - FIX TEST (Baseline)
+DC Scope
+Elwood, Dallas, Los Angeles, R Virginia (4 DCs — unchanged)
+Collect Treatment
+Fixed — Collect lanes stay at current DC. Only Prepaid lanes can be reassigned.
+Footprint Mode
+Fixed — DC sizes cannot change. No new DCs.
+scenarioType Constant
+Tactical Pro Forma
+ETL Changes — Step by Step
+STEP 1 — Clone
+Clone ETL: DEV | ETL | Networkanalysis application flow - FIX TEST (Baseline)
+Rename to: DEV | ETL | Scenario function num(t){return new Paragraph({numbering:{reference:"numbers",level:0},children:[new TextRun({text:t,size:22,font})],...sp(80)})} - Tactical Pro Forma — Fixed Footprint
+STEP 2 — Filter Rows 2 (DC Scope Filter)
+Open Filter Rows 2 tile. Change expression to:
+`Costing Warehouse` IN ('Los Angeles','Dallas','Elwood','R Virginia')
+Preview Filter Rows 2. Expected: Only the DCs listed above visible in Costing Warehouse column.
+✅ Only expected DCs visible — proceed.
+❌ Unexpected DC names — expression has typo. Fix before continuing.
+STEP 3 — Collect Treatment (Filter Rows 7 / LTL&DC_Filter / TL&DC_Filter)
+KEEP existing PP filter as-is. Filter Rows 7 already has Freight Terms = PP. TL&DC_Filter already has Freight Terms = PP. No change needed. Collect lanes excluded from optimization by UI at runtime.
+STEP 4 — Add Constants (scenarioType)
+Open Add Constants tile. Change scenarioType value:
+scenarioType: 'Tactical Pro Forma'
+Preview Add Constants. Expected: scenarioType shows above value exactly.
+✅ scenarioType = 'Tactical Pro Forma' confirmed.
+STEP 5 — Ship From Scenarios Dataset
+Ship From Scenarios (da1e2e74) unchanged — same 4 DC pairs. Verify SQL: SELECT Assigned Warehouse, COUNT(DISTINCT Costing Warehouse) as options FROM Ship From Scenarios GROUP BY Assigned Warehouse — expect 4 rows each showing 4 options.
+STEP 6 — Link Output Datasets
+Open main PublishToVault tile → Create new dataset: DEV | ETL | Scenario function num(t){return new Paragraph({numbering:{reference:"numbers",level:0},children:[new TextRun({text:t,size:22,font})],...sp(80)})} Summary Data
+Open DEV | Debug | Cost Components tile → Create new dataset: DEV | ETL | Scenario function num(t){return new Paragraph({numbering:{reference:"numbers",level:0},children:[new TextRun({text:t,size:22,font})],...sp(80)})} Lane Level Data
+Save both tiles.
+STEP 7 — Pre-Run Checklist (verify ALL before running)
+[TABLE]
+Check | Expected | Status
+Filter Rows 2 expression | `Costing Warehouse` IN ('Los Angeles','Dallas','Elwood','R V... | [ ] Confirm
+Collect filter | As specified in Step 3 | [ ] Confirm
+scenarioType | Tactical Pro Forma | [ ] Confirm
+Ship From Scenarios | Correct DC pairs present | [ ] Confirm
+Both output tiles linked | New dataset names | [ ] Confirm
+All tiles green in canvas | No red error tiles | [ ] Confirm
+[/TABLE]
+Check
+Expected
+Status
+Filter Rows 2 expression
+`Costing Warehouse` IN ('Los Angeles','Dallas','Elwood','R V...
+[ ] Confirm
+Collect filter
+As specified in Step 3
+[ ] Confirm
+scenarioType
+Tactical Pro Forma
+[ ] Confirm
+Ship From Scenarios
+Correct DC pairs present
+[ ] Confirm
+Both output tiles linked
+New dataset names
+[ ] Confirm
+All tiles green in canvas
+No red error tiles
+[ ] Confirm
+STEP 8 — Run ETL (1 full run)
+Run the full ETL. Do NOT run until all Step 7 checks are confirmed.
+STEP 9 — Post-Run SQL Verification (0 credits)
+Run on summary dataset:
+SELECT DC, totalCost FROM `DEV | ETL | Scenario 2 Summary Data` ORDER BY DC
+Expected: Same DC totals as Baseline (same cost data). scenarioType = Tactical Pro Forma. UI will show lane reassignments based on 80% util cap + Level Load. Total Cost should be LOWER than Baseline after UI optimization.
+STEP 10 — UI Wizard Settings
+[TABLE]
+Step | Field | Value
+Step 1 | Region | US
+Step 1 | Scenario Type | Tactical Pro Forma (Fixed Footprint)
+Step 1 | Entity Scope | Core
+Step 1 | Channel Scope | B2C Home Delivery + B2B Retailer + D2C/eCom
+Step 1 | Terms Scope | Prepaid
+Step 1 | Run Name | Scenario 2 - Tactical Pro Forma
+Step 3 | Footprint Mode | Fixed
+Step 3 | Level Load | ON
+Step 3 | Utilization Cap | 80%
+Step 3 | Lead Time Cap | 10 days
+Step 3 | Cost vs Service | 50
+Step 4 | Relocation Prepaid | Y (ON)
+Step 4 | Relocation Collect | N (OFF)
+Step 4 | BCV Relocation Mapping | Default (Acceptance Criteria)
+[/TABLE]
+Step
+Field
+Value
+Step 1
+Region
+US
+Step 1
+Scenario Type
+Tactical Pro Forma (Fixed Footprint)
+Step 1
+Entity Scope
+Core
+Step 1
+Channel Scope
+B2C Home Delivery + B2B Retailer + D2C/eCom
+Step 1
+Terms Scope
+Prepaid
+Step 1
+Run Name
+Scenario 2 - Tactical Pro Forma
+Step 3
+Footprint Mode
+Fixed
+Step 3
+Level Load
+ON
+Step 3
+Utilization Cap
+80%
+Step 3
+Lead Time Cap
+10 days
+Step 3
+Cost vs Service
+50
+Step 4
+Relocation Prepaid
+Y (ON)
+Step 4
+Relocation Collect
+N (OFF)
+Step 4
+BCV Relocation Mapping
+Default (Acceptance Criteria)
+✅ No blockers — can build immediately after Scenario NaN is complete.
+Scenario 3 — Strategic Pro Forma — Unconstrained Footprint
+[TABLE]
+Field | Value
+Scenario Number | 3
+Full Name | Strategic Pro Forma — Unconstrained Footprint
+Clone From | DEV | ETL | Networkanalysis application flow - FIX TEST (Baseline)
+DC Scope | Elwood, Dallas, Los Angeles, R Virginia (4 DCs — unchanged)
+Collect Treatment | Fixed — Collect lanes stay at current DC. Only Prepaid lanes reassigned.
+Footprint Mode | Unconstrained — DC sizes CAN change. Model recommends optimal sqft per DC.
+scenarioType Constant | Strategic Pro Forma
+[/TABLE]
+Field
+Value
+Scenario Number
+3
+Full Name
+Strategic Pro Forma — Unconstrained Footprint
+Clone From
+DEV | ETL | Networkanalysis application flow - FIX TEST (Baseline)
+DC Scope
+Elwood, Dallas, Los Angeles, R Virginia (4 DCs — unchanged)
+Collect Treatment
+Fixed — Collect lanes stay at current DC. Only Prepaid lanes reassigned.
+Footprint Mode
+Unconstrained — DC sizes CAN change. Model recommends optimal sqft per DC.
+scenarioType Constant
+Strategic Pro Forma
+ETL Changes — Step by Step
+STEP 1 — Clone
+Clone ETL: DEV | ETL | Networkanalysis application flow - FIX TEST (Baseline)
+Rename to: DEV | ETL | Scenario function num(t){return new Paragraph({numbering:{reference:"numbers",level:0},children:[new TextRun({text:t,size:22,font})],...sp(80)})} - Strategic Pro Forma — Unconstrained Footprint
+STEP 2 — Filter Rows 2 (DC Scope Filter)
+Open Filter Rows 2 tile. Change expression to:
+`Costing Warehouse` IN ('Los Angeles','Dallas','Elwood','R Virginia')
+Preview Filter Rows 2. Expected: Only the DCs listed above visible in Costing Warehouse column.
+✅ Only expected DCs visible — proceed.
+❌ Unexpected DC names — expression has typo. Fix before continuing.
+STEP 3 — Collect Treatment (Filter Rows 7 / LTL&DC_Filter / TL&DC_Filter)
+KEEP existing PP filter as-is. Same as Scenario 2 — no change needed for Collect treatment.
+STEP 4 — Add Constants (scenarioType)
+Open Add Constants tile. Change scenarioType value:
+scenarioType: 'Strategic Pro Forma'
+Preview Add Constants. Expected: scenarioType shows above value exactly.
+✅ scenarioType = 'Strategic Pro Forma' confirmed.
+STEP 5 — Ship From Scenarios Dataset
+Ship From Scenarios (da1e2e74) unchanged — same 4 DC pairs. No change.
+STEP 6 — Link Output Datasets
+Open main PublishToVault tile → Create new dataset: DEV | ETL | Scenario function num(t){return new Paragraph({numbering:{reference:"numbers",level:0},children:[new TextRun({text:t,size:22,font})],...sp(80)})} Summary Data
+Open DEV | Debug | Cost Components tile → Create new dataset: DEV | ETL | Scenario function num(t){return new Paragraph({numbering:{reference:"numbers",level:0},children:[new TextRun({text:t,size:22,font})],...sp(80)})} Lane Level Data
+Save both tiles.
+STEP 7 — Pre-Run Checklist (verify ALL before running)
+[TABLE]
+Check | Expected | Status
+Filter Rows 2 expression | `Costing Warehouse` IN ('Los Angeles','Dallas','Elwood','R V... | [ ] Confirm
+Collect filter | As specified in Step 3 | [ ] Confirm
+scenarioType | Strategic Pro Forma | [ ] Confirm
+Ship From Scenarios | Correct DC pairs present | [ ] Confirm
+Both output tiles linked | New dataset names | [ ] Confirm
+All tiles green in canvas | No red error tiles | [ ] Confirm
+[/TABLE]
+Check
+Expected
+Status
+Filter Rows 2 expression
+`Costing Warehouse` IN ('Los Angeles','Dallas','Elwood','R V...
+[ ] Confirm
+Collect filter
+As specified in Step 3
+[ ] Confirm
+scenarioType
+Strategic Pro Forma
+[ ] Confirm
+Ship From Scenarios
+Correct DC pairs present
+[ ] Confirm
+Both output tiles linked
+New dataset names
+[ ] Confirm
+All tiles green in canvas
+No red error tiles
+[ ] Confirm
+STEP 8 — Run ETL (1 full run)
+Run the full ETL. Do NOT run until all Step 7 checks are confirmed.
+STEP 9 — Post-Run SQL Verification (0 credits)
+Run on summary dataset:
+SELECT DC, totalCost FROM `DEV | ETL | Scenario 3 Summary Data` ORDER BY DC
+Expected: Same DC totals as Baseline. scenarioType = Strategic Pro Forma. UI will show unconstrained optimization — lanes can move freely without capacity limits. Total Cost should be LOWER than Scenario 2 (fewer constraints).
+STEP 10 — UI Wizard Settings
+[TABLE]
+Step | Field | Value
+Step 1 | Region | US
+Step 1 | Scenario Type | Strategic Pro Forma (Unconstrained Footprint)
+Step 1 | Entity Scope | Core
+Step 1 | Channel Scope | B2C Home Delivery + B2B Retailer + D2C/eCom
+Step 1 | Terms Scope | Prepaid
+Step 1 | Run Name | Scenario 3 - Strategic Pro Forma
+Step 3 | Footprint Mode | Unconstrained
+Step 3 | Level Load | OFF
+Step 3 | Utilization Cap | No cap — unconstrained
+Step 3 | Lead Time Cap | 10 days
+Step 3 | Cost vs Service | 50
+Step 4 | Relocation Prepaid | Y (ON)
+Step 4 | Relocation Collect | N (OFF)
+Step 4 | BCV Relocation Mapping | Default (Acceptance Criteria)
+[/TABLE]
+Step
+Field
+Value
+Step 1
+Region
+US
+Step 1
+Scenario Type
+Strategic Pro Forma (Unconstrained Footprint)
+Step 1
+Entity Scope
+Core
+Step 1
+Channel Scope
+B2C Home Delivery + B2B Retailer + D2C/eCom
+Step 1
+Terms Scope
+Prepaid
+Step 1
+Run Name
+Scenario 3 - Strategic Pro Forma
+Step 3
+Footprint Mode
+Unconstrained
+Step 3
+Level Load
+OFF
+Step 3
+Utilization Cap
+No cap — unconstrained
+Step 3
+Lead Time Cap
+10 days
+Step 3
+Cost vs Service
+50
+Step 4
+Relocation Prepaid
+Y (ON)
+Step 4
+Relocation Collect
+N (OFF)
+Step 4
+BCV Relocation Mapping
+Default (Acceptance Criteria)
+✅ No blockers — can build immediately after Scenario NaN is complete.
+Scenario 4 — BCV Ingestion Only — Strategic Unconstrained
+[TABLE]
+Field | Value
+Scenario Number | 4
+Full Name | BCV Ingestion Only — Strategic Unconstrained
+Clone From | DEV | ETL | Scenario 3 - Strategic Pro Forma
+DC Scope | Elwood, Dallas, Los Angeles, R Virginia + Pharr TX (5 DCs)
+Collect Treatment | Fixed — Collect lanes stay at current DC.
+Footprint Mode | Unconstrained — DC sizes can change.
+scenarioType Constant | BCV Ingestion
+[/TABLE]
+Field
+Value
+Scenario Number
+4
+Full Name
+BCV Ingestion Only — Strategic Unconstrained
+Clone From
+DEV | ETL | Scenario 3 - Strategic Pro Forma
+DC Scope
+Elwood, Dallas, Los Angeles, R Virginia + Pharr TX (5 DCs)
+Collect Treatment
+Fixed — Collect lanes stay at current DC.
+Footprint Mode
+Unconstrained — DC sizes can change.
+scenarioType Constant
+BCV Ingestion
+ETL Changes — Step by Step
+STEP 1 — Clone
+Clone ETL: DEV | ETL | Scenario 3 - Strategic Pro Forma
+Rename to: DEV | ETL | Scenario function num(t){return new Paragraph({numbering:{reference:"numbers",level:0},children:[new TextRun({text:t,size:22,font})],...sp(80)})} - BCV Ingestion Only — Strategic Unconstrained
+STEP 2 — Filter Rows 2 (DC Scope Filter)
+Open Filter Rows 2 tile. Change expression to:
+`Costing Warehouse` IN ('Los Angeles','Dallas','Elwood','R Virginia','Pharr')
+Preview Filter Rows 2. Expected: Only the DCs listed above visible in Costing Warehouse column.
+✅ Only expected DCs visible — proceed.
+❌ Unexpected DC names — expression has typo. Fix before continuing.
+STEP 3 — Collect Treatment (Filter Rows 7 / LTL&DC_Filter / TL&DC_Filter)
+KEEP existing PP filter. No change to collect treatment.
+STEP 4 — Add Constants (scenarioType)
+Open Add Constants tile. Change scenarioType value:
+scenarioType: 'BCV Ingestion'
+Preview Add Constants. Expected: scenarioType shows above value exactly.
+✅ scenarioType = 'BCV Ingestion' confirmed.
+STEP 5 — Ship From Scenarios Dataset
+Ship From Scenarios (da1e2e74) MUST BE UPDATED before building this ETL. Action: Add Pharr TX rows to Ship From Scenarios dataset. Required new rows:   Assigned Warehouse = Elwood    | Costing Warehouse = Pharr   Assigned Warehouse = Dallas    | Costing Warehouse = Pharr   Assigned Warehouse = LA        | Costing Warehouse = Pharr   Assigned Warehouse = R Virginia| Costing Warehouse = Pharr   Assigned Warehouse = Pharr     | Costing Warehouse = Elwood   Assigned Warehouse = Pharr     | Costing Warehouse = Dallas   Assigned Warehouse = Pharr     | Costing Warehouse = Los Angeles   Assigned Warehouse = Pharr     | Costing Warehouse = R Virginia   Assigned Warehouse = Pharr     | Costing Warehouse = Pharr Verify after update: SELECT Assigned Warehouse, COUNT(*) FROM Ship From Scenarios GROUP BY Assigned Warehouse — expect 5 rows each showing 5 options.
+STEP 6 — Link Output Datasets
+Open main PublishToVault tile → Create new dataset: DEV | ETL | Scenario function num(t){return new Paragraph({numbering:{reference:"numbers",level:0},children:[new TextRun({text:t,size:22,font})],...sp(80)})} Summary Data
+Open DEV | Debug | Cost Components tile → Create new dataset: DEV | ETL | Scenario function num(t){return new Paragraph({numbering:{reference:"numbers",level:0},children:[new TextRun({text:t,size:22,font})],...sp(80)})} Lane Level Data
+Save both tiles.
+STEP 7 — Pre-Run Checklist (verify ALL before running)
+[TABLE]
+Check | Expected | Status
+Filter Rows 2 expression | `Costing Warehouse` IN ('Los Angeles','Dallas','Elwood','R V... | [ ] Confirm
+Collect filter | As specified in Step 3 | [ ] Confirm
+scenarioType | BCV Ingestion | [ ] Confirm
+Ship From Scenarios | Correct DC pairs present | [ ] Confirm
+Both output tiles linked | New dataset names | [ ] Confirm
+All tiles green in canvas | No red error tiles | [ ] Confirm
+[/TABLE]
+Check
+Expected
+Status
+Filter Rows 2 expression
+`Costing Warehouse` IN ('Los Angeles','Dallas','Elwood','R V...
+[ ] Confirm
+Collect filter
+As specified in Step 3
+[ ] Confirm
+scenarioType
+BCV Ingestion
+[ ] Confirm
+Ship From Scenarios
+Correct DC pairs present
+[ ] Confirm
+Both output tiles linked
+New dataset names
+[ ] Confirm
+All tiles green in canvas
+No red error tiles
+[ ] Confirm
+STEP 8 — Run ETL (1 full run)
+Run the full ETL. Do NOT run until all Step 7 checks are confirmed.
+STEP 9 — Post-Run SQL Verification (0 credits)
+Run on summary dataset:
+SELECT DC, totalCost FROM `DEV | ETL | Scenario 4 Summary Data` ORDER BY DC
+Expected: 5 DCs visible in output including Pharr. scenarioType = BCV Ingestion. Pharr TX should show cost values for lanes where it is the lowest-cost option (primarily southern TX zips).
+STEP 10 — UI Wizard Settings
+[TABLE]
+Step | Field | Value
+Step 1 | Region | US
+Step 1 | Scenario Type | BCV Ingestion Only
+Step 1 | Entity Scope | BCV
+Step 1 | Channel Scope | B2C Home Delivery + B2B Retailer + D2C/eCom
+Step 1 | Terms Scope | Prepaid
+Step 1 | Run Name | Scenario 4 - BCV Ingestion Only
+Step 3 | Footprint Mode | Unconstrained
+Step 3 | Level Load | OFF
+Step 3 | Utilization Cap | No cap
+Step 4 | Relocation Prepaid | Y (ON)
+Step 4 | Relocation Collect | N (OFF)
+Step 4 | BCV Relocation Mapping | Default (Acceptance Criteria)
+[/TABLE]
+Step
+Field
+Value
+Step 1
+Region
+US
+Step 1
+Scenario Type
+BCV Ingestion Only
+Step 1
+Entity Scope
+BCV
+Step 1
+Channel Scope
+B2C Home Delivery + B2B Retailer + D2C/eCom
+Step 1
+Terms Scope
+Prepaid
+Step 1
+Run Name
+Scenario 4 - BCV Ingestion Only
+Step 3
+Footprint Mode
+Unconstrained
+Step 3
+Level Load
+OFF
+Step 3
+Utilization Cap
+No cap
+Step 4
+Relocation Prepaid
+Y (ON)
+Step 4
+Relocation Collect
+N (OFF)
+Step 4
+BCV Relocation Mapping
+Default (Acceptance Criteria)
+BLOCKERS — Must Resolve Before Building This Scenario
+🔴 BLOCKED: Griffin must confirm Pharr TX Working Capacity and sqft value before building — needed for DEV | US DC Capacity Detail dataset
+🔴 BLOCKED: Ship From Scenarios dataset (da1e2e74) must be updated with Pharr TX rows before ETL clone
+🔴 BLOCKED: DEV | US DC Capacity Detail (fdb5f946) must have Pharr TX row added with correct sqft
+Scenario 5 — Consolidation Tactical — Fixed Footprint
+[TABLE]
+Field | Value
+Scenario Number | 5
+Full Name | Consolidation Tactical — Fixed Footprint
+Clone From | DEV | ETL | Scenario 4 - BCV Ingestion Only
+DC Scope | Elwood, Dallas, Los Angeles, R Virginia + Pharr TX + Stratford CT (6 DCs)
+Collect Treatment | Fixed — Collect lanes stay at current DC.
+Footprint Mode | Fixed — DC sizes cannot change.
+scenarioType Constant | Tactical Consolidation
+[/TABLE]
+Field
+Value
+Scenario Number
+5
+Full Name
+Consolidation Tactical — Fixed Footprint
+Clone From
+DEV | ETL | Scenario 4 - BCV Ingestion Only
+DC Scope
+Elwood, Dallas, Los Angeles, R Virginia + Pharr TX + Stratford CT (6 DCs)
+Collect Treatment
+Fixed — Collect lanes stay at current DC.
+Footprint Mode
+Fixed — DC sizes cannot change.
+scenarioType Constant
+Tactical Consolidation
+ETL Changes — Step by Step
+STEP 1 — Clone
+Clone ETL: DEV | ETL | Scenario 4 - BCV Ingestion Only
+Rename to: DEV | ETL | Scenario function num(t){return new Paragraph({numbering:{reference:"numbers",level:0},children:[new TextRun({text:t,size:22,font})],...sp(80)})} - Consolidation Tactical — Fixed Footprint
+STEP 2 — Filter Rows 2 (DC Scope Filter)
+Open Filter Rows 2 tile. Change expression to:
+`Costing Warehouse` IN ('Los Angeles','Dallas','Elwood','R Virginia','Pharr','Stratford')
+Preview Filter Rows 2. Expected: Only the DCs listed above visible in Costing Warehouse column.
+✅ Only expected DCs visible — proceed.
+❌ Unexpected DC names — expression has typo. Fix before continuing.
+STEP 3 — Collect Treatment (Filter Rows 7 / LTL&DC_Filter / TL&DC_Filter)
+KEEP existing PP filter. No change to collect treatment.
+STEP 4 — Add Constants (scenarioType)
+Open Add Constants tile. Change scenarioType value:
+scenarioType: 'Tactical Consolidation'
+Preview Add Constants. Expected: scenarioType shows above value exactly.
+✅ scenarioType = 'Tactical Consolidation' confirmed.
+STEP 5 — Ship From Scenarios Dataset
+Ship From Scenarios (da1e2e74) MUST HAVE STRATFORD CT ADDED. Action: Add Stratford CT rows (in addition to Pharr already added for Sc4):   Add Assigned Warehouse = Stratford pairing with all 6 DCs   Add all 5 existing DCs pairing with Costing Warehouse = Stratford Verify: SELECT Assigned Warehouse, COUNT(*) FROM Ship From Scenarios GROUP BY Assigned Warehouse — expect 6 rows each showing 6 options.
+STEP 6 — Link Output Datasets
+Open main PublishToVault tile → Create new dataset: DEV | ETL | Scenario function num(t){return new Paragraph({numbering:{reference:"numbers",level:0},children:[new TextRun({text:t,size:22,font})],...sp(80)})} Summary Data
+Open DEV | Debug | Cost Components tile → Create new dataset: DEV | ETL | Scenario function num(t){return new Paragraph({numbering:{reference:"numbers",level:0},children:[new TextRun({text:t,size:22,font})],...sp(80)})} Lane Level Data
+Save both tiles.
+STEP 7 — Pre-Run Checklist (verify ALL before running)
+[TABLE]
+Check | Expected | Status
+Filter Rows 2 expression | `Costing Warehouse` IN ('Los Angeles','Dallas','Elwood','R V... | [ ] Confirm
+Collect filter | As specified in Step 3 | [ ] Confirm
+scenarioType | Tactical Consolidation | [ ] Confirm
+Ship From Scenarios | Correct DC pairs present | [ ] Confirm
+Both output tiles linked | New dataset names | [ ] Confirm
+All tiles green in canvas | No red error tiles | [ ] Confirm
+[/TABLE]
+Check
+Expected
+Status
+Filter Rows 2 expression
+`Costing Warehouse` IN ('Los Angeles','Dallas','Elwood','R V...
+[ ] Confirm
+Collect filter
+As specified in Step 3
+[ ] Confirm
+scenarioType
+Tactical Consolidation
+[ ] Confirm
+Ship From Scenarios
+Correct DC pairs present
+[ ] Confirm
+Both output tiles linked
+New dataset names
+[ ] Confirm
+All tiles green in canvas
+No red error tiles
+[ ] Confirm
+STEP 8 — Run ETL (1 full run)
+Run the full ETL. Do NOT run until all Step 7 checks are confirmed.
+STEP 9 — Post-Run SQL Verification (0 credits)
+Run on summary dataset:
+SELECT DC, totalCost FROM `DEV | ETL | Scenario 5 Summary Data` ORDER BY DC
+Expected: 6 DCs in output including Pharr and Stratford. scenarioType = Tactical Consolidation. Both Core BISSELL and BCV lanes optimized together within 80% util cap.
+STEP 10 — UI Wizard Settings
+[TABLE]
+Step | Field | Value
+Step 1 | Region | US
+Step 1 | Scenario Type | Consolidation (Tactical)
+Step 1 | Entity Scope | Core+BCV
+Step 1 | Channel Scope | B2C Home Delivery + B2B Retailer + D2C/eCom
+Step 1 | Terms Scope | Prepaid
+Step 1 | Run Name | Scenario 5 - Consolidation Tactical
+Step 3 | Footprint Mode | Fixed
+Step 3 | Level Load | ON
+Step 3 | Utilization Cap | 80%
+Step 4 | Relocation Prepaid | Y (ON)
+Step 4 | Relocation Collect | N (OFF)
+Step 4 | BCV Relocation Mapping | Default (Acceptance Criteria)
+[/TABLE]
+Step
+Field
+Value
+Step 1
+Region
+US
+Step 1
+Scenario Type
+Consolidation (Tactical)
+Step 1
+Entity Scope
+Core+BCV
+Step 1
+Channel Scope
+B2C Home Delivery + B2B Retailer + D2C/eCom
+Step 1
+Terms Scope
+Prepaid
+Step 1
+Run Name
+Scenario 5 - Consolidation Tactical
+Step 3
+Footprint Mode
+Fixed
+Step 3
+Level Load
+ON
+Step 3
+Utilization Cap
+80%
+Step 4
+Relocation Prepaid
+Y (ON)
+Step 4
+Relocation Collect
+N (OFF)
+Step 4
+BCV Relocation Mapping
+Default (Acceptance Criteria)
+BLOCKERS — Must Resolve Before Building This Scenario
+🔴 BLOCKED: Griffin must confirm Stratford CT sqft and capacity values
+🔴 BLOCKED: Ship From Scenarios must have both Pharr TX and Stratford CT rows
+🔴 BLOCKED: DEV | US DC Capacity Detail must have both Pharr and Stratford rows
+Scenario 6 — Consolidation Strategic — Unconstrained Footprint
+[TABLE]
+Field | Value
+Scenario Number | 6
+Full Name | Consolidation Strategic — Unconstrained Footprint
+Clone From | DEV | ETL | Scenario 5 - Consolidation Tactical
+DC Scope | Elwood, Dallas, Los Angeles, R Virginia + Pharr TX + Stratford CT (6 DCs)
+Collect Treatment | Fixed — Collect lanes stay at current DC.
+Footprint Mode | Unconstrained — DC sizes can change.
+scenarioType Constant | Strategic Consolidation
+[/TABLE]
+Field
+Value
+Scenario Number
+6
+Full Name
+Consolidation Strategic — Unconstrained Footprint
+Clone From
+DEV | ETL | Scenario 5 - Consolidation Tactical
+DC Scope
+Elwood, Dallas, Los Angeles, R Virginia + Pharr TX + Stratford CT (6 DCs)
+Collect Treatment
+Fixed — Collect lanes stay at current DC.
+Footprint Mode
+Unconstrained — DC sizes can change.
+scenarioType Constant
+Strategic Consolidation
+ETL Changes — Step by Step
+STEP 1 — Clone
+Clone ETL: DEV | ETL | Scenario 5 - Consolidation Tactical
+Rename to: DEV | ETL | Scenario function num(t){return new Paragraph({numbering:{reference:"numbers",level:0},children:[new TextRun({text:t,size:22,font})],...sp(80)})} - Consolidation Strategic — Unconstrained Footprint
+STEP 2 — Filter Rows 2 (DC Scope Filter)
+Open Filter Rows 2 tile. Change expression to:
+`Costing Warehouse` IN ('Los Angeles','Dallas','Elwood','R Virginia','Pharr','Stratford')
+Preview Filter Rows 2. Expected: Only the DCs listed above visible in Costing Warehouse column.
+✅ Only expected DCs visible — proceed.
+❌ Unexpected DC names — expression has typo. Fix before continuing.
+STEP 3 — Collect Treatment (Filter Rows 7 / LTL&DC_Filter / TL&DC_Filter)
+KEEP existing PP filter. No change.
+STEP 4 — Add Constants (scenarioType)
+Open Add Constants tile. Change scenarioType value:
+scenarioType: 'Strategic Consolidation'
+Preview Add Constants. Expected: scenarioType shows above value exactly.
+✅ scenarioType = 'Strategic Consolidation' confirmed.
+STEP 5 — Ship From Scenarios Dataset
+Ship From Scenarios same as Scenario 5 (6 DCs already set up). No change.
+STEP 6 — Link Output Datasets
+Open main PublishToVault tile → Create new dataset: DEV | ETL | Scenario function num(t){return new Paragraph({numbering:{reference:"numbers",level:0},children:[new TextRun({text:t,size:22,font})],...sp(80)})} Summary Data
+Open DEV | Debug | Cost Components tile → Create new dataset: DEV | ETL | Scenario function num(t){return new Paragraph({numbering:{reference:"numbers",level:0},children:[new TextRun({text:t,size:22,font})],...sp(80)})} Lane Level Data
+Save both tiles.
+STEP 7 — Pre-Run Checklist (verify ALL before running)
+[TABLE]
+Check | Expected | Status
+Filter Rows 2 expression | `Costing Warehouse` IN ('Los Angeles','Dallas','Elwood','R V... | [ ] Confirm
+Collect filter | As specified in Step 3 | [ ] Confirm
+scenarioType | Strategic Consolidation | [ ] Confirm
+Ship From Scenarios | Correct DC pairs present | [ ] Confirm
+Both output tiles linked | New dataset names | [ ] Confirm
+All tiles green in canvas | No red error tiles | [ ] Confirm
+[/TABLE]
+Check
+Expected
+Status
+Filter Rows 2 expression
+`Costing Warehouse` IN ('Los Angeles','Dallas','Elwood','R V...
+[ ] Confirm
+Collect filter
+As specified in Step 3
+[ ] Confirm
+scenarioType
+Strategic Consolidation
+[ ] Confirm
+Ship From Scenarios
+Correct DC pairs present
+[ ] Confirm
+Both output tiles linked
+New dataset names
+[ ] Confirm
+All tiles green in canvas
+No red error tiles
+[ ] Confirm
+STEP 8 — Run ETL (1 full run)
+Run the full ETL. Do NOT run until all Step 7 checks are confirmed.
+STEP 9 — Post-Run SQL Verification (0 credits)
+Run on summary dataset:
+SELECT DC, totalCost FROM `DEV | ETL | Scenario 6 Summary Data` ORDER BY DC
+Expected: Same 6 DCs as Scenario 5. scenarioType = Strategic Consolidation. No utilization cap — model can push any DC to any utilization. Total Cost should be lowest of all scenarios (fewest constraints).
+STEP 10 — UI Wizard Settings
+[TABLE]
+Step | Field | Value
+Step 1 | Region | US
+Step 1 | Scenario Type | Consolidation (Strategic)
+Step 1 | Entity Scope | Core+BCV
+Step 1 | Channel Scope | B2C Home Delivery + B2B Retailer + D2C/eCom
+Step 1 | Terms Scope | Prepaid
+Step 1 | Run Name | Scenario 6 - Consolidation Strategic
+Step 3 | Footprint Mode | Unconstrained
+Step 3 | Level Load | OFF
+Step 3 | Utilization Cap | No cap
+Step 4 | Relocation Prepaid | Y (ON)
+Step 4 | Relocation Collect | N (OFF)
+Step 4 | BCV Relocation Mapping | Default (Acceptance Criteria)
+[/TABLE]
+Step
+Field
+Value
+Step 1
+Region
+US
+Step 1
+Scenario Type
+Consolidation (Strategic)
+Step 1
+Entity Scope
+Core+BCV
+Step 1
+Channel Scope
+B2C Home Delivery + B2B Retailer + D2C/eCom
+Step 1
+Terms Scope
+Prepaid
+Step 1
+Run Name
+Scenario 6 - Consolidation Strategic
+Step 3
+Footprint Mode
+Unconstrained
+Step 3
+Level Load
+OFF
+Step 3
+Utilization Cap
+No cap
+Step 4
+Relocation Prepaid
+Y (ON)
+Step 4
+Relocation Collect
+N (OFF)
+Step 4
+BCV Relocation Mapping
+Default (Acceptance Criteria)
+BLOCKERS — Must Resolve Before Building This Scenario
+🔴 BLOCKED: Same blockers as Scenario 5 — Pharr and Stratford must be in datasets first
+Scenario 7 — Tactical Pro Forma — Fixed Footprint (Collect Relocatable)
+[TABLE]
+Field | Value
+Scenario Number | 7
+Full Name | Tactical Pro Forma — Fixed Footprint (Collect Relocatable)
+Clone From | DEV | ETL | Scenario 2 - Tactical Pro Forma
+DC Scope | Elwood, Dallas, Los Angeles, R Virginia (4 DCs — unchanged)
+Collect Treatment | Collect Relocatable — BOTH Prepaid AND Collect lanes can be reassigned.
+Footprint Mode | Fixed — DC sizes cannot change.
+scenarioType Constant | Tactical Pro Forma
+[/TABLE]
+Field
+Value
+Scenario Number
+7
+Full Name
+Tactical Pro Forma — Fixed Footprint (Collect Relocatable)
+Clone From
+DEV | ETL | Scenario 2 - Tactical Pro Forma
+DC Scope
+Elwood, Dallas, Los Angeles, R Virginia (4 DCs — unchanged)
+Collect Treatment
+Collect Relocatable — BOTH Prepaid AND Collect lanes can be reassigned.
+Footprint Mode
+Fixed — DC sizes cannot change.
+scenarioType Constant
+Tactical Pro Forma
+ETL Changes — Step by Step
+STEP 1 — Clone
+Clone ETL: DEV | ETL | Scenario 2 - Tactical Pro Forma
+Rename to: DEV | ETL | Scenario function num(t){return new Paragraph({numbering:{reference:"numbers",level:0},children:[new TextRun({text:t,size:22,font})],...sp(80)})} - Tactical Pro Forma — Fixed Footprint (Collect Relocatable)
+STEP 2 — Filter Rows 2 (DC Scope Filter)
+Open Filter Rows 2 tile. Change expression to:
+`Costing Warehouse` IN ('Los Angeles','Dallas','Elwood','R Virginia')
+Preview Filter Rows 2. Expected: Only the DCs listed above visible in Costing Warehouse column.
+✅ Only expected DCs visible — proceed.
+❌ Unexpected DC names — expression has typo. Fix before continuing.
+STEP 3 — Collect Treatment (Filter Rows 7 / LTL&DC_Filter / TL&DC_Filter)
+REMOVE the PP-only filter from THREE places: 1. Filter Rows 7 (LTL path) — remove Freight Terms = PP filter entirely 2. TL&DC_Filter — remove AND Freight Terms = PP condition 3. Parcel path — in the outbound cascade, remove any Freight Terms filter After removing: Preview each of the 3 tiles. Confirm Freight Terms column now shows both PP and COL values.
+STEP 4 — Add Constants (scenarioType)
+Open Add Constants tile. Change scenarioType value:
+scenarioType: 'Tactical Pro Forma'
+Preview Add Constants. Expected: scenarioType shows above value exactly.
+✅ scenarioType = 'Tactical Pro Forma' confirmed.
+STEP 5 — Ship From Scenarios Dataset
+Ship From Scenarios (da1e2e74) unchanged — same 4 DCs. No change.
+STEP 6 — Link Output Datasets
+Open main PublishToVault tile → Create new dataset: DEV | ETL | Scenario function num(t){return new Paragraph({numbering:{reference:"numbers",level:0},children:[new TextRun({text:t,size:22,font})],...sp(80)})} Summary Data
+Open DEV | Debug | Cost Components tile → Create new dataset: DEV | ETL | Scenario function num(t){return new Paragraph({numbering:{reference:"numbers",level:0},children:[new TextRun({text:t,size:22,font})],...sp(80)})} Lane Level Data
+Save both tiles.
+STEP 7 — Pre-Run Checklist (verify ALL before running)
+[TABLE]
+Check | Expected | Status
+Filter Rows 2 expression | `Costing Warehouse` IN ('Los Angeles','Dallas','Elwood','R V... | [ ] Confirm
+Collect filter | As specified in Step 3 | [ ] Confirm
+scenarioType | Tactical Pro Forma | [ ] Confirm
+Ship From Scenarios | Correct DC pairs present | [ ] Confirm
+Both output tiles linked | New dataset names | [ ] Confirm
+All tiles green in canvas | No red error tiles | [ ] Confirm
+[/TABLE]
+Check
+Expected
+Status
+Filter Rows 2 expression
+`Costing Warehouse` IN ('Los Angeles','Dallas','Elwood','R V...
+[ ] Confirm
+Collect filter
+As specified in Step 3
+[ ] Confirm
+scenarioType
+Tactical Pro Forma
+[ ] Confirm
+Ship From Scenarios
+Correct DC pairs present
+[ ] Confirm
+Both output tiles linked
+New dataset names
+[ ] Confirm
+All tiles green in canvas
+No red error tiles
+[ ] Confirm
+STEP 8 — Run ETL (1 full run)
+Run the full ETL. Do NOT run until all Step 7 checks are confirmed.
+STEP 9 — Post-Run SQL Verification (0 credits)
+Run on summary dataset:
+SELECT DC, totalCost FROM `DEV | ETL | Scenario 7 Summary Data` ORDER BY DC
+Expected: Same DC totals but higher volume than Scenario 2 (Collect lanes now included). Total Cost should be LOWER than Scenario 2 because Collect lanes can now be reassigned to lower-cost DCs.
+STEP 10 — UI Wizard Settings
+[TABLE]
+Step | Field | Value
+Step 1 | Region | US
+Step 1 | Scenario Type | Tactical Pro Forma (Fixed Footprint)
+Step 1 | Entity Scope | Core
+Step 1 | Channel Scope | B2C Home Delivery + B2B Retailer + D2C/eCom
+Step 1 | Terms Scope | Collect+Prepaid
+Step 1 | Run Name | Scenario 7 - Tactical Collect Relo
+Step 3 | Footprint Mode | Fixed
+Step 3 | Level Load | ON
+Step 3 | Utilization Cap | 80%
+Step 4 | Relocation Prepaid | Y (ON)
+Step 4 | Relocation Collect | Y (ON) — KEY DIFFERENCE from Scenario 2
+Step 4 | BCV Relocation Mapping | Default (Acceptance Criteria)
+[/TABLE]
+Step
+Field
+Value
+Step 1
+Region
+US
+Step 1
+Scenario Type
+Tactical Pro Forma (Fixed Footprint)
+Step 1
+Entity Scope
+Core
+Step 1
+Channel Scope
+B2C Home Delivery + B2B Retailer + D2C/eCom
+Step 1
+Terms Scope
+Collect+Prepaid
+Step 1
+Run Name
+Scenario 7 - Tactical Collect Relo
+Step 3
+Footprint Mode
+Fixed
+Step 3
+Level Load
+ON
+Step 3
+Utilization Cap
+80%
+Step 4
+Relocation Prepaid
+Y (ON)
+Step 4
+Relocation Collect
+Y (ON) — KEY DIFFERENCE from Scenario 2
+Step 4
+BCV Relocation Mapping
+Default (Acceptance Criteria)
+✅ No blockers — can build immediately after Scenario NaN is complete.
+Scenario 8 — Strategic Pro Forma — Unconstrained Footprint (Collect Relocatable)
+[TABLE]
+Field | Value
+Scenario Number | 8
+Full Name | Strategic Pro Forma — Unconstrained Footprint (Collect Relocatable)
+Clone From | DEV | ETL | Scenario 3 - Strategic Pro Forma
+DC Scope | Elwood, Dallas, Los Angeles, R Virginia (4 DCs — unchanged)
+Collect Treatment | Collect Relocatable — BOTH Prepaid AND Collect lanes can be reassigned.
+Footprint Mode | Unconstrained — DC sizes can change.
+scenarioType Constant | Strategic Pro Forma
+[/TABLE]
+Field
+Value
+Scenario Number
+8
+Full Name
+Strategic Pro Forma — Unconstrained Footprint (Collect Relocatable)
+Clone From
+DEV | ETL | Scenario 3 - Strategic Pro Forma
+DC Scope
+Elwood, Dallas, Los Angeles, R Virginia (4 DCs — unchanged)
+Collect Treatment
+Collect Relocatable — BOTH Prepaid AND Collect lanes can be reassigned.
+Footprint Mode
+Unconstrained — DC sizes can change.
+scenarioType Constant
+Strategic Pro Forma
+ETL Changes — Step by Step
+STEP 1 — Clone
+Clone ETL: DEV | ETL | Scenario 3 - Strategic Pro Forma
+Rename to: DEV | ETL | Scenario function num(t){return new Paragraph({numbering:{reference:"numbers",level:0},children:[new TextRun({text:t,size:22,font})],...sp(80)})} - Strategic Pro Forma — Unconstrained Footprint (Collect Relocatable)
+STEP 2 — Filter Rows 2 (DC Scope Filter)
+Open Filter Rows 2 tile. Change expression to:
+`Costing Warehouse` IN ('Los Angeles','Dallas','Elwood','R Virginia')
+Preview Filter Rows 2. Expected: Only the DCs listed above visible in Costing Warehouse column.
+✅ Only expected DCs visible — proceed.
+❌ Unexpected DC names — expression has typo. Fix before continuing.
+STEP 3 — Collect Treatment (Filter Rows 7 / LTL&DC_Filter / TL&DC_Filter)
+REMOVE the PP-only filter from THREE places (same as Scenario 7): 1. Filter Rows 7 — remove Freight Terms = PP 2. TL&DC_Filter — remove AND Freight Terms = PP   3. Parcel path — remove Freight Terms filter Preview all 3 tiles. Confirm PP and COL values both visible.
+STEP 4 — Add Constants (scenarioType)
+Open Add Constants tile. Change scenarioType value:
+scenarioType: 'Strategic Pro Forma'
+Preview Add Constants. Expected: scenarioType shows above value exactly.
+✅ scenarioType = 'Strategic Pro Forma' confirmed.
+STEP 5 — Ship From Scenarios Dataset
+Ship From Scenarios unchanged. No change.
+STEP 6 — Link Output Datasets
+Open main PublishToVault tile → Create new dataset: DEV | ETL | Scenario function num(t){return new Paragraph({numbering:{reference:"numbers",level:0},children:[new TextRun({text:t,size:22,font})],...sp(80)})} Summary Data
+Open DEV | Debug | Cost Components tile → Create new dataset: DEV | ETL | Scenario function num(t){return new Paragraph({numbering:{reference:"numbers",level:0},children:[new TextRun({text:t,size:22,font})],...sp(80)})} Lane Level Data
+Save both tiles.
+STEP 7 — Pre-Run Checklist (verify ALL before running)
+[TABLE]
+Check | Expected | Status
+Filter Rows 2 expression | `Costing Warehouse` IN ('Los Angeles','Dallas','Elwood','R V... | [ ] Confirm
+Collect filter | As specified in Step 3 | [ ] Confirm
+scenarioType | Strategic Pro Forma | [ ] Confirm
+Ship From Scenarios | Correct DC pairs present | [ ] Confirm
+Both output tiles linked | New dataset names | [ ] Confirm
+All tiles green in canvas | No red error tiles | [ ] Confirm
+[/TABLE]
+Check
+Expected
+Status
+Filter Rows 2 expression
+`Costing Warehouse` IN ('Los Angeles','Dallas','Elwood','R V...
+[ ] Confirm
+Collect filter
+As specified in Step 3
+[ ] Confirm
+scenarioType
+Strategic Pro Forma
+[ ] Confirm
+Ship From Scenarios
+Correct DC pairs present
+[ ] Confirm
+Both output tiles linked
+New dataset names
+[ ] Confirm
+All tiles green in canvas
+No red error tiles
+[ ] Confirm
+STEP 8 — Run ETL (1 full run)
+Run the full ETL. Do NOT run until all Step 7 checks are confirmed.
+STEP 9 — Post-Run SQL Verification (0 credits)
+Run on summary dataset:
+SELECT DC, totalCost FROM `DEV | ETL | Scenario 8 Summary Data` ORDER BY DC
+Expected: Higher volume than Scenario 3 (Collect included). Total Cost lower than Scenario 7 (no capacity constraints).
+STEP 10 — UI Wizard Settings
+[TABLE]
+Step | Field | Value
+Step 1 | Region | US
+Step 1 | Scenario Type | Strategic Pro Forma (Unconstrained Footprint)
+Step 1 | Entity Scope | Core
+Step 1 | Channel Scope | B2C Home Delivery + B2B Retailer + D2C/eCom
+Step 1 | Terms Scope | Collect+Prepaid
+Step 1 | Run Name | Scenario 8 - Strategic Collect Relo
+Step 3 | Footprint Mode | Unconstrained
+Step 3 | Level Load | OFF
+Step 3 | Utilization Cap | No cap
+Step 4 | Relocation Prepaid | Y (ON)
+Step 4 | Relocation Collect | Y (ON)
+Step 4 | BCV Relocation Mapping | Default (Acceptance Criteria)
+[/TABLE]
+Step
+Field
+Value
+Step 1
+Region
+US
+Step 1
+Scenario Type
+Strategic Pro Forma (Unconstrained Footprint)
+Step 1
+Entity Scope
+Core
+Step 1
+Channel Scope
+B2C Home Delivery + B2B Retailer + D2C/eCom
+Step 1
+Terms Scope
+Collect+Prepaid
+Step 1
+Run Name
+Scenario 8 - Strategic Collect Relo
+Step 3
+Footprint Mode
+Unconstrained
+Step 3
+Level Load
+OFF
+Step 3
+Utilization Cap
+No cap
+Step 4
+Relocation Prepaid
+Y (ON)
+Step 4
+Relocation Collect
+Y (ON)
+Step 4
+BCV Relocation Mapping
+Default (Acceptance Criteria)
+✅ No blockers — can build immediately after Scenario NaN is complete.
+Scenario 9 — BCV Ingestion Only — Strategic Unconstrained (Collect Relocatable)
+[TABLE]
+Field | Value
+Scenario Number | 9
+Full Name | BCV Ingestion Only — Strategic Unconstrained (Collect Relocatable)
+Clone From | DEV | ETL | Scenario 4 - BCV Ingestion Only
+DC Scope | Elwood, Dallas, Los Angeles, R Virginia + Pharr TX (5 DCs)
+Collect Treatment | Collect Relocatable — BOTH Prepaid AND Collect lanes can be reassigned.
+Footprint Mode | Unconstrained.
+scenarioType Constant | BCV Ingestion
+[/TABLE]
+Field
+Value
+Scenario Number
+9
+Full Name
+BCV Ingestion Only — Strategic Unconstrained (Collect Relocatable)
+Clone From
+DEV | ETL | Scenario 4 - BCV Ingestion Only
+DC Scope
+Elwood, Dallas, Los Angeles, R Virginia + Pharr TX (5 DCs)
+Collect Treatment
+Collect Relocatable — BOTH Prepaid AND Collect lanes can be reassigned.
+Footprint Mode
+Unconstrained.
+scenarioType Constant
+BCV Ingestion
+ETL Changes — Step by Step
+STEP 1 — Clone
+Clone ETL: DEV | ETL | Scenario 4 - BCV Ingestion Only
+Rename to: DEV | ETL | Scenario function num(t){return new Paragraph({numbering:{reference:"numbers",level:0},children:[new TextRun({text:t,size:22,font})],...sp(80)})} - BCV Ingestion Only — Strategic Unconstrained (Collect Relocatable)
+STEP 2 — Filter Rows 2 (DC Scope Filter)
+Open Filter Rows 2 tile. Change expression to:
+`Costing Warehouse` IN ('Los Angeles','Dallas','Elwood','R Virginia','Pharr')
+Preview Filter Rows 2. Expected: Only the DCs listed above visible in Costing Warehouse column.
+✅ Only expected DCs visible — proceed.
+❌ Unexpected DC names — expression has typo. Fix before continuing.
+STEP 3 — Collect Treatment (Filter Rows 7 / LTL&DC_Filter / TL&DC_Filter)
+REMOVE PP filter from Filter Rows 7, TL&DC_Filter, and parcel path (same as Scenario 7). Preview all 3 tiles.
+STEP 4 — Add Constants (scenarioType)
+Open Add Constants tile. Change scenarioType value:
+scenarioType: 'BCV Ingestion'
+Preview Add Constants. Expected: scenarioType shows above value exactly.
+✅ scenarioType = 'BCV Ingestion' confirmed.
+STEP 5 — Ship From Scenarios Dataset
+Ship From Scenarios same as Scenario 4 (5 DCs with Pharr). No change.
+STEP 6 — Link Output Datasets
+Open main PublishToVault tile → Create new dataset: DEV | ETL | Scenario function num(t){return new Paragraph({numbering:{reference:"numbers",level:0},children:[new TextRun({text:t,size:22,font})],...sp(80)})} Summary Data
+Open DEV | Debug | Cost Components tile → Create new dataset: DEV | ETL | Scenario function num(t){return new Paragraph({numbering:{reference:"numbers",level:0},children:[new TextRun({text:t,size:22,font})],...sp(80)})} Lane Level Data
+Save both tiles.
+STEP 7 — Pre-Run Checklist (verify ALL before running)
+[TABLE]
+Check | Expected | Status
+Filter Rows 2 expression | `Costing Warehouse` IN ('Los Angeles','Dallas','Elwood','R V... | [ ] Confirm
+Collect filter | As specified in Step 3 | [ ] Confirm
+scenarioType | BCV Ingestion | [ ] Confirm
+Ship From Scenarios | Correct DC pairs present | [ ] Confirm
+Both output tiles linked | New dataset names | [ ] Confirm
+All tiles green in canvas | No red error tiles | [ ] Confirm
+[/TABLE]
+Check
+Expected
+Status
+Filter Rows 2 expression
+`Costing Warehouse` IN ('Los Angeles','Dallas','Elwood','R V...
+[ ] Confirm
+Collect filter
+As specified in Step 3
+[ ] Confirm
+scenarioType
+BCV Ingestion
+[ ] Confirm
+Ship From Scenarios
+Correct DC pairs present
+[ ] Confirm
+Both output tiles linked
+New dataset names
+[ ] Confirm
+All tiles green in canvas
+No red error tiles
+[ ] Confirm
+STEP 8 — Run ETL (1 full run)
+Run the full ETL. Do NOT run until all Step 7 checks are confirmed.
+STEP 9 — Post-Run SQL Verification (0 credits)
+Run on summary dataset:
+SELECT DC, totalCost FROM `DEV | ETL | Scenario 9 Summary Data` ORDER BY DC
+Expected: 5 DCs. Collect + Prepaid lanes included. scenarioType = BCV Ingestion.
+STEP 10 — UI Wizard Settings
+[TABLE]
+Step | Field | Value
+Step 1 | Scenario Type | BCV Ingestion Only
+Step 1 | Entity Scope | BCV
+Step 1 | Terms Scope | Collect+Prepaid
+Step 1 | Run Name | Scenario 9 - BCV Collect Relo
+Step 3 | Footprint Mode | Unconstrained
+Step 4 | Relocation Collect | Y (ON)
+[/TABLE]
+Step
+Field
+Value
+Step 1
+Scenario Type
+BCV Ingestion Only
+Step 1
+Entity Scope
+BCV
+Step 1
+Terms Scope
+Collect+Prepaid
+Step 1
+Run Name
+Scenario 9 - BCV Collect Relo
+Step 3
+Footprint Mode
+Unconstrained
+Step 4
+Relocation Collect
+Y (ON)
+BLOCKERS — Must Resolve Before Building This Scenario
+🔴 BLOCKED: Same blockers as Scenario 4 — Pharr TX must be in Ship From Scenarios and DC Capacity Detail
+Scenario 10 — Consolidation Tactical — Fixed Footprint (Collect Relocatable)
+[TABLE]
+Field | Value
+Scenario Number | 10
+Full Name | Consolidation Tactical — Fixed Footprint (Collect Relocatable)
+Clone From | DEV | ETL | Scenario 5 - Consolidation Tactical
+DC Scope | Elwood, Dallas, Los Angeles, R Virginia + Pharr TX + Stratford CT (6 DCs)
+Collect Treatment | Collect Relocatable — BOTH Prepaid AND Collect lanes can be reassigned.
+Footprint Mode | Fixed.
+scenarioType Constant | Tactical Consolidation
+[/TABLE]
+Field
+Value
+Scenario Number
+10
+Full Name
+Consolidation Tactical — Fixed Footprint (Collect Relocatable)
+Clone From
+DEV | ETL | Scenario 5 - Consolidation Tactical
+DC Scope
+Elwood, Dallas, Los Angeles, R Virginia + Pharr TX + Stratford CT (6 DCs)
+Collect Treatment
+Collect Relocatable — BOTH Prepaid AND Collect lanes can be reassigned.
+Footprint Mode
+Fixed.
+scenarioType Constant
+Tactical Consolidation
+ETL Changes — Step by Step
+STEP 1 — Clone
+Clone ETL: DEV | ETL | Scenario 5 - Consolidation Tactical
+Rename to: DEV | ETL | Scenario function num(t){return new Paragraph({numbering:{reference:"numbers",level:0},children:[new TextRun({text:t,size:22,font})],...sp(80)})} - Consolidation Tactical — Fixed Footprint (Collect Relocatable)
+STEP 2 — Filter Rows 2 (DC Scope Filter)
+Open Filter Rows 2 tile. Change expression to:
+`Costing Warehouse` IN ('Los Angeles','Dallas','Elwood','R Virginia','Pharr','Stratford')
+Preview Filter Rows 2. Expected: Only the DCs listed above visible in Costing Warehouse column.
+✅ Only expected DCs visible — proceed.
+❌ Unexpected DC names — expression has typo. Fix before continuing.
+STEP 3 — Collect Treatment (Filter Rows 7 / LTL&DC_Filter / TL&DC_Filter)
+REMOVE PP filter from Filter Rows 7, TL&DC_Filter, and parcel path. Preview all 3 tiles.
+STEP 4 — Add Constants (scenarioType)
+Open Add Constants tile. Change scenarioType value:
+scenarioType: 'Tactical Consolidation'
+Preview Add Constants. Expected: scenarioType shows above value exactly.
+✅ scenarioType = 'Tactical Consolidation' confirmed.
+STEP 5 — Ship From Scenarios Dataset
+Ship From Scenarios same as Scenario 5 (6 DCs). No change.
+STEP 6 — Link Output Datasets
+Open main PublishToVault tile → Create new dataset: DEV | ETL | Scenario function num(t){return new Paragraph({numbering:{reference:"numbers",level:0},children:[new TextRun({text:t,size:22,font})],...sp(80)})} Summary Data
+Open DEV | Debug | Cost Components tile → Create new dataset: DEV | ETL | Scenario function num(t){return new Paragraph({numbering:{reference:"numbers",level:0},children:[new TextRun({text:t,size:22,font})],...sp(80)})} Lane Level Data
+Save both tiles.
+STEP 7 — Pre-Run Checklist (verify ALL before running)
+[TABLE]
+Check | Expected | Status
+Filter Rows 2 expression | `Costing Warehouse` IN ('Los Angeles','Dallas','Elwood','R V... | [ ] Confirm
+Collect filter | As specified in Step 3 | [ ] Confirm
+scenarioType | Tactical Consolidation | [ ] Confirm
+Ship From Scenarios | Correct DC pairs present | [ ] Confirm
+Both output tiles linked | New dataset names | [ ] Confirm
+All tiles green in canvas | No red error tiles | [ ] Confirm
+[/TABLE]
+Check
+Expected
+Status
+Filter Rows 2 expression
+`Costing Warehouse` IN ('Los Angeles','Dallas','Elwood','R V...
+[ ] Confirm
+Collect filter
+As specified in Step 3
+[ ] Confirm
+scenarioType
+Tactical Consolidation
+[ ] Confirm
+Ship From Scenarios
+Correct DC pairs present
+[ ] Confirm
+Both output tiles linked
+New dataset names
+[ ] Confirm
+All tiles green in canvas
+No red error tiles
+[ ] Confirm
+STEP 8 — Run ETL (1 full run)
+Run the full ETL. Do NOT run until all Step 7 checks are confirmed.
+STEP 9 — Post-Run SQL Verification (0 credits)
+Run on summary dataset:
+SELECT DC, totalCost FROM `DEV | ETL | Scenario 10 Summary Data` ORDER BY DC
+Expected: 6 DCs. Collect + Prepaid lanes. scenarioType = Tactical Consolidation.
+STEP 10 — UI Wizard Settings
+[TABLE]
+Step | Field | Value
+Step 1 | Scenario Type | Consolidation (Tactical)
+Step 1 | Entity Scope | Core+BCV
+Step 1 | Terms Scope | Collect+Prepaid
+Step 1 | Run Name | Scenario 10 - Consolidation Tactical Relo
+Step 3 | Footprint Mode | Fixed
+Step 3 | Utilization Cap | 80%
+Step 4 | Relocation Collect | Y (ON)
+[/TABLE]
+Step
+Field
+Value
+Step 1
+Scenario Type
+Consolidation (Tactical)
+Step 1
+Entity Scope
+Core+BCV
+Step 1
+Terms Scope
+Collect+Prepaid
+Step 1
+Run Name
+Scenario 10 - Consolidation Tactical Relo
+Step 3
+Footprint Mode
+Fixed
+Step 3
+Utilization Cap
+80%
+Step 4
+Relocation Collect
+Y (ON)
+BLOCKERS — Must Resolve Before Building This Scenario
+🔴 BLOCKED: Same blockers as Scenario 5 — Pharr and Stratford must be in datasets
+Scenario 11 — Consolidation Strategic — Unconstrained Footprint (Collect Relocatable)
+[TABLE]
+Field | Value
+Scenario Number | 11
+Full Name | Consolidation Strategic — Unconstrained Footprint (Collect Relocatable)
+Clone From | DEV | ETL | Scenario 6 - Consolidation Strategic
+DC Scope | Elwood, Dallas, Los Angeles, R Virginia + Pharr TX + Stratford CT (6 DCs)
+Collect Treatment | Collect Relocatable — BOTH Prepaid AND Collect lanes can be reassigned.
+Footprint Mode | Unconstrained.
+scenarioType Constant | Strategic Consolidation
+[/TABLE]
+Field
+Value
+Scenario Number
+11
+Full Name
+Consolidation Strategic — Unconstrained Footprint (Collect Relocatable)
+Clone From
+DEV | ETL | Scenario 6 - Consolidation Strategic
+DC Scope
+Elwood, Dallas, Los Angeles, R Virginia + Pharr TX + Stratford CT (6 DCs)
+Collect Treatment
+Collect Relocatable — BOTH Prepaid AND Collect lanes can be reassigned.
+Footprint Mode
+Unconstrained.
+scenarioType Constant
+Strategic Consolidation
+ETL Changes — Step by Step
+STEP 1 — Clone
+Clone ETL: DEV | ETL | Scenario 6 - Consolidation Strategic
+Rename to: DEV | ETL | Scenario function num(t){return new Paragraph({numbering:{reference:"numbers",level:0},children:[new TextRun({text:t,size:22,font})],...sp(80)})} - Consolidation Strategic — Unconstrained Footprint (Collect Relocatable)
+STEP 2 — Filter Rows 2 (DC Scope Filter)
+Open Filter Rows 2 tile. Change expression to:
+`Costing Warehouse` IN ('Los Angeles','Dallas','Elwood','R Virginia','Pharr','Stratford')
+Preview Filter Rows 2. Expected: Only the DCs listed above visible in Costing Warehouse column.
+✅ Only expected DCs visible — proceed.
+❌ Unexpected DC names — expression has typo. Fix before continuing.
+STEP 3 — Collect Treatment (Filter Rows 7 / LTL&DC_Filter / TL&DC_Filter)
+REMOVE PP filter from Filter Rows 7, TL&DC_Filter, and parcel path. Preview all 3 tiles.
+STEP 4 — Add Constants (scenarioType)
+Open Add Constants tile. Change scenarioType value:
+scenarioType: 'Strategic Consolidation'
+Preview Add Constants. Expected: scenarioType shows above value exactly.
+✅ scenarioType = 'Strategic Consolidation' confirmed.
+STEP 5 — Ship From Scenarios Dataset
+Ship From Scenarios same as Scenario 6 (6 DCs). No change.
+STEP 6 — Link Output Datasets
+Open main PublishToVault tile → Create new dataset: DEV | ETL | Scenario function num(t){return new Paragraph({numbering:{reference:"numbers",level:0},children:[new TextRun({text:t,size:22,font})],...sp(80)})} Summary Data
+Open DEV | Debug | Cost Components tile → Create new dataset: DEV | ETL | Scenario function num(t){return new Paragraph({numbering:{reference:"numbers",level:0},children:[new TextRun({text:t,size:22,font})],...sp(80)})} Lane Level Data
+Save both tiles.
+STEP 7 — Pre-Run Checklist (verify ALL before running)
+[TABLE]
+Check | Expected | Status
+Filter Rows 2 expression | `Costing Warehouse` IN ('Los Angeles','Dallas','Elwood','R V... | [ ] Confirm
+Collect filter | As specified in Step 3 | [ ] Confirm
+scenarioType | Strategic Consolidation | [ ] Confirm
+Ship From Scenarios | Correct DC pairs present | [ ] Confirm
+Both output tiles linked | New dataset names | [ ] Confirm
+All tiles green in canvas | No red error tiles | [ ] Confirm
+[/TABLE]
+Check
+Expected
+Status
+Filter Rows 2 expression
+`Costing Warehouse` IN ('Los Angeles','Dallas','Elwood','R V...
+[ ] Confirm
+Collect filter
+As specified in Step 3
+[ ] Confirm
+scenarioType
+Strategic Consolidation
+[ ] Confirm
+Ship From Scenarios
+Correct DC pairs present
+[ ] Confirm
+Both output tiles linked
+New dataset names
+[ ] Confirm
+All tiles green in canvas
+No red error tiles
+[ ] Confirm
+STEP 8 — Run ETL (1 full run)
+Run the full ETL. Do NOT run until all Step 7 checks are confirmed.
+STEP 9 — Post-Run SQL Verification (0 credits)
+Run on summary dataset:
+SELECT DC, totalCost FROM `DEV | ETL | Scenario 11 Summary Data` ORDER BY DC
+Expected: 6 DCs. Collect + Prepaid. scenarioType = Strategic Consolidation. Lowest cost scenario in entire suite.
+STEP 10 — UI Wizard Settings
+[TABLE]
+Step | Field | Value
+Step 1 | Scenario Type | Consolidation (Strategic)
+Step 1 | Entity Scope | Core+BCV
+Step 1 | Terms Scope | Collect+Prepaid
+Step 1 | Run Name | Scenario 11 - Consolidation Strategic Relo
+Step 3 | Footprint Mode | Unconstrained
+Step 4 | Relocation Collect | Y (ON)
+[/TABLE]
+Step
+Field
+Value
+Step 1
+Scenario Type
+Consolidation (Strategic)
+Step 1
+Entity Scope
+Core+BCV
+Step 1
+Terms Scope
+Collect+Prepaid
+Step 1
+Run Name
+Scenario 11 - Consolidation Strategic Relo
+Step 3
+Footprint Mode
+Unconstrained
+Step 4
+Relocation Collect
+Y (ON)
+BLOCKERS — Must Resolve Before Building This Scenario
+🔴 BLOCKED: Same blockers as Scenario 6 — Pharr and Stratford must be in datasets
+CANADA SCENARIOS 12-22
+3. Canada Baseline — Scenario 12
+Canada Scenario 12 is NOT a simple clone-and-change. It requires swapping multiple datasets to Canadian versions. All 5 dataset swaps must happen before any Canada ETL can be built.
+BLOCKED — Required Client Confirmations Before Building:
+🔴 BLOCKED: Kim/Abby — Is there a Canadian FedEx zone lookup table in Domo? US file (0e565354) uses US 3-digit zips. Canada needs Canadian postal prefix (A1A, B2B etc) to FedEx zone mapping.
+🔴 BLOCKED: Kim/Abby — Are there separate fulfillment rate files for Brampton ON and Delta BC? US uses Fulfillment Rates.xlsx (b4946b1d). Canada needs equivalent with BRM and RIC rates.
+🔴 BLOCKED: Abby — Is there a Canadian DC Capacity Detail dataset in Domo? US uses DEV | US DC Capacity Detail (fdb5f946). Canada needs BRM (~150,000 sqft) and RIC (~40,000 sqft).
+🔴 BLOCKED: Griffin — Should Canada scenarios use the same 2025 ocean inbound dataset or is there a separate Canadian inbound file? Ports differ — Vancouver BC and Montreal QC for Canada.
+🔴 BLOCKED: Griffin/Jackson — For BCV scenarios (Canada 15-22) — are Unger CT lanes in Canadian EBS orders data or US only?
+Canada Scenario 12 — Dataset Swaps Required
+[TABLE]
+Dataset | US Version | Canada Version Needed | Tile to Change
+EBS Orders | Supply Chain Analytics_EBS Orders Detail_ds (a0c40069) | Canadian equivalent — filter to Canada orders only OR separate Canadian EBS extract | Determine Model Date Range upstream source
+Ocean Inbound | Ocean Rates by Lane 10.22.25.xlsx (ceac8f56) | Canadian inbound rates — Vancouver BC + Montreal QC ports | Map Destination -> Warehouse and Assign Inbound Rate per DC
+FedEx Zone Table | FedEx - 3Zip to 3Zip and Zone - Corrected (0e565354) | Canadian postal prefix zone table — confirm with Abby/Kim | Assign Parcel Zone rate
+Fulfillment Rates | Fullfilment Rates.xlsx (b4946b1d) | Canadian DC rates for BRM and RIC — confirm with Griffin | Assign Rates
+DC Capacity Detail | DEV | US DC Capacity Detail (fdb5f946) | DEV | CAN DC Capacity Detail — BRM 150K sqft, RIC 40K sqft | Join Data 8
+Ship From Scenarios | Network Analysis . Ship From Scenarios (da1e2e74) | Canada version — BRM and RIC only, mapping Canadian postal codes | Cascade tiles
+DC Mapping | Network Analysis . DC Mapping x 3-zip x Channel (e2502e1b) | Canada version — Canadian postal prefixes mapped to BRM/RIC | Add Default Warehouse tiles
+[/TABLE]
+Dataset
+US Version
+Canada Version Needed
+Tile to Change
+EBS Orders
+Supply Chain Analytics_EBS Orders Detail_ds (a0c40069)
+Canadian equivalent — filter to Canada orders only OR separate Canadian EBS extract
+Determine Model Date Range upstream source
+Ocean Inbound
+Ocean Rates by Lane 10.22.25.xlsx (ceac8f56)
+Canadian inbound rates — Vancouver BC + Montreal QC ports
+Map Destination -> Warehouse and Assign Inbound Rate per DC
+FedEx Zone Table
+FedEx - 3Zip to 3Zip and Zone - Corrected (0e565354)
+Canadian postal prefix zone table — confirm with Abby/Kim
+Assign Parcel Zone rate
+Fulfillment Rates
+Fullfilment Rates.xlsx (b4946b1d)
+Canadian DC rates for BRM and RIC — confirm with Griffin
+Assign Rates
+DC Capacity Detail
+DEV | US DC Capacity Detail (fdb5f946)
+DEV | CAN DC Capacity Detail — BRM 150K sqft, RIC 40K sqft
+Join Data 8
+Ship From Scenarios
+Network Analysis . Ship From Scenarios (da1e2e74)
+Canada version — BRM and RIC only, mapping Canadian postal codes
+Cascade tiles
+DC Mapping
+Network Analysis . DC Mapping x 3-zip x Channel (e2502e1b)
+Canada version — Canadian postal prefixes mapped to BRM/RIC
+Add Default Warehouse tiles
+Canada Scenario 12 — ETL Changes Once Data Is Available
+Clone US Baseline ETL. Rename to: DEV | ETL | Scenario 12 - Canada Baseline
+Change Filter Rows 2: `Costing Warehouse` IN ('Brampton','Richmond')
+Swap EBS Orders source to Canadian equivalent
+Swap Ocean Rates to Canadian inbound rates file
+Swap FedEx Zone Table to Canadian zone table
+Swap Fulfillment Rates to Canadian DC rates file
+Swap DC Capacity Detail to Canadian capacity dataset
+Swap Ship From Scenarios to Canadian version (BRM + RIC pairs)
+Swap DC Mapping to Canadian postal prefix mapping
+Add Constants: scenarioType = 'Baseline'
+Link outputs to new Canada datasets: DEV | ETL | Scenario 12 Summary Data + DEV | ETL | Scenario 12 Lane Level Data
+Run ETL. Verify 2 DCs in output: Brampton and Richmond
+Post-Run SQL Verify:
+SELECT DC, totalCost FROM `DEV | ETL | Scenario 12 Summary Data` ORDER BY DC
+Expected: 2 rows — Brampton and Richmond with realistic Canadian cost totals.
+UI Wizard Settings:
+[TABLE]
+Step | Field | Value
+Step 1 | Region | Canada
+Step 1 | Scenario Type | Baseline
+Step 1 | Entity Scope | Core
+Step 1 | Channel Scope | B2C Home Delivery + B2B Retailer + D2C/eCom
+Step 1 | Terms Scope | Prepaid
+Step 1 | Run Name | Scenario 12 - Canada Baseline
+[/TABLE]
+Step
+Field
+Value
+Step 1
+Region
+Canada
+Step 1
+Scenario Type
+Baseline
+Step 1
+Entity Scope
+Core
+Step 1
+Channel Scope
+B2C Home Delivery + B2B Retailer + D2C/eCom
+Step 1
+Terms Scope
+Prepaid
+Step 1
+Run Name
+Scenario 12 - Canada Baseline
+4. Canada Scenarios 13-22 — Build Steps
+Once Canada Baseline (Scenario 12) is confirmed working, Scenarios 13-22 follow exactly the same 4-lever pattern as US Scenarios 2-11. The only difference is the geography.
+[TABLE]
+# | Name | Clone From | DC Scope Filter | Collect Filter | scenarioType | UI Scenario Type
+13 | Canada Tactical | Sc 12 | `Costing Warehouse` IN ('Brampton','Richmond') | Keep PP filter | Tactical Pro Forma | Tactical Pro Forma (Fixed Footprint)
+14 | Canada Strategic | Sc 12 | `Costing Warehouse` IN ('Brampton','Richmond') | Keep PP filter | Strategic Pro Forma | Strategic Pro Forma (Unconstrained Footprint)
+15 | Canada BCV | Sc 14 | `Costing Warehouse` IN ('Brampton','Richmond','Stratford') | Keep PP filter | BCV Ingestion | BCV Ingestion Only
+16 | Canada Consolidation Tactical | Sc 15 | `Costing Warehouse` IN ('Brampton','Richmond','Stratford') | Keep PP filter | Tactical Consolidation | Consolidation (Tactical)
+17 | Canada Consolidation Strategic | Sc 15 | `Costing Warehouse` IN ('Brampton','Richmond','Stratford') | Keep PP filter | Strategic Consolidation | Consolidation (Strategic)
+18 | Canada Tactical Relo | Sc 13 | `Costing Warehouse` IN ('Brampton','Richmond','Stratford') | REMOVE PP filter | Tactical Pro Forma | Tactical Pro Forma (Fixed Footprint)
+19 | Canada Strategic Relo | Sc 14 | `Costing Warehouse` IN ('Brampton','Richmond','Stratford') | REMOVE PP filter | Strategic Pro Forma | Strategic Pro Forma (Unconstrained Footprint)
+20 | Canada BCV Relo | Sc 15 | `Costing Warehouse` IN ('Brampton','Richmond','Stratford') | REMOVE PP filter | BCV Ingestion | BCV Ingestion Only
+21 | Canada Consolidation Tactical Relo | Sc 16 | `Costing Warehouse` IN ('Brampton','Richmond','Stratford') | REMOVE PP filter | Tactical Consolidation | Consolidation (Tactical)
+22 | Canada Consolidation Strategic Relo | Sc 17 | `Costing Warehouse` IN ('Brampton','Richmond','Stratford') | REMOVE PP filter | Strategic Consolidation | Consolidation (Strategic)
+[/TABLE]
+#
+Name
+Clone From
+DC Scope Filter
+Collect Filter
+scenarioType
+UI Scenario Type
+13
+Canada Tactical
+Sc 12
+`Costing Warehouse` IN ('Brampton','Richmond')
+Keep PP filter
+Tactical Pro Forma
+Tactical Pro Forma (Fixed Footprint)
+14
+Canada Strategic
+Sc 12
+`Costing Warehouse` IN ('Brampton','Richmond')
+Keep PP filter
+Strategic Pro Forma
+Strategic Pro Forma (Unconstrained Footprint)
+15
+Canada BCV
+Sc 14
+`Costing Warehouse` IN ('Brampton','Richmond','Stratford')
+Keep PP filter
+BCV Ingestion
+BCV Ingestion Only
+16
+Canada Consolidation Tactical
+Sc 15
+`Costing Warehouse` IN ('Brampton','Richmond','Stratford')
+Keep PP filter
+Tactical Consolidation
+Consolidation (Tactical)
+17
+Canada Consolidation Strategic
+Sc 15
+`Costing Warehouse` IN ('Brampton','Richmond','Stratford')
+Keep PP filter
+Strategic Consolidation
+Consolidation (Strategic)
+18
+Canada Tactical Relo
+Sc 13
+`Costing Warehouse` IN ('Brampton','Richmond','Stratford')
+REMOVE PP filter
+Tactical Pro Forma
+Tactical Pro Forma (Fixed Footprint)
+19
+Canada Strategic Relo
+Sc 14
+`Costing Warehouse` IN ('Brampton','Richmond','Stratford')
+REMOVE PP filter
+Strategic Pro Forma
+Strategic Pro Forma (Unconstrained Footprint)
+20
+Canada BCV Relo
+Sc 15
+`Costing Warehouse` IN ('Brampton','Richmond','Stratford')
+REMOVE PP filter
+BCV Ingestion
+BCV Ingestion Only
+21
+Canada Consolidation Tactical Relo
+Sc 16
+`Costing Warehouse` IN ('Brampton','Richmond','Stratford')
+REMOVE PP filter
+Tactical Consolidation
+Consolidation (Tactical)
+22
+Canada Consolidation Strategic Relo
+Sc 17
+`Costing Warehouse` IN ('Brampton','Richmond','Stratford')
+REMOVE PP filter
+Strategic Consolidation
+Consolidation (Strategic)
+For each Canada scenario 13-22:
+Clone from the scenario listed above
+Apply Filter Rows 2 expression as shown above
+Apply Collect filter change as shown above (Keep PP or Remove PP)
+Change scenarioType constant to value shown above
+For Scenarios 15-22: Add Stratford CT to Ship From Scenarios Canada dataset
+Link to new output datasets: DEV | ETL | Scenario [N] Summary Data + Lane Level Data
+Run ETL. Verify correct DCs in output.
+⚠ Each Canada scenario must be verified that Brampton and Richmond (and Stratford where applicable) appear in the output with non-zero cost values. If costs are zero — check that Canadian fulfillment rates and ocean rates are correctly swapped.
+5. Credit Usage Plan — All 22 Scenarios
+[TABLE]
+Scenario Group | Scenarios | Full Runs | Preview Work | Blocker
+US Baseline fix (lane output) | Scenario 1 fix | 1 | Steps A1-A4 from Sc2 guide | None
+US Sc 2-3 | 2, 3 | 2 | Preview Filter Rows 2, Add Constants only | None — build immediately
+US Sc 7-8 | 7, 8 | 2 | Preview Filter Rows 7 + TL filter after PP removal | None — clone from 2/3
+US Sc 4-6 | 4, 5, 6 | 3 | Preview + SQL Ship From Scenarios verify | Blocked — Pharr/Stratford data
+US Sc 9-11 | 9, 10, 11 | 3 | Preview after PP removal | Blocked — same as 4-6
+Canada Sc 12 | 12 | 1 | Preview all swapped tiles | Blocked — all 5 Canada datasets
+Canada Sc 13-22 | 13-22 | 10 | Preview Filter Rows 2 + constants only | Blocked — wait for Sc 12
+TOTAL | All 22 | 22 runs | — | —
+[/TABLE]
+Scenario Group
+Scenarios
+Full Runs
+Preview Work
+Blocker
+US Baseline fix (lane output)
+Scenario 1 fix
+1
+Steps A1-A4 from Sc2 guide
+None
+US Sc 2-3
+2, 3
+2
+Preview Filter Rows 2, Add Constants only
+None — build immediately
+US Sc 7-8
+7, 8
+2
+Preview Filter Rows 7 + TL filter after PP removal
+None — clone from 2/3
+US Sc 4-6
+4, 5, 6
+3
+Preview + SQL Ship From Scenarios verify
+Blocked — Pharr/Stratford data
+US Sc 9-11
+9, 10, 11
+3
+Preview after PP removal
+Blocked — same as 4-6
+Canada Sc 12
+12
+1
+Preview all swapped tiles
+Blocked — all 5 Canada datasets
+Canada Sc 13-22
+13-22
+10
+Preview Filter Rows 2 + constants only
+Blocked — wait for Sc 12
+TOTAL
+All 22
+22 runs
+—
+—
+Recommended Build Order:
+Sc 2 (Tactical) — immediately
+Sc 3 (Strategic) — immediately after Sc 2
+Sc 7 (Tactical Collect Relo) — clone Sc 2, remove PP filter
+Sc 8 (Strategic Collect Relo) — clone Sc 3, remove PP filter
+WAIT for Pharr/Stratford data → Sc 4, 5, 6, 9, 10, 11
+WAIT for Canada data → Sc 12, then 13-22

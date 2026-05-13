@@ -9,6 +9,8 @@ interface HomeScenarioRunsSectionProps {
   selectedScenarios: Set<string>;
   onSelectScenario: (scenarioId: string) => void;
   onOpenScenario: (scenarioId: string) => void;
+  searchTerm: string;
+  onSearchTermChange: (value: string) => void;
   statusFilter: string;
   onStatusFilterChange: (value: string) => void;
   onlyAlerts: boolean;
@@ -30,6 +32,8 @@ export const HomeScenarioRunsSection: React.FC<HomeScenarioRunsSectionProps> = (
   selectedScenarios,
   onSelectScenario,
   onOpenScenario,
+  searchTerm,
+  onSearchTermChange,
   statusFilter,
   onStatusFilterChange,
   onlyAlerts,
@@ -51,7 +55,7 @@ export const HomeScenarioRunsSection: React.FC<HomeScenarioRunsSectionProps> = (
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [statusFilter, onlyAlerts, onlyPublished, filteredScenarios.length]);
+  }, [statusFilter, onlyAlerts, onlyPublished, filteredScenarios.length, searchTerm]);
 
   useEffect(() => {
     if (currentPage > totalPages) {
@@ -85,54 +89,74 @@ export const HomeScenarioRunsSection: React.FC<HomeScenarioRunsSectionProps> = (
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 mb-4">
-        <div className="flex items-center gap-2">
-          <label className="text-sm text-slate-600 whitespace-nowrap">Status:</label>
-          <select
-            value={statusFilter}
-            className="px-3 py-1.5 border border-slate-300 rounded text-sm bg-white"
-            onChange={(e) => onStatusFilterChange(e.target.value)}
+      <div className="flex flex-col gap-3 mb-4 lg:flex-row lg:items-center lg:justify-between">
+
+        <div className="flex flex-wrap items-center gap-2">
+
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-slate-600 whitespace-nowrap">Status:</label>
+            <select
+              value={statusFilter}
+              className="px-3 py-1.5 border border-slate-300 rounded text-sm bg-white"
+              onChange={(e) => onStatusFilterChange(e.target.value)}
+            >
+              <option value="All">All</option>
+              <option value="Draft">Draft</option>
+              <option value="Running">Running</option>
+              <option value="Completed">Completed</option>
+              <option value="Failed">Failed</option>
+              <option value="Reviewed">Reviewed</option>
+              <option value="Published">Published</option>
+              <option value="Archived">Archived</option>
+            </select>
+          </div>
+
+          <label className="flex items-center gap-2 px-3 py-1 bg-slate-100 rounded cursor-pointer">
+            <input
+              type="checkbox"
+              checked={onlyAlerts}
+              onChange={(e) => onOnlyAlertsChange(e.target.checked)}
+              className="rounded"
+            />
+            <span className="text-sm text-slate-700 whitespace-nowrap">
+              Only Runs with Alerts
+            </span>
+          </label>
+
+          <label className="flex items-center gap-2 px-3 py-1 bg-slate-100 rounded cursor-pointer">
+            <input
+              type="checkbox"
+              checked={onlyPublished}
+              onChange={(e) => onOnlyPublishedChange(e.target.checked)}
+              className="rounded"
+            />
+            <span className="text-sm text-slate-700 whitespace-nowrap">
+              Only Published
+            </span>
+          </label>
+
+          <Button
+            onClick={onRefresh}
+            variant="secondary"
+            size="small"
+            icon={<RefreshCw className={`w-4 h-4 ${refreshActive ? 'animate-spin' : ''}`} />}
+            className={refreshActive ? 'bg-amber-100 text-amber-800' : ''}
           >
-            <option value="All">All</option>
-            <option value="Draft">Draft</option>
-            <option value="Running">Running</option>
-            <option value="Completed">Completed</option>
-            <option value="Reviewed">Reviewed</option>
-            <option value="Published">Published</option>
-            <option value="Archived">Archived</option>
-          </select>
+            {refreshActive ? 'Refreshing...' : 'Refresh'}
+          </Button>
         </div>
 
-        <label className="flex items-center gap-2 px-3 py-1 bg-slate-100 rounded cursor-pointer">
+        <div className="relative w-full lg:w-[320px]">
           <input
-            type="checkbox"
-            checked={onlyAlerts}
-            onChange={(e) => onOnlyAlertsChange(e.target.checked)}
-            className="rounded"
+            type="text"
+            value={searchTerm}
+            onChange={(e) => onSearchTermChange(e.target.value)}
+            placeholder="Search scenario runs..."
+            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
-          <span className="text-sm text-slate-700 whitespace-nowrap">Only Runs with Alerts</span>
-        </label>
+        </div>
 
-        <label className="flex items-center gap-2 px-3 py-1 bg-slate-100 rounded cursor-pointer">
-          <input
-            type="checkbox"
-            checked={onlyPublished}
-            onChange={(e) => onOnlyPublishedChange(e.target.checked)}
-            className="rounded"
-          />
-          <span className="text-sm text-slate-700 whitespace-nowrap">Only Published</span>
-        </label>
-
-        <Button
-          onClick={onRefresh}
-          variant="secondary"
-          size="small"
-          icon={<RefreshCw className={`w-4 h-4 ${refreshActive ? 'animate-spin' : ''}`} />}
-          className={refreshActive ? 'bg-amber-100 text-amber-800' : ''}
-        >
-          {refreshActive ? 'Refreshing...' : 'Refresh'}
-        </Button>
-      </div>
+        </div>
 
       <DataTable
         columns={scenarioColumns}

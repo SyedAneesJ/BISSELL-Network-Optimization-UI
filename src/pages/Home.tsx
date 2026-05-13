@@ -33,9 +33,11 @@ interface HomeProps {
   onDuplicateScenario: (scenarioId: string) => void;
   onArchiveScenario: (scenarioId: string) => void;
   onUnarchiveScenario: (scenarioId: string) => void;
+  onDeleteScenario: (scenarioId: string) => void;
   onDuplicateComparison: (comparisonId: string) => void;
   onArchiveComparison: (comparisonId: string) => void;
   onUnarchiveComparison: (comparisonId: string) => void;
+  onDeleteComparison: (comparisonId: string) => void | Promise<void>;
   onRefresh: () => void;
   onRefreshComparisons: () => void;
   comparisonsRefreshActive: boolean;
@@ -64,9 +66,11 @@ export const Home: React.FC<HomeProps> = ({
   onDuplicateScenario,
   onArchiveScenario,
   onUnarchiveScenario,
+  onDeleteScenario,
   onDuplicateComparison,
   onArchiveComparison,
   onUnarchiveComparison,
+  onDeleteComparison,
   onRefresh,
   onRefreshComparisons,
   comparisonsRefreshActive,
@@ -99,9 +103,36 @@ export const Home: React.FC<HomeProps> = ({
   const [scenarioTypeFilter, setScenarioTypeFilter] = useState<string[]>([]);
   const [onlyAlerts, setOnlyAlerts] = useState(false);
   const [onlyPublished, setOnlyPublished] = useState(false);
+  const [pendingDeleteScenario, setPendingDeleteScenario] = useState<ScenarioRunHeader | null>(null);
+  const [pendingDeleteComparison, setPendingDeleteComparison] = useState<ComparisonHeader | null>(null);
+  const visibleScenarioRunHeaders = useMemo(() => {
+    const isOriginalScenario = (scenario: ScenarioRunHeader) =>
+      !String(scenario.CreatedBy || '').trim() || String(scenario.CreatedBy || '').trim() === 'NA';
+
+    const isUsBaselineScenario = (scenario: ScenarioRunHeader) =>
+      scenario.Region === 'US'
+      && isOriginalScenario(scenario)
+      && (
+        String(scenario.DataflowID || '').trim() === '3228'
+        || String(scenario.RunName || '').toLowerCase().includes('baseline')
+      );
+
+    return scenarioRunHeaders.filter((scenario) => isUsBaselineScenario(scenario) || !isOriginalScenario(scenario));
+  }, [scenarioRunHeaders]);
+
+  const visibleScenarioRunIds = useMemo(
+    () => new Set(visibleScenarioRunHeaders.map((scenario) => scenario.ScenarioRunID)),
+    [visibleScenarioRunHeaders]
+  );
+
+  const visibleScenarioRunResultsDC = useMemo(
+    () => scenarioRunResultsDC.filter((row) => visibleScenarioRunIds.has(row.ScenarioRunID)),
+    [scenarioRunResultsDC, visibleScenarioRunIds]
+  );
+
   const entityLabels = useMemo(() => {
     const entities = new Set<string>();
-    scenarioRunHeaders.forEach((s) => {
+    visibleScenarioRunHeaders.forEach((s) => {
       s.EntityScope?.split('/').forEach((e) => {
         const trimmed = e.trim();
         if (trimmed && trimmed.toLowerCase() !== 'unknown' && trimmed.toLowerCase() !== 'na') {
@@ -114,9 +145,9 @@ export const Home: React.FC<HomeProps> = ({
       first: list[0] || 'Entity A',
       second: list[1] || 'Entity B',
     };
-  }, [scenarioRunHeaders]);
+  }, [visibleScenarioRunHeaders]);
   const filteredScenarios = useMemo(() => {
-    const filtered = scenarioRunHeaders.filter(scenario => {
+    const filtered = visibleScenarioRunHeaders.filter(scenario => {
       if (workspace !== 'All' && scenario.Region !== workspace) return false;
       if (searchTerm && !scenario.RunName.toLowerCase().includes(searchTerm.toLowerCase())) return false;
       if (statusFilter !== 'All' && scenario.Status !== statusFilter) return false;
@@ -126,12 +157,12 @@ export const Home: React.FC<HomeProps> = ({
       return true;
     });
     return [...filtered].sort((a, b) => {
-      const dataflowA = Number(a.DataflowID || Number.MAX_SAFE_INTEGER);
-      const dataflowB = Number(b.DataflowID || Number.MAX_SAFE_INTEGER);
-      if (dataflowA !== dataflowB) return dataflowA - dataflowB;
+      const createdA = new Date(a.CreatedAt || a.LastUpdatedAt || 0).getTime();
+      const createdB = new Date(b.CreatedAt || b.LastUpdatedAt || 0).getTime();
+      if (createdA !== createdB) return createdB - createdA;
       return a.RunName.localeCompare(b.RunName);
     });
-  }, [scenarioRunHeaders, workspace, searchTerm, statusFilter, scenarioTypeFilter, onlyAlerts, onlyPublished]);
+  }, [visibleScenarioRunHeaders, workspace, searchTerm, statusFilter, scenarioTypeFilter, onlyAlerts, onlyPublished]);
 
   const filteredComparisons = useMemo(() => {
     return comparisonHeaders.filter(comp => {
@@ -142,11 +173,39 @@ export const Home: React.FC<HomeProps> = ({
         if (!scenarioA || !scenarioB) return false;
         if (scenarioA.Region !== workspace || scenarioB.Region !== workspace) return false;
       }
-
-      if (searchTerm && !comp.ComparisonName.toLowerCase().includes(searchTerm.toLowerCase())) return false;
       return true;
     });
-  }, [comparisonHeaders, scenarioRunHeaders, searchTerm, workspace]);
+  }, [comparisonHeaders, scenarioRunHeaders, workspace]);
+
+  const requestDeleteScenario = (scenarioId: string) => {
+    const target = visibleScenarioRunHeaders.find((scenario) => scenario.ScenarioRunID === scenarioId) || null;
+    if (!target) return;
+    setPendingDeleteScenario(target);
+  };
+
+  const requestDeleteComparison = (comparisonId: string) => {
+    const target = comparisonHeaders.find((comparison) => comparison.ComparisonID === comparisonId) || null;
+    if (!target) return;
+    setPendingDeleteComparison(target);
+  };
+
+  const confirmDeleteScenario = () => {
+    if (!pendingDeleteScenario) return;
+    onDeleteScenario(pendingDeleteScenario.ScenarioRunID);
+    triggerAction(`scenario_delete_${pendingDeleteScenario.ScenarioRunID}`);
+    setPendingDeleteScenario(null);
+  };
+
+  const confirmDeleteComparison = () => {
+    if (!pendingDeleteComparison) return;
+    void onDeleteComparison(pendingDeleteComparison.ComparisonID);
+    triggerAction(`comparison_delete_${pendingDeleteComparison.ComparisonID}`);
+    setPendingDeleteComparison(null);
+  };
+
+  const cancelDeleteScenario = () => {
+    setPendingDeleteScenario(null);
+  };
 
   const comparisonEmptyStateMessage = useMemo(() => {
     if (comparisonHeaders.length === 0) {
@@ -156,9 +215,6 @@ export const Home: React.FC<HomeProps> = ({
     const reasons: string[] = [];
     if (workspace !== 'All') {
       reasons.push(`workspace "${workspace}"`);
-    }
-    if (searchTerm.trim()) {
-      reasons.push(`search "${searchTerm.trim()}"`);
     }
 
     if (reasons.length === 0) {
@@ -201,7 +257,7 @@ export const Home: React.FC<HomeProps> = ({
   };
 
   const handleOpenScenarioFromRow = (scenarioId: string) => {
-    const scenario = scenarioRunHeaders.find((s) => s.ScenarioRunID === scenarioId);
+    const scenario = visibleScenarioRunHeaders.find((s) => s.ScenarioRunID === scenarioId);
     if (!scenario) return;
     if (scenario.Status === 'Running') {
       setScenarioMonitorId(scenarioId);
@@ -211,8 +267,8 @@ export const Home: React.FC<HomeProps> = ({
   };
 
   const monitoredScenario = useMemo(
-    () => (scenarioMonitorId ? scenarioRunHeaders.find((s) => s.ScenarioRunID === scenarioMonitorId) || null : null),
-    [scenarioMonitorId, scenarioRunHeaders]
+    () => (scenarioMonitorId ? visibleScenarioRunHeaders.find((s) => s.ScenarioRunID === scenarioMonitorId) || null : null),
+    [scenarioMonitorId, visibleScenarioRunHeaders]
   );
 
   useEffect(() => {
@@ -238,8 +294,8 @@ export const Home: React.FC<HomeProps> = ({
   const selectedScenarioForRun = useMemo(() => {
     if (selectedScenarios.size !== 1) return null;
     const selectedId = Array.from(selectedScenarios)[0];
-    return scenarioRunHeaders.find((scenario) => scenario.ScenarioRunID === selectedId) || null;
-  }, [selectedScenarios, scenarioRunHeaders]);
+    return visibleScenarioRunHeaders.find((scenario) => scenario.ScenarioRunID === selectedId) || null;
+  }, [selectedScenarios, visibleScenarioRunHeaders]);
 
   const canRunSelected = !!selectedScenarioForRun
     && selectedScenarioForRun.Status !== 'Running'
@@ -255,6 +311,8 @@ export const Home: React.FC<HomeProps> = ({
   }, [filteredScenarios]);
 
   const aggregateKPIs = useMemo(() => {
+    const isOriginalScenario = (scenario: ScenarioRunHeader) =>
+      !String(scenario.CreatedBy || '').trim() || String(scenario.CreatedBy || '').trim() === 'NA';
     const baselineDataflowIdsByRegion: Record<'US' | 'Canada', string> = {
       US: '3228',
       Canada: '3211',
@@ -268,26 +326,27 @@ export const Home: React.FC<HomeProps> = ({
     const visibleRegions = workspace === 'All' ? (['US', 'Canada'] as const) : ([workspace] as const);
 
     const baselineScenarioIds = visibleRegions.flatMap((region) => {
-      const exactMatches = scenarioRunHeaders.filter((scenario) =>
-        scenario.Region === region && scenario.DataflowID === baselineDataflowIdsByRegion[region]
+      const originalHeaders = visibleScenarioRunHeaders.filter((scenario) => scenario.Region === region && isOriginalScenario(scenario));
+      const exactMatches = originalHeaders.filter((scenario) =>
+        scenario.DataflowID === baselineDataflowIdsByRegion[region]
       );
       if (exactMatches.length > 0) {
         return exactMatches.map((scenario) => scenario.ScenarioRunID);
       }
 
-      const nameMatches = scenarioRunHeaders.filter((scenario) =>
-        scenario.Region === region && scenario.RunName.toLowerCase().includes('baseline')
+      const nameMatches = originalHeaders.filter((scenario) =>
+        scenario.RunName.toLowerCase().includes('baseline')
       );
       if (nameMatches.length > 0) {
         return nameMatches.map((scenario) => scenario.ScenarioRunID);
       }
 
-      const firstMatch = scenarioRunHeaders.find((scenario) => scenario.Region === region);
+      const firstMatch = originalHeaders[0] || null;
       return firstMatch ? [firstMatch.ScenarioRunID] : [];
     });
 
-    const baselineRows = scenarioRunResultsDC.filter((row) => baselineScenarioIds.includes(row.ScenarioRunID));
-    const baselineHeaders = scenarioRunHeaders.filter((scenario) => baselineScenarioIds.includes(scenario.ScenarioRunID));
+    const baselineRows = visibleScenarioRunResultsDC.filter((row) => baselineScenarioIds.includes(row.ScenarioRunID));
+    const baselineHeaders = visibleScenarioRunHeaders.filter((scenario) => baselineScenarioIds.includes(scenario.ScenarioRunID));
 
     const sourceRows = baselineRows.length > 0 ? baselineRows : [];
     const sourceHeaders = baselineHeaders.length > 0 ? baselineHeaders : [];
@@ -343,7 +402,7 @@ export const Home: React.FC<HomeProps> = ({
               const matchingRows = sourceRows.filter((r) => r.ScenarioRunID === scenarioId);
               const count = matchingRows.length;
               if (count === 0) return;
-              const scenario = scenarioRunHeaders.find((item) => item.ScenarioRunID === scenarioId);
+              const scenario = visibleScenarioRunHeaders.find((item) => item.ScenarioRunID === scenarioId);
               slaNumerator += toNumber(scenario?.SLABreachPct) * count;
               slaWeight += count;
             });
@@ -360,21 +419,49 @@ export const Home: React.FC<HomeProps> = ({
       totalSpaceRequired,
       slaBreachPct,
     };
-  }, [scenarioRunHeaders, scenarioRunResultsDC, workspace]);
+  }, [visibleScenarioRunHeaders, visibleScenarioRunResultsDC, workspace]);
 
   const handleExportScenarioList = () => {
     const rows = filteredScenarios.map((s) => ({
       ScenarioRunID: s.ScenarioRunID,
       RunName: s.RunName,
       Region: s.Region,
-      Status: s.Status,
       ScenarioType: s.ScenarioType,
+      EntityScope: s.EntityScope,
+      Status: s.Status,
       TotalCost: s.TotalCost,
+      CostPerUnit: s.CostPerUnit,
       AvgDeliveryDays: s.AvgDeliveryDays,
+      AvgTransitDays: s.AvgTransitDays ?? '',
+      TotalCount: s.TotalCount ?? '',
       SLABreachPct: s.SLABreachPct,
+      ExcludedBySLACount: s.ExcludedBySLACount,
       MaxUtilPct: s.MaxUtilPct,
-      LastUpdatedAt: s.LastUpdatedAt,
+      TotalSpaceRequired: s.TotalSpaceRequired,
+      SpaceCore: s.SpaceCore,
+      SpaceBCV: s.SpaceBCV,
+      FootprintMode: s.FootprintMode ?? '',
+      LevelLoad: s.LevelLoad ?? '',
+      UtilizationCap: s.UtilizationCap ?? '',
+      CollectTreatment: s.CollectTreatment ?? '',
+      OverrideCount: s.OverrideCount,
+      LaneCount: s.LaneCount,
+      ChangedLaneCountVsBaseline: s.ChangedLaneCountVsBaseline,
+      DataflowID: s.DataflowID || '',
+      BaselineScenarioID: s.BaselineScenarioID || '',
+      LastRunBy: s.LastRunBy || '',
+      LastRunAt: s.LastRunAt || '',
+      LastRunExecutionId: s.LastRunExecutionId || '',
+      ApprovedBy: s.ApprovedBy || '',
+      ApprovedAt: s.ApprovedAt || '',
+      LatestComment: s.LatestComment,
+      Tags: s.Tags,
+      DataSnapshotVersion: s.DataSnapshotVersion,
+      AssumptionsSummary: s.AssumptionsSummary,
+      AlertFlags: s.AlertFlags,
       CreatedBy: s.CreatedBy,
+      CreatedAt: s.CreatedAt,
+      LastUpdatedAt: s.LastUpdatedAt,
     }));
     const csv = toCSV(rows);
     downloadBlob(csv, 'scenario_list.csv', 'text/csv;charset=utf-8;');
@@ -443,7 +530,9 @@ export const Home: React.FC<HomeProps> = ({
     onDuplicateScenario,
     onArchiveScenario,
     onUnarchiveScenario,
+    onDeleteScenario: requestDeleteScenario,
     onExportScenarioRow: handleExportScenarioRow,
+    canDeleteScenario: (row) => String(row.CreatedBy || '').trim() !== 'NA',
   });
 
   const comparisonColumns = createComparisonColumns({
@@ -454,25 +543,23 @@ export const Home: React.FC<HomeProps> = ({
     onDuplicateComparison,
     onArchiveComparison,
     onUnarchiveComparison,
+    onDeleteComparison: requestDeleteComparison,
     onExportComparisonRow: handleExportComparisonRow,
   });
 
   return (
     <AppPage
       header={
-          <HomeHeader
-            workspace={workspace}
-            onWorkspaceChange={onWorkspaceChange}
-            searchTerm={searchTerm}
-            onSearchTermChange={setSearchTerm}
-            currentUserDisplayName={currentUserDisplayName}
-            currentUserEmail={currentUserEmail}
-            notificationCount={notificationCount}
-            onOpenNotifications={onOpenNotifications}
-            onDataHealth={onDataHealth}
-            onExportScenarioList={handleExportScenarioList}
-            onExportComparisonList={handleExportComparisonList}
-            onNewScenario={onNewScenario}
+        <HomeHeader
+          workspace={workspace}
+          onWorkspaceChange={onWorkspaceChange}
+          currentUserDisplayName={currentUserDisplayName}
+          currentUserEmail={currentUserEmail}
+          notificationCount={notificationCount}
+          onOpenNotifications={onOpenNotifications}
+          onExportScenarioList={handleExportScenarioList}
+          onExportComparisonList={handleExportComparisonList}
+          onNewScenario={onNewScenario}
             onNewComparison={() => onNewComparison()}
           hasComparisons={hasComparisons}
           exportScenarioActive={isActionActive('export_scenario_list')}
@@ -488,6 +575,8 @@ export const Home: React.FC<HomeProps> = ({
         selectedScenarios={selectedScenarios}
         onSelectScenario={handleSelectScenario}
         onOpenScenario={handleOpenScenarioFromRow}
+        searchTerm={searchTerm}
+        onSearchTermChange={setSearchTerm}
         statusFilter={statusFilter}
         onStatusFilterChange={setStatusFilter}
         onlyAlerts={onlyAlerts}
@@ -512,11 +601,72 @@ export const Home: React.FC<HomeProps> = ({
         refreshActive={comparisonsRefreshActive}
       />
 
-      <HomeAlertsSection
-        alertCounts={alertCounts}
-        dataHealthSnapshot={dataHealthSnapshot}
-        onDataHealth={onDataHealth}
-      />
+      {false && (
+        <HomeAlertsSection
+          alertCounts={alertCounts}
+          dataHealthSnapshot={dataHealthSnapshot}
+        />
+      )}
+
+      <Modal
+        isOpen={Boolean(pendingDeleteScenario)}
+        onClose={cancelDeleteScenario}
+        title="Delete scenario?"
+        size="small"
+        footer={
+          <>
+            <Button variant="ghost" onClick={cancelDeleteScenario}>
+              Cancel
+            </Button>
+            <Button variant="danger" onClick={confirmDeleteScenario}>
+              Delete
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3 text-sm text-slate-700">
+          <p>
+            This will permanently delete{' '}
+            <span className="font-semibold text-slate-900">
+              {pendingDeleteScenario?.RunName || 'this scenario'}
+            </span>
+            .
+          </p>
+          <p className="text-slate-500">
+            Only custom scenarios can be deleted. Original ETL scenarios stay protected.
+          </p>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={Boolean(pendingDeleteComparison)}
+        onClose={() => setPendingDeleteComparison(null)}
+        title="Delete comparison?"
+        size="small"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setPendingDeleteComparison(null)}>
+              Cancel
+            </Button>
+            <Button variant="danger" onClick={confirmDeleteComparison}>
+              Delete
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3 text-sm text-slate-700">
+          <p>
+            This will permanently delete{' '}
+            <span className="font-semibold text-slate-900">
+              {pendingDeleteComparison?.ComparisonName || 'this comparison'}
+            </span>
+            .
+          </p>
+          <p className="text-slate-500">
+            The AppDB record and its comparison details will be removed.
+          </p>
+        </div>
+      </Modal>
 
       {/* <div className="bg-white rounded-lg border border-slate-200 shadow-sm mb-6 p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

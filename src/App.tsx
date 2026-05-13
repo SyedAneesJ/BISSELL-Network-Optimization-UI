@@ -25,6 +25,8 @@ import {
   buildDatasetOptionSets,
   DatasetOptionSets,
   fetchAllScenarioDatasets,
+  loadDcCapacityDataset,
+  loadScenarioLaneDataset,
   getEntityOrder,
   mapDcResultsFromRows,
   resolveRegistryItemFromMeta,
@@ -33,27 +35,29 @@ import {
   sendCodeEngineEmail,
   DomoApi,
 } from '@/services';
+import type { DomoDcCapacityRow } from '@/services';
 import {
-  buildScenarioArtifacts,
+  buildScenarioArtifacts as buildScenarioArtifactsLegacy,
+  buildScenarioArtifactsWithLogic,
   buildScenarioRepositoryRecord,
   buildScenarioRepositoryRecordFromState,
   reconcileScenarioRepositoryRecordWithSuppressedDcs,
   createScenario as createScenarioRecord,
-  archiveScenario as archiveScenarioRecord,
-  duplicateScenario as duplicateScenarioRecord,
-  getScenarioRecord,
   listScenarioRecords,
-  saveScenarioRecord,
-  updateScenario,
-  updateScenarioOverrides,
-  updateScenarioRunHistory,
-  updateScenarioSnapshot,
+  deleteScenarioRecord,
+  deleteScenarioRecordFromAppDb,
+  loadScenarioRecordsFromAppDb,
+  syncScenarioRecordsToAppDb,
+  upsertScenarioRecordToAppDb,
+  upsertScenarioLaneSnapshotsToAppDb,
   ScenarioTemplateOption,
+  type ScenarioBuildContext,
   type ScenarioRepositoryRecord,
 } from '@/services/scenario';
 import {
   APPDB_COLLECTIONS,
   createCollectionDocument,
+  deleteCollectionDocumentsByField,
   listCollectionDocuments,
   upsertCollectionDocumentByField,
 } from '@/services/domo';
@@ -101,6 +105,12 @@ const EMPTY_COMPARISON_STATE: ComparisonState = {
 
 const EMPTY_SCENARIO_HISTORY: ScenarioHistoryState = {};
 const DEBUG_DOMO_MAPPING = import.meta.env.VITE_ENABLE_DATA_TRACE !== 'false';
+const SCENARIO_RUN_MODE = String(import.meta.env.VITE_SCENARIO_RUN_MODE || 'live').trim().toLowerCase();
+const IS_READONLY_SCENARIO_RUN_MODE = SCENARIO_RUN_MODE === 'readonly' || SCENARIO_RUN_MODE === 'paused';
+const READONLY_SCENARIO_RUN_DELAY_MS = 3500;
+const isActiveDcCapacity = (row: DomoDcCapacityRow) => row.IsActive && Boolean(String(row.DCName || '').trim());
+const normalizeScenarioLookupKey = (value: string): string =>
+  String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
 
 const cloneScenarioHeader = (header: ScenarioRunHeader): ScenarioRunHeader => ({
   ...header,
@@ -114,6 +124,9 @@ const cloneScenarioResultsDC = (rows: ScenarioRunResultsDC[]): ScenarioRunResult
   rows.map((row) => ({ ...row }));
 
 const cloneScenarioResultsLanes = (rows: ScenarioRunResultsLane[]): ScenarioRunResultsLane[] =>
+  rows.map((row) => ({ ...row }));
+
+const cloneDcCapacityRows = (rows: DomoDcCapacityRow[]): DomoDcCapacityRow[] =>
   rows.map((row) => ({ ...row }));
 
 const mergeScenarioStateWithRecords = (
@@ -158,29 +171,25 @@ const mergeScenarioStateWithRecords = (
     const scenarioId = record.definition.scenarioId;
     const existingHeader = headers.get(scenarioId);
 
-    if (existingHeader) {
-      const snapshotHeader = record.snapshot.header;
-      headers.set(scenarioId, {
-        ...existingHeader,
-        Status: snapshotHeader.Status || existingHeader.Status,
-        CreatedBy: snapshotHeader.CreatedBy || existingHeader.CreatedBy,
-        CreatedAt: snapshotHeader.CreatedAt || existingHeader.CreatedAt,
-        LastUpdatedAt: snapshotHeader.LastUpdatedAt || existingHeader.LastUpdatedAt,
-        LastRunBy: snapshotHeader.LastRunBy ?? existingHeader.LastRunBy,
-        LastRunAt: snapshotHeader.LastRunAt ?? existingHeader.LastRunAt,
-        LastRunExecutionId: snapshotHeader.LastRunExecutionId ?? existingHeader.LastRunExecutionId,
-        ApprovedBy: snapshotHeader.ApprovedBy ?? existingHeader.ApprovedBy,
-        ApprovedAt: snapshotHeader.ApprovedAt ?? existingHeader.ApprovedAt,
-        LatestComment: snapshotHeader.LatestComment ?? existingHeader.LatestComment,
-        Tags: snapshotHeader.Tags ?? existingHeader.Tags,
-      });
-      return;
-    }
-
-    const hydratedHeader = {
-      ...cloneScenarioHeader(record.snapshot.header),
-      DataflowID: record.snapshot.header.DataflowID || record.definition.dataflowId,
-    };
+    const hydratedHeader = existingHeader
+      ? {
+          ...existingHeader,
+          Status: record.snapshot.header.Status || existingHeader.Status,
+          CreatedBy: record.snapshot.header.CreatedBy || existingHeader.CreatedBy,
+          CreatedAt: record.snapshot.header.CreatedAt || existingHeader.CreatedAt,
+          LastUpdatedAt: record.snapshot.header.LastUpdatedAt || existingHeader.LastUpdatedAt,
+          LastRunBy: record.snapshot.header.LastRunBy ?? existingHeader.LastRunBy,
+          LastRunAt: record.snapshot.header.LastRunAt ?? existingHeader.LastRunAt,
+          LastRunExecutionId: record.snapshot.header.LastRunExecutionId ?? existingHeader.LastRunExecutionId,
+          ApprovedBy: record.snapshot.header.ApprovedBy ?? existingHeader.ApprovedBy,
+          ApprovedAt: record.snapshot.header.ApprovedAt ?? existingHeader.ApprovedAt,
+          LatestComment: record.snapshot.header.LatestComment ?? existingHeader.LatestComment,
+          Tags: record.snapshot.header.Tags ?? existingHeader.Tags,
+        }
+      : {
+          ...cloneScenarioHeader(record.snapshot.header),
+          DataflowID: record.snapshot.header.DataflowID || record.definition.dataflowId,
+        };
     headers.set(scenarioId, hydratedHeader);
     configs.set(scenarioId, cloneScenarioConfig(record.snapshot.config));
     resultsDC.set(scenarioId, cloneScenarioResultsDC(record.snapshot.resultsDC));
@@ -209,6 +218,27 @@ const buildScenarioHistoryState = (records: ScenarioRepositoryRecord[]): Scenari
     acc[record.definition.scenarioId] = record.runHistory.map((entry) => ({ ...entry }));
     return acc;
   }, {});
+
+const cloneScenarioRepositoryRecord = (record: ScenarioRepositoryRecord): ScenarioRepositoryRecord => ({
+  definition: {
+    ...record.definition,
+    selectedDcs: [...record.definition.selectedDcs],
+    suppressedDcs: [...record.definition.suppressedDcs],
+    tags: [...record.definition.tags],
+  },
+  snapshot: record.snapshot
+    ? {
+        ...record.snapshot,
+        header: { ...record.snapshot.header },
+        config: { ...record.snapshot.config },
+        resultsDC: record.snapshot.resultsDC.map((row) => ({ ...row })),
+        resultsLanes: record.snapshot.resultsLanes.map((row) => ({ ...row })),
+        summary: { ...record.snapshot.summary },
+      }
+    : null,
+  runHistory: (record.runHistory || []).map((entry) => ({ ...entry })),
+  overrides: (record.overrides || []).map((override) => ({ ...override })),
+});
 
 const DATAFLOW_POLL_INTERVAL_MS = 5000;
 const DATAFLOW_MAX_POLL_ATTEMPTS = 360;
@@ -552,7 +582,7 @@ const persistAppDbComparisonState = async (
 };
 
 function App() {
-  const [workspace, setWorkspace] = useState<'All' | 'US' | 'Canada'>('All');
+  const [workspace, setWorkspace] = useState<'All' | 'US' | 'Canada'>('US');
   const [scenarioState, setScenarioState] = useState<ScenarioState>(EMPTY_SCENARIO_STATE);
   const [scenarioHistoryState, setScenarioHistoryState] = useState<ScenarioHistoryState>(EMPTY_SCENARIO_HISTORY);
   const [comparisonState, setComparisonState] = useState<ComparisonState>(EMPTY_COMPARISON_STATE);
@@ -584,9 +614,58 @@ function App() {
   const toastTimersRef = useRef<Record<number, number>>({});
   const activeScenarioRunsRef = useRef<Set<string>>(new Set());
   const pollingTimersRef = useRef<Record<string, number>>({});
+  const readonlyRunTimersRef = useRef<Record<string, number>>({});
   const persistenceHydratedRef = useRef(false);
+  const scenarioRepositoryRecordsRef = useRef<ScenarioRepositoryRecord[]>([]);
+  const scenarioPersistenceSourceRef = useRef<'AppDB' | 'localStorage' | 'unknown'>('unknown');
   const lastPersistedComparisonStateRef = useRef<ComparisonState>(EMPTY_COMPARISON_STATE);
   const lastPersistedNotificationsRef = useRef<AppNotification[]>([]);
+
+  const setScenarioRepositoryCache = useCallback(
+    (records: ScenarioRepositoryRecord[], source: 'AppDB' | 'localStorage' | 'unknown') => {
+      scenarioRepositoryRecordsRef.current = records.map((record) => cloneScenarioRepositoryRecord(record));
+      scenarioPersistenceSourceRef.current = source;
+    },
+    [],
+  );
+
+  const getScenarioRecordFromCache = useCallback((scenarioId: string): ScenarioRepositoryRecord | null => {
+    const record = scenarioRepositoryRecordsRef.current.find((item) => item.definition.scenarioId === scenarioId);
+    return record ? cloneScenarioRepositoryRecord(record) : null;
+  }, []);
+
+  const persistScenarioRecordToPrimaryStore = useCallback(async (record: ScenarioRepositoryRecord): Promise<void> => {
+    const next = cloneScenarioRepositoryRecord(record);
+    const index = scenarioRepositoryRecordsRef.current.findIndex(
+      (item) => item.definition.scenarioId === next.definition.scenarioId,
+    );
+    if (index >= 0) {
+      scenarioRepositoryRecordsRef.current[index] = next;
+    } else {
+      scenarioRepositoryRecordsRef.current.unshift(next);
+    }
+
+    if (scenarioPersistenceSourceRef.current === 'AppDB') {
+      await upsertScenarioRecordToAppDb(next);
+      await upsertScenarioLaneSnapshotsToAppDb(next);
+      return;
+    }
+
+    createScenarioRecord(next.definition, next.snapshot);
+  }, []);
+
+  const deleteScenarioRecordFromPrimaryStore = useCallback(async (scenarioId: string): Promise<boolean> => {
+    scenarioRepositoryRecordsRef.current = scenarioRepositoryRecordsRef.current.filter(
+      (item) => item.definition.scenarioId !== scenarioId,
+    );
+
+    if (scenarioPersistenceSourceRef.current === 'AppDB') {
+      const deletedCount = await deleteScenarioRecordFromAppDb(scenarioId);
+      return deletedCount > 0;
+    }
+
+    return deleteScenarioRecord(scenarioId);
+  }, []);
 
   const [datasetOptions, setDatasetOptions] = useState<DatasetOptionSets>(() => ({
     scenarioTypes: [],
@@ -606,6 +685,11 @@ function App() {
     bcvRuleSets: [],
     allowManualOverride: [],
   }));
+  const [dcCapacityRows, setDcCapacityRows] = useState<DomoDcCapacityRow[]>([]);
+  useEffect(() => {
+    console.log('[App Mode] scenarioRunMode=', SCENARIO_RUN_MODE);
+    console.log('[App Mode] readonlyScenarioRuns=', IS_READONLY_SCENARIO_RUN_MODE);
+  }, []);
 
   const datasetContext = useMemo(() => {
     const regions = Array.from(new Set(scenarioState.headers.map((h) => h.Region))) as Array<'US' | 'Canada'>;
@@ -616,21 +700,25 @@ function App() {
         if (trimmed) entities.add(trimmed);
       });
     });
-    const scenarioRegionById = new Map(scenarioState.headers.map((h) => [h.ScenarioRunID, h.Region]));
-    const dcsByRegion: Record<string, string[]> = {};
-    scenarioState.resultsDC.forEach((dc) => {
-      const region = scenarioRegionById.get(dc.ScenarioRunID) || 'US';
-      dcsByRegion[region] = dcsByRegion[region] || [];
-      if (!dcsByRegion[region].includes(dc.DCName)) {
-        dcsByRegion[region].push(dc.DCName);
-      }
-    });
-    const dcCapacityByName: Record<string, number> = {};
-    scenarioState.resultsDC.forEach((dc) => {
-      if (dcCapacityByName[dc.DCName] === undefined) {
-        dcCapacityByName[dc.DCName] = dc.SpaceRequired;
-      }
-    });
+    const activeCapacityRows = dcCapacityRows.filter(isActiveDcCapacity);
+    const dcsByRegion: Record<string, string[]> = {
+      All: activeCapacityRows.map((row) => row.DCName),
+    };
+    const dcCapacityByName = activeCapacityRows.reduce<Record<string, number>>((acc, row) => {
+      acc[row.DCName] = row.Sqft;
+      return acc;
+    }, {});
+
+    if (dcsByRegion.All.length === 0) {
+      scenarioState.resultsDC.forEach((dc) => {
+        if (!dcsByRegion.All.includes(dc.DCName) && dc.IsSuppressed === 'N') {
+          dcsByRegion.All.push(dc.DCName);
+        }
+        if (dcCapacityByName[dc.DCName] === undefined) {
+          dcCapacityByName[dc.DCName] = dc.SpaceRequired;
+        }
+      });
+    }
 
     const scenarioTypes = datasetOptions.scenarioTypes.length > 0
       ? datasetOptions.scenarioTypes
@@ -649,26 +737,44 @@ function App() {
       scenarioTypes,
       missingDataReasons,
     };
-  }, [scenarioState, datasetOptions]);
+  }, [scenarioState, datasetOptions, dcCapacityRows]);
+
+  const lanesByScenarioId = useMemo<Record<string, ScenarioRunResultsLane[]>>(() => {
+    return scenarioState.resultsLanes.reduce<Record<string, ScenarioRunResultsLane[]>>((acc, lane) => {
+      if (!acc[lane.ScenarioRunID]) {
+        acc[lane.ScenarioRunID] = [];
+      }
+      acc[lane.ScenarioRunID].push(lane);
+      return acc;
+    }, {});
+  }, [scenarioState.resultsLanes]);
 
   const scenarioTemplatesByRegion = useMemo<Record<'US' | 'Canada', ScenarioTemplateOption[]>>(() => {
+    const isOriginalScenarioHeader = (header: ScenarioRunHeader) =>
+      !String(header.CreatedBy || '').trim() || String(header.CreatedBy || '').trim() === 'NA';
+
     const buildTemplate = (header: ScenarioRunHeader): ScenarioTemplateOption | null => {
+      if (!isOriginalScenarioHeader(header)) return null;
       const dcRows = scenarioState.resultsDC.filter((row) => row.ScenarioRunID === header.ScenarioRunID);
       const config = scenarioState.configs.find((item) => item.ScenarioRunID === header.ScenarioRunID);
       if (dcRows.length === 0 && !config) return null;
       if (!header.DataflowID) return null;
-
-      const availableDcs = Array.from(new Set(dcRows.map((row) => row.DCName).filter(Boolean)));
-      const availableDcCapacity = dcRows.reduce<Record<string, number>>((acc, row) => {
-        if (acc[row.DCName] === undefined) {
-          acc[row.DCName] = row.SpaceRequired;
-        }
-        return acc;
-      }, {});
-
       const accessorialFlags = config?.AccessorialFlags
         ? config.AccessorialFlags.split(',').map((flag) => flag.trim()).filter(Boolean)
         : header.Tags.split(',').map((tag) => tag.trim()).filter(Boolean);
+
+      const activeCapacityRows = dcCapacityRows.filter(isActiveDcCapacity);
+      const availableDcCapacity = activeCapacityRows.reduce<Record<string, number>>((acc, row) => {
+        acc[row.DCName] = row.Sqft;
+        return acc;
+      }, {});
+      let availableDcs = Object.keys(availableDcCapacity);
+      if (availableDcs.length === 0) {
+        Array.from(new Set(dcRows.map((row) => row.DCName).filter(Boolean))).forEach((dcName) => {
+          availableDcCapacity[dcName] = dcRows.find((row) => row.DCName === dcName)?.SpaceRequired || 0;
+        });
+        availableDcs = Object.keys(availableDcCapacity);
+      }
 
       return {
         scenarioId: header.ScenarioRunID,
@@ -719,7 +825,7 @@ function App() {
       US: sortTemplates(grouped.US),
       Canada: sortTemplates(grouped.Canada),
     };
-  }, [scenarioState.headers, scenarioState.configs, scenarioState.resultsDC]);
+  }, [scenarioState.headers, scenarioState.configs, scenarioState.resultsDC, dcCapacityRows]);
 
   const navigateToHome = () => {
     setAppState({
@@ -831,6 +937,7 @@ function App() {
   const loadDomoDc = useCallback(async () => {
     try {
       const datasetResults = await fetchAllScenarioDatasets();
+      const dcCapacityDatasetRows = await loadDcCapacityDataset();
       const allRows = datasetResults.flatMap((result) => result.rows);
 
       console.log('Domo datasets loaded:', datasetResults.map((d) => ({
@@ -838,6 +945,11 @@ function App() {
         scenarioKey: d.registryItem.scenarioKey,
         rows: d.rows.length,
       })));
+      console.log('[Domo DC Capacity] loaded', {
+        rows: dcCapacityDatasetRows.length,
+        activeRows: dcCapacityDatasetRows.filter((row) => row.IsActive).length,
+      });
+      setDcCapacityRows(cloneDcCapacityRows(dcCapacityDatasetRows));
 
       const globalEntityOrder = allRows.length > 0 ? getEntityOrder(allRows) : [];
       const scenarioPayloads = allRows.length > 0 ? datasetResults.flatMap((datasetResult) => {
@@ -906,41 +1018,57 @@ function App() {
               IsSuppressed: dc.IsSuppressed,
             }));
 
-            console.groupCollapsed(
-              `[Domo Mapping] ${effectiveRegistryInfo.scenarioLabel} / ${identity.region} / ${identity.scenarioType} / ${identity.entityScope} / ${identity.scenarioId}`
-            );
-            console.log('Dataset', {
-              datasetId: datasetResult.datasetId,
-              dataflowId: effectiveRegistryInfo.dataflowId,
-              scenarioKey: effectiveRegistryInfo.scenarioKey,
-              scenarioLabel: effectiveRegistryInfo.scenarioLabel,
-            });
-            console.table(rawPreview);
-            console.table(mappedPreview);
-            console.log('Derived header', {
-              ScenarioRunID: header.ScenarioRunID,
-              RunName: header.RunName,
-              Region: header.Region,
-              ScenarioType: header.ScenarioType,
-              EntityScope: header.EntityScope,
-              DataflowID: header.DataflowID,
-              TotalCost: header.TotalCost,
-              CostPerUnit: header.CostPerUnit,
-              AvgDeliveryDays: header.AvgDeliveryDays,
-              AvgTransitDays: header.AvgTransitDays,
-              MaxUtilPct: header.MaxUtilPct,
-              TotalSpaceRequired: header.TotalSpaceRequired,
-              SpaceCore: header.SpaceCore,
-              SpaceBCV: header.SpaceBCV,
-              CollectTreatment: header.CollectTreatment,
-              UtilizationCap: header.UtilizationCap,
-            });
-            console.groupEnd();
+            // console.groupCollapsed(
+            //   `[Domo Mapping] ${effectiveRegistryInfo.scenarioLabel} / ${identity.region} / ${identity.scenarioType} / ${identity.entityScope} / ${identity.scenarioId}`
+            // );
+            // console.log('Dataset', {
+            //   datasetId: datasetResult.datasetId,
+            //   dataflowId: effectiveRegistryInfo.dataflowId,
+            //   scenarioKey: effectiveRegistryInfo.scenarioKey,
+            //   scenarioLabel: effectiveRegistryInfo.scenarioLabel,
+            // });
+            // console.table(rawPreview);
+            // console.table(mappedPreview);
+            // console.log('Derived header', {
+            //   ScenarioRunID: header.ScenarioRunID,
+            //   RunName: header.RunName,
+            //   Region: header.Region,
+            //   ScenarioType: header.ScenarioType,
+            //   EntityScope: header.EntityScope,
+            //   DataflowID: header.DataflowID,
+            //   TotalCost: header.TotalCost,
+            //   CostPerUnit: header.CostPerUnit,
+            //   AvgDeliveryDays: header.AvgDeliveryDays,
+            //   AvgTransitDays: header.AvgTransitDays,
+            //   MaxUtilPct: header.MaxUtilPct,
+            //   TotalSpaceRequired: header.TotalSpaceRequired,
+            //   SpaceCore: header.SpaceCore,
+            //   SpaceBCV: header.SpaceBCV,
+            //   CollectTreatment: header.CollectTreatment,
+            //   UtilizationCap: header.UtilizationCap,
+            // });
+            // console.groupEnd();
           }
 
           return { header, dcResults };
         });
       }) : [];
+
+      const laneScenarioRunIdLookup = scenarioPayloads.reduce<Record<string, string>>((acc, payload) => {
+        const header = payload.header;
+        const scenarioTypeKey = normalizeScenarioLookupKey(header.ScenarioType);
+        const runNameKey = normalizeScenarioLookupKey(header.RunName);
+        const compositeKey = normalizeScenarioLookupKey([header.ScenarioType, header.RunName, header.Region, header.EntityScope].filter(Boolean).join('|'));
+        if (scenarioTypeKey) acc[scenarioTypeKey] = header.ScenarioRunID;
+        if (runNameKey) acc[runNameKey] = header.ScenarioRunID;
+        if (compositeKey) acc[compositeKey] = header.ScenarioRunID;
+        return acc;
+      }, {});
+
+      const laneDatasetRows = await loadScenarioLaneDataset(laneScenarioRunIdLookup);
+      console.log('[Domo Lanes] loaded for scenarios', {
+        laneRows: laneDatasetRows.length,
+      });
 
       const dataflowSortValue = (value?: string) => {
         const parsed = Number(value);
@@ -954,30 +1082,94 @@ function App() {
 
       setDatasetOptions(buildDatasetOptionSets(allRows));
       setDataHealthSnapshot(buildDataHealthSnapshotFromRows(allRows));
+      const safeLoadedLanes = Array.isArray(laneDatasetRows) ? laneDatasetRows : [];
       const baseScenarioState: ScenarioState = {
         headers: sortedScenarioPayloads.map((p) => p.header),
         configs: [],
         resultsDC: sortedScenarioPayloads.flatMap((p) => p.dcResults),
-        resultsLanes: [],
+        resultsLanes: sortedScenarioPayloads.flatMap((p) =>
+          safeLoadedLanes.filter((lane) => lane.ScenarioRunID === p.header.ScenarioRunID)
+        ),
         overrides: [],
       };
       const persistedBeforeSeed = listScenarioRecords();
-      const persistedIds = new Set(persistedBeforeSeed.map((record) => record.definition.scenarioId));
-      const legacySeedRecords = baseScenarioState.headers
-        .filter((header) => !persistedIds.has(header.ScenarioRunID))
-        .map((header) =>
-          buildScenarioRepositoryRecordFromState(
-            header,
-            baseScenarioState.resultsDC.filter((row) => row.ScenarioRunID === header.ScenarioRunID),
-            []
-          )
-        );
-      legacySeedRecords.forEach((record) => {
-        createScenarioRecord(record.definition, record.snapshot);
+      console.log('[Scenario State] source=localStorage', {
+        records: persistedBeforeSeed.length,
       });
+      let persistedRecords = await loadScenarioRecordsFromAppDb();
+      let scenarioPersistenceSource: 'AppDB' | 'localStorage' = persistedRecords.length > 0 ? 'AppDB' : 'localStorage';
+      let legacySeedRecords: ScenarioRepositoryRecord[] = [];
 
-      const persistedRecords = listScenarioRecords();
-      setScenarioState(mergeScenarioStateWithRecords(baseScenarioState, persistedRecords));
+      try {
+        if (persistedRecords.length === 0 && persistedBeforeSeed.length > 0) {
+          await syncScenarioRecordsToAppDb(persistedBeforeSeed);
+          persistedRecords = await loadScenarioRecordsFromAppDb();
+          scenarioPersistenceSource = persistedRecords.length > 0 ? 'AppDB' : 'localStorage';
+        }
+        if (persistedRecords.length === 0) {
+          const persistedIds = new Set(persistedBeforeSeed.map((record) => record.definition.scenarioId));
+          legacySeedRecords = baseScenarioState.headers
+            .filter((header) => !persistedIds.has(header.ScenarioRunID))
+            .map((header) =>
+              buildScenarioRepositoryRecordFromState(
+                header,
+                baseScenarioState.resultsDC.filter((row) => row.ScenarioRunID === header.ScenarioRunID),
+                baseScenarioState.resultsLanes.filter((row) => row.ScenarioRunID === header.ScenarioRunID),
+              )
+            );
+          if (legacySeedRecords.length > 0) {
+            await syncScenarioRecordsToAppDb(legacySeedRecords);
+            persistedRecords = await loadScenarioRecordsFromAppDb();
+            scenarioPersistenceSource = persistedRecords.length > 0 ? 'AppDB' : 'localStorage';
+          }
+        }
+      } catch (syncError) {
+        console.warn('[Scenario State] AppDB scenario sync failed; continuing with localStorage cache.', syncError);
+      }
+
+      if (persistedRecords.length > 0) {
+        scenarioPersistenceSourceRef.current = 'AppDB';
+        setScenarioRepositoryCache(persistedRecords, 'AppDB');
+      } else {
+        const fallbackRecords = persistedBeforeSeed.length > 0 ? persistedBeforeSeed : legacySeedRecords;
+        scenarioPersistenceSourceRef.current = 'localStorage';
+        setScenarioRepositoryCache(fallbackRecords, 'localStorage');
+        if (persistedBeforeSeed.length === 0 && fallbackRecords.length > 0) {
+          fallbackRecords.forEach((record) => {
+            createScenarioRecord(record.definition, record.snapshot);
+          });
+        }
+        persistedRecords = fallbackRecords;
+      }
+
+      const seededFromDomo = legacySeedRecords.length > 0;
+      console.log('[Scenario State] source=merged (Domo datasets + AppDB/localStorage repository)', {
+        domoRows: allRows.length,
+        domoHeaders: baseScenarioState.headers.length,
+        persistedRecords: persistedRecords.length,
+        seededFromDomo,
+        scenarioPersistenceSource: scenarioPersistenceSourceRef.current,
+      });
+      const mergedState = mergeScenarioStateWithRecords(baseScenarioState, persistedRecords);
+      const persistedScenarioIds = new Set(persistedRecords.map((r) => r.definition.scenarioId));
+      console.groupCollapsed(`[Scenario Sources] ${mergedState.headers.length} scenarios after merge`);
+      console.table(
+        mergedState.headers.map((h) => ({
+          ScenarioRunID: h.ScenarioRunID,
+          RunName: h.RunName,
+          Region: h.Region,
+          ScenarioType: h.ScenarioType,
+          Status: h.Status,
+          CreatedBy: h.CreatedBy || 'NA',
+          DataflowID: h.DataflowID || 'NA',
+          Source: persistedScenarioIds.has(h.ScenarioRunID)
+            ? (scenarioPersistenceSourceRef.current === 'AppDB' ? 'AppDB record' : 'localStorage record')
+            : 'Domo dataset only',
+        }))
+      );
+      console.groupEnd();
+      setScenarioState(mergedState);
+
       setScenarioHistoryState(buildScenarioHistoryState(persistedRecords));
 
       setDomoDcLoaded(true);
@@ -1091,18 +1283,24 @@ function App() {
     }
 
     const completedAt = new Date(params.completedAtIso).toLocaleString();
-    const subject = `Scenario Run Completed: ${params.scenarioName}`;
+    const appUrl = 'https://bissell.domo.com/app-studio/1013705028/pages/475939166';
+    const subject = `Scenario completed: ${params.scenarioName}`;
     const body = [
-      `<p>Hi ${currentUserDisplayName || 'there'},</p>`,
-      '<p>Your scenario ETL completed successfully.</p>',
-      '<ul>',
-      `<li><strong>Scenario:</strong> ${params.scenarioName}</li>`,
-      `<li><strong>Scenario ID:</strong> ${params.scenarioId}</li>`,
-      `<li><strong>Dataflow ID:</strong> ${params.dataflowId}</li>`,
-      `<li><strong>Execution ID:</strong> ${params.executionId}</li>`,
-      `<li><strong>Completed At:</strong> ${completedAt}</li>`,
-      '</ul>',
-      '<p>Regards,<br/>Network Optimization UI</p>',
+      '<div style="font-family: Arial, sans-serif; color: #0f172a; line-height: 1.5;">',
+      `<p style="margin: 0 0 12px 0;">Hi ${currentUserDisplayName || 'there'},</p>`,
+      '<p style="margin: 0 0 16px 0;">Your scenario ETL run finished successfully. Here is the summary:</p>',
+      '<table style="border-collapse: collapse; width: 100%; max-width: 640px; margin: 0 0 18px 0;">',
+      '<tbody>',
+      `<tr><td style="padding: 6px 10px; border: 1px solid #e2e8f0; font-weight: 600; background: #f8fafc;">Scenario</td><td style="padding: 6px 10px; border: 1px solid #e2e8f0;">${params.scenarioName}</td></tr>`,
+      `<tr><td style="padding: 6px 10px; border: 1px solid #e2e8f0; font-weight: 600; background: #f8fafc;">Scenario ID</td><td style="padding: 6px 10px; border: 1px solid #e2e8f0;">${params.scenarioId}</td></tr>`,
+      `<tr><td style="padding: 6px 10px; border: 1px solid #e2e8f0; font-weight: 600; background: #f8fafc;">Completed At</td><td style="padding: 6px 10px; border: 1px solid #e2e8f0;">${completedAt}</td></tr>`,
+      '</tbody>',
+      '</table>',
+      `<p style="margin: 0 0 18px 0;">`,
+      `<a href="${appUrl}" target="_blank" rel="noreferrer" style="display: inline-block; padding: 10px 16px; background: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: 600;">Open in App</a>`,
+      '</p>',
+      '<p style="margin: 0;">Regards,<br/>Network Optimization UI</p>',
+      '</div>',
     ].join('');
 
     await sendCodeEngineEmail({
@@ -1184,13 +1382,15 @@ function App() {
     return () => {
       Object.values(pollingTimersRef.current).forEach((timerId) => window.clearTimeout(timerId));
       pollingTimersRef.current = {};
+      Object.values(readonlyRunTimersRef.current).forEach((timerId) => window.clearTimeout(timerId));
+      readonlyRunTimersRef.current = {};
       activeScenarioRunsRef.current.clear();
       Object.values(toastTimersRef.current).forEach((timerId) => window.clearTimeout(timerId));
       toastTimersRef.current = {};
     };
   }, []);
 
-  const handleScenarioComplete = (payload: NewScenarioSubmit) => {
+  const handleScenarioComplete = async (payload: NewScenarioSubmit) => {
     const selectedTemplate = scenarioTemplatesByRegion[payload.input.region]?.find(
       (template) => template.scenarioId === payload.input.baselineScenarioId,
     ) || null;
@@ -1205,10 +1405,12 @@ function App() {
       return;
     }
 
-    const buildContext = {
+    const buildContext: ScenarioBuildContext = {
       scenarioHeaders: scenarioState.headers,
       scenarioResultsDC: scenarioState.resultsDC,
       scenarioResultsLanes: scenarioState.resultsLanes,
+      laneRowsByScenarioId: lanesByScenarioId,
+      dcCapacityRows,
       currentUserDisplayName,
       dataSnapshotVersion: dataHealthSnapshot?.SnapshotTime || 'NA',
       hasCostVsServiceWeights: selectedTemplate
@@ -1221,9 +1423,17 @@ function App() {
         ? selectedTemplate.leadTimeCap > 0
         : datasetOptions.leadTimeCaps.length > 0,
     };
-    const artifact = buildScenarioArtifacts(payload, buildContext);
+    let artifact = buildScenarioArtifactsLegacy(payload, buildContext);
+    try {
+      artifact = await buildScenarioArtifactsWithLogic(payload, buildContext);
+    } catch (error) {
+      console.warn('[Scenario Engine] Falling back to legacy builder for new scenario creation.', error);
+      artifact = buildScenarioArtifactsLegacy(payload, buildContext);
+    }
     const repositoryRecord = buildScenarioRepositoryRecord(payload, buildContext, artifact);
-    createScenarioRecord(repositoryRecord.definition, repositoryRecord.snapshot);
+    void persistScenarioRecordToPrimaryStore(repositoryRecord).catch((error) => {
+      console.warn('[Scenario AppDB] Failed to persist new scenario', error);
+    });
     const { header, config, resultsDC, resultsLanes } = artifact;
 
     setScenarioState((prev) => ({
@@ -1241,39 +1451,45 @@ function App() {
     scenarioId: string,
     headerPatch: Partial<ScenarioRunHeader>,
   ) => {
-    const record = getScenarioRecord(scenarioId);
+    const record = getScenarioRecordFromCache(scenarioId);
     if (!record) return;
     const nextUpdatedAt = headerPatch.LastUpdatedAt || record.definition.updatedAt || new Date().toISOString();
-    const definitionPatch: Parameters<typeof updateScenario>[1] = {
-      scenarioName: headerPatch.RunName ?? record.definition.scenarioName,
-      region: headerPatch.Region ?? record.definition.region,
-      scenarioType: headerPatch.ScenarioType ?? record.definition.scenarioType,
-      dataflowId: headerPatch.DataflowID ?? record.definition.dataflowId,
-      status: headerPatch.Status ?? record.definition.status,
-      lastRunBy: headerPatch.LastRunBy ?? record.definition.lastRunBy ?? null,
-      lastRunAt: headerPatch.LastRunAt ?? record.definition.lastRunAt ?? null,
-      lastRunExecutionId: headerPatch.LastRunExecutionId ?? record.definition.lastRunExecutionId ?? null,
-      updatedAt: nextUpdatedAt,
-    };
-    updateScenario(scenarioId, definitionPatch);
-    if (record.snapshot) {
-      updateScenarioSnapshot(scenarioId, {
-        ...record.snapshot,
-        header: { ...record.snapshot.header, ...headerPatch },
+    const nextRecord: ScenarioRepositoryRecord = {
+      ...record,
+      definition: {
+        ...record.definition,
+        scenarioName: headerPatch.RunName ?? record.definition.scenarioName,
+        region: headerPatch.Region ?? record.definition.region,
+        scenarioType: headerPatch.ScenarioType ?? record.definition.scenarioType,
+        dataflowId: headerPatch.DataflowID ?? record.definition.dataflowId,
+        status: headerPatch.Status ?? record.definition.status,
+        lastRunBy: headerPatch.LastRunBy ?? record.definition.lastRunBy ?? null,
+        lastRunAt: headerPatch.LastRunAt ?? record.definition.lastRunAt ?? null,
+        lastRunExecutionId: headerPatch.LastRunExecutionId ?? record.definition.lastRunExecutionId ?? null,
         updatedAt: nextUpdatedAt,
-      });
-    }
+      },
+      snapshot: record.snapshot
+        ? {
+            ...record.snapshot,
+            header: { ...record.snapshot.header, ...headerPatch },
+            updatedAt: nextUpdatedAt,
+          }
+        : null,
+    };
+    void persistScenarioRecordToPrimaryStore(nextRecord).catch((error) => {
+      console.warn('[Scenario AppDB] Failed to persist scenario header patch', error);
+    });
   }, []);
 
   const persistScenarioRecordSnapshot = useCallback((
     scenarioId: string,
     patch: Partial<Pick<ScenarioRepositoryRecord, 'snapshot' | 'overrides'>>,
   ) => {
-    const record = getScenarioRecord(scenarioId);
+    const record = getScenarioRecordFromCache(scenarioId);
     if (!record) return;
     const nextSnapshot = patch.snapshot ?? record.snapshot;
     const nextOverrides = patch.overrides ?? record.overrides;
-    saveScenarioRecord({
+    void persistScenarioRecordToPrimaryStore({
       ...record,
       definition: {
         ...record.definition,
@@ -1281,6 +1497,8 @@ function App() {
       },
       snapshot: nextSnapshot,
       overrides: nextOverrides,
+    }).catch((error) => {
+      console.warn('[Scenario AppDB] Failed to persist scenario snapshot', error);
     });
   }, []);
 
@@ -1288,13 +1506,18 @@ function App() {
     scenarioId: string,
     entry: ScenarioRunHistoryEntry,
   ) => {
-    const record = getScenarioRecord(scenarioId);
+    const record = getScenarioRecordFromCache(scenarioId);
     if (!record) return;
     const nextHistory = [
       ...record.runHistory.filter((item) => item.runId !== entry.runId),
       { ...entry },
     ].sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
-    updateScenarioRunHistory(scenarioId, nextHistory);
+    void persistScenarioRecordToPrimaryStore({
+      ...record,
+      runHistory: nextHistory,
+    }).catch((error) => {
+      console.warn('[Scenario AppDB] Failed to persist scenario history', error);
+    });
     setScenarioHistoryState((prev) => ({
       ...prev,
       [scenarioId]: nextHistory.map((item) => ({ ...item })),
@@ -1355,10 +1578,44 @@ function App() {
     const numeric = (scenarioState.headers.length + 1).toString().padStart(3, '0');
     const newId = `SR${numeric}`;
 
-    const sourceRecord = getScenarioRecord(scenarioId);
+    const sourceRecord = getScenarioRecordFromCache(scenarioId);
     if (sourceRecord) {
-      const clonedRecord = duplicateScenarioRecord(scenarioId, newId, now);
-      if (!clonedRecord) return;
+      const clonedRecord = cloneScenarioRepositoryRecord(sourceRecord);
+      clonedRecord.definition = {
+        ...clonedRecord.definition,
+        scenarioId: newId,
+        scenarioName: `${clonedRecord.definition.scenarioName} (Copy)`,
+        createdAt: now,
+        updatedAt: now,
+        status: 'Draft',
+        lastRunBy: null,
+        lastRunAt: null,
+        lastRunExecutionId: null,
+      };
+      clonedRecord.snapshot = clonedRecord.snapshot
+        ? {
+            ...clonedRecord.snapshot,
+            scenarioId: newId,
+            header: {
+              ...clonedRecord.snapshot.header,
+              ScenarioRunID: newId,
+              RunName: `${sourceHeader.RunName} (Copy)`,
+              CreatedAt: now,
+              LastUpdatedAt: now,
+              Status: 'Draft',
+              ApprovedBy: null,
+              ApprovedAt: null,
+            },
+            config: {
+              ...clonedRecord.snapshot.config,
+              ScenarioRunID: newId,
+            },
+            resultsDC: clonedRecord.snapshot.resultsDC.map((row) => ({ ...row, ScenarioRunID: newId })),
+            resultsLanes: clonedRecord.snapshot.resultsLanes.map((row) => ({ ...row, ScenarioRunID: newId })),
+            createdAt: now,
+            updatedAt: now,
+          }
+        : null;
 
       const newHeader = clonedRecord.snapshot?.header || {
         ...sourceHeader,
@@ -1381,6 +1638,9 @@ function App() {
         resultsLanes: [...newResultsLanes, ...prev.resultsLanes],
         overrides: [...clonedRecord.overrides, ...prev.overrides],
       }));
+      void persistScenarioRecordToPrimaryStore(clonedRecord).catch((error) => {
+        console.warn('[Scenario AppDB] Failed to persist duplicated scenario', error);
+      });
       return;
     }
 
@@ -1415,24 +1675,38 @@ function App() {
       resultsLanes: [...newResultsLanes, ...prev.resultsLanes],
       overrides: [...newOverrides, ...prev.overrides],
     }));
+    const clonedRecord = buildScenarioRepositoryRecordFromState(newHeader, newResultsDC, newResultsLanes);
+    void persistScenarioRecordToPrimaryStore(clonedRecord).catch((error) => {
+      console.warn('[Scenario AppDB] Failed to persist duplicated scenario fallback', error);
+    });
   };
 
   const archiveScenario = (scenarioId: string) => {
     const now = new Date().toISOString();
-    const record = getScenarioRecord(scenarioId);
+    const record = getScenarioRecordFromCache(scenarioId);
     if (record) {
-      archiveScenarioRecord(scenarioId, now);
-      if (record.snapshot) {
-        updateScenarioSnapshot(scenarioId, {
-          ...record.snapshot,
-          header: {
-            ...record.snapshot.header,
-            Status: 'Archived',
-            LastUpdatedAt: now,
-          },
+      const nextRecord: ScenarioRepositoryRecord = {
+        ...record,
+        definition: {
+          ...record.definition,
+          status: 'Archived',
           updatedAt: now,
-        });
-      }
+        },
+        snapshot: record.snapshot
+          ? {
+              ...record.snapshot,
+              header: {
+                ...record.snapshot.header,
+                Status: 'Archived',
+                LastUpdatedAt: now,
+              },
+              updatedAt: now,
+            }
+          : null,
+      };
+      void persistScenarioRecordToPrimaryStore(nextRecord).catch((error) => {
+        console.warn('[Scenario AppDB] Failed to persist archived scenario', error);
+      });
     }
     setScenarioState((prev) => ({
       ...prev,
@@ -1450,23 +1724,30 @@ function App() {
   const unarchiveScenario = (scenarioId: string) => {
     const fallbackStatus: ScenarioRunHeader['Status'] = archivedScenarioPrevStatus[scenarioId] || 'Running';
     const now = new Date().toISOString();
-    const record = getScenarioRecord(scenarioId);
+    const record = getScenarioRecordFromCache(scenarioId);
     if (record) {
-      updateScenario(scenarioId, {
-        status: fallbackStatus,
-        updatedAt: now,
-      });
-      if (record.snapshot) {
-        updateScenarioSnapshot(scenarioId, {
-          ...record.snapshot,
-          header: {
-            ...record.snapshot.header,
-            Status: fallbackStatus,
-            LastUpdatedAt: now,
-          },
+      const nextRecord: ScenarioRepositoryRecord = {
+        ...record,
+        definition: {
+          ...record.definition,
+          status: fallbackStatus,
           updatedAt: now,
-        });
-      }
+        },
+        snapshot: record.snapshot
+          ? {
+              ...record.snapshot,
+              header: {
+                ...record.snapshot.header,
+                Status: fallbackStatus,
+                LastUpdatedAt: now,
+              },
+              updatedAt: now,
+            }
+          : null,
+      };
+      void persistScenarioRecordToPrimaryStore(nextRecord).catch((error) => {
+        console.warn('[Scenario AppDB] Failed to persist unarchived scenario', error);
+      });
     }
     setScenarioState((prev) => ({
       ...prev,
@@ -1474,6 +1755,85 @@ function App() {
         s.ScenarioRunID === scenarioId ? { ...s, Status: fallbackStatus, LastUpdatedAt: now } : s
       ),
     }));
+  };
+
+  const deleteScenario = async (scenarioId: string) => {
+    const target = scenarioState.headers.find((s) => s.ScenarioRunID === scenarioId);
+    if (!target) return;
+    if (!target.CreatedBy || String(target.CreatedBy).trim() === 'NA') {
+      pushToast('Original scenarios cannot be deleted.', 'error');
+      return;
+    }
+    if (target.Status === 'Running') {
+      pushToast('Please wait for the scenario run to finish before deleting it.', 'error');
+      return;
+    }
+
+    const deleted = await deleteScenarioRecordFromPrimaryStore(scenarioId);
+    if (!deleted) {
+      pushToast('Scenario could not be deleted.', 'error');
+      return;
+    }
+
+    setScenarioState((prev) => ({
+      headers: prev.headers.filter((s) => s.ScenarioRunID !== scenarioId),
+      configs: prev.configs.filter((c) => c.ScenarioRunID !== scenarioId),
+      resultsDC: prev.resultsDC.filter((r) => r.ScenarioRunID !== scenarioId),
+      resultsLanes: prev.resultsLanes.filter((r) => r.ScenarioRunID !== scenarioId),
+      overrides: prev.overrides.filter((o) => o.ScenarioRunID !== scenarioId),
+    }));
+    setScenarioHistoryState((prev) => {
+      const next = { ...prev };
+      delete next[scenarioId];
+      return next;
+    });
+    setArchivedScenarioPrevStatus((prev) => {
+      const next = { ...prev };
+      delete next[scenarioId];
+      return next;
+    });
+    if (appState.selectedScenarioId === scenarioId) {
+      navigateToHome();
+    }
+    pushToast(`Deleted ${target.RunName}.`, 'success');
+  };
+
+  const deleteComparison = async (comparisonId: string) => {
+    const target = comparisonState.headers.find((c) => c.ComparisonID === comparisonId);
+    if (!target) return;
+
+    try {
+      const deletedCount = await deleteCollectionDocumentsByField(
+        APPDB_COLLECTIONS.comparisons,
+        'comparisonId',
+        comparisonId,
+      );
+
+      if (deletedCount === 0) {
+        pushToast('Comparison could not be deleted.', 'error');
+        return;
+      }
+
+      setComparisonState((prev) => ({
+        headers: prev.headers.filter((c) => c.ComparisonID !== comparisonId),
+        detailDC: prev.detailDC.filter((row) => row.ComparisonID !== comparisonId),
+        detailLanes: prev.detailLanes.filter((row) => row.ComparisonID !== comparisonId),
+      }));
+      setArchivedComparisonPrevStatus((prev) => {
+        const next = { ...prev };
+        delete next[comparisonId];
+        return next;
+      });
+
+      if (appState.selectedComparisonId === comparisonId) {
+        navigateToHome();
+      }
+
+      pushToast(`Deleted ${target.ComparisonName}.`, 'success');
+    } catch (error) {
+      console.warn('Failed to delete comparison from AppDB', error);
+      pushToast('Comparison could not be deleted.', 'error');
+    }
   };
 
   const publishScenario = (scenarioId: string) => {
@@ -1554,9 +1914,7 @@ function App() {
         if (
           lane.ScenarioRunID === scenarioId &&
           lane.Dest3Zip === overrideInput.Dest3Zip &&
-          lane.Channel === overrideInput.Channel &&
-          lane.Terms === overrideInput.Terms &&
-          lane.CustomerGroup === overrideInput.CustomerGroup
+          lane.Channel === overrideInput.Channel
         ) {
           const adjustedCost = Number((lane.LaneCost * 1.03).toFixed(2));
           const adjustedDays = Number((lane.DeliveryDays + 0.3).toFixed(1));
@@ -1601,7 +1959,7 @@ function App() {
       nextOverrides = [newOverride, ...prev.overrides];
       const updatedScenario = updatedHeaders.find((s) => s.ScenarioRunID === scenarioId);
       if (updatedScenario) {
-        const currentRecord = getScenarioRecord(scenarioId);
+        const currentRecord = getScenarioRecordFromCache(scenarioId);
         if (currentRecord) {
           nextSnapshot = {
             ...currentRecord.snapshot,
@@ -1621,7 +1979,7 @@ function App() {
     });
 
     persistScenarioRecordSnapshot(scenarioId, {
-      snapshot: nextSnapshot ?? getScenarioRecord(scenarioId)?.snapshot ?? null,
+      snapshot: nextSnapshot ?? getScenarioRecordFromCache(scenarioId)?.snapshot ?? null,
       overrides: nextOverrides,
     });
   };
@@ -1777,7 +2135,7 @@ function App() {
   };
 
   const laneKey = (lane: ScenarioRunResultsLane) =>
-    `${lane.Dest3Zip}|${lane.Channel}|${lane.Terms}|${lane.CustomerGroup}`;
+    `${lane.Dest3Zip}|${lane.Channel}`;
 
   const buildComparisonDetailLanes = (comparisonId: string, runA: string, runB: string): ComparisonDetailLane[] => {
     const a = scenarioState.resultsLanes.filter(r => r.ScenarioRunID === runA);
@@ -1866,10 +2224,12 @@ function App() {
     }
 
     const priorStatus = scenario.Status;
-    const storedRecord = getScenarioRecord(scenarioId);
+    const storedRecord = getScenarioRecordFromCache(scenarioId);
     if (storedRecord?.snapshot) {
       const reconciledRecord = reconcileScenarioRepositoryRecordWithSuppressedDcs(storedRecord);
-      saveScenarioRecord(reconciledRecord);
+      void persistScenarioRecordToPrimaryStore(reconciledRecord).catch((error) => {
+        console.warn('[Scenario AppDB] Failed to persist reconciled scenario record', error);
+      });
       setScenarioState((prev) => mergeScenarioStateWithRecords(prev, [reconciledRecord]));
       setScenarioHistoryState((prev) => ({
         ...prev,
@@ -1921,6 +2281,96 @@ function App() {
       entity: { type: 'scenario', id: scenarioId },
       metadata: { dataflowId },
     });
+
+    if (IS_READONLY_SCENARIO_RUN_MODE) {
+      console.log('[Scenario Run] mode=readonly', {
+        scenarioId,
+        scenarioName: scenario.RunName || scenarioId,
+        dataflowId,
+        delayMs: READONLY_SCENARIO_RUN_DELAY_MS,
+      });
+
+      readonlyRunTimersRef.current[scenarioId] = window.setTimeout(() => {
+        void (async () => {
+          try {
+            await loadDomoDc();
+            const completionTimeIso = new Date().toISOString();
+            clearPollingForScenario(scenarioId);
+            setScenarioState((prev) => ({
+              ...prev,
+              headers: prev.headers.map((header) =>
+                header.ScenarioRunID === scenarioId
+                  ? {
+                      ...header,
+                      Status: 'Completed',
+                      LastRunBy: currentUserDisplayName,
+                      LastRunAt: completionTimeIso,
+                      LastRunExecutionId: `readonly-${scenarioId}`,
+                      LastUpdatedAt: completionTimeIso,
+                    }
+                  : header
+              ),
+            }));
+            persistHeaderToRepository(scenarioId, {
+              Status: 'Completed',
+              LastRunBy: currentUserDisplayName,
+              LastRunAt: completionTimeIso,
+              LastRunExecutionId: `readonly-${scenarioId}`,
+              LastUpdatedAt: completionTimeIso,
+            });
+            upsertRunHistoryEntry(scenarioId, {
+              runId,
+              scenarioId,
+              scenarioName: scenario.RunName || scenarioId,
+              dataflowId,
+              executionId: `readonly-${scenarioId}`,
+              status: 'Completed',
+              triggeredBy: currentUserDisplayName,
+              startedAt: runningAtIso,
+              completedAt: completionTimeIso,
+              durationMs: new Date(completionTimeIso).getTime() - new Date(runningAtIso).getTime(),
+              message: 'Loaded latest executed outputs from Domo datasets.',
+            });
+            updateNotification(runningNotificationId, {
+              kind: 'success',
+              title: 'Scenario refreshed',
+              message: `${scenario.RunName || scenarioId} loaded the latest executed outputs.`,
+              metadata: { dataflowId, executionId: `readonly-${scenarioId}` },
+            });
+            pushToast(
+              `${scenario.RunName || scenarioId} loaded the latest executed outputs from Domo.`,
+              'success'
+            );
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            clearPollingForScenario(scenarioId);
+            setScenarioState((prev) => ({
+              ...prev,
+              headers: prev.headers.map((header) =>
+                header.ScenarioRunID === scenarioId
+                  ? { ...header, Status: priorStatus, LastUpdatedAt: new Date().toISOString() }
+                  : header
+              ),
+            }));
+            persistHeaderToRepository(scenarioId, {
+              Status: priorStatus,
+              LastUpdatedAt: new Date().toISOString(),
+            });
+            updateNotification(runningNotificationId, {
+              kind: 'error',
+              title: 'Scenario refresh failed',
+              message: `${scenario.RunName || scenarioId}: ${message}`,
+              metadata: { dataflowId },
+            });
+            pushToast(`Failed to refresh ${scenario.RunName || scenarioId}. ${message}`, 'error');
+          } finally {
+            delete readonlyRunTimersRef.current[scenarioId];
+          }
+        })();
+      }, READONLY_SCENARIO_RUN_DELAY_MS);
+
+      return;
+    }
 
     try {
       const execution = await triggerDataflow(dataflowId);
@@ -2173,18 +2623,29 @@ function App() {
       void pollExecution();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
+      const failureTimeIso = new Date().toISOString();
       clearPollingForScenario(scenarioId);
       setScenarioState((prev) => ({
         ...prev,
         headers: prev.headers.map((header) =>
           header.ScenarioRunID === scenarioId
-            ? { ...header, Status: priorStatus, LastUpdatedAt: new Date().toISOString() }
+            ? {
+                ...header,
+                Status: 'Failed',
+                LastRunBy: currentUserDisplayName,
+                LastRunAt: failureTimeIso,
+                LastRunExecutionId: null,
+                LastUpdatedAt: failureTimeIso,
+              }
             : header
         ),
       }));
       persistHeaderToRepository(scenarioId, {
-        Status: priorStatus,
-        LastUpdatedAt: new Date().toISOString(),
+        Status: 'Failed',
+        LastRunBy: currentUserDisplayName,
+        LastRunAt: failureTimeIso,
+        LastRunExecutionId: null,
+        LastUpdatedAt: failureTimeIso,
       });
       upsertRunHistoryEntry(scenarioId, {
         runId,
@@ -2195,8 +2656,8 @@ function App() {
         status: 'Failed',
         triggeredBy: currentUserDisplayName,
         startedAt: runningAtIso,
-        completedAt: new Date().toISOString(),
-        durationMs: new Date().getTime() - new Date(runningAtIso).getTime(),
+        completedAt: failureTimeIso,
+        durationMs: new Date(failureTimeIso).getTime() - new Date(runningAtIso).getTime(),
         message,
       });
       updateNotification(runningNotificationId, {
@@ -2227,9 +2688,11 @@ function App() {
             onDuplicateScenario={duplicateScenario}
             onArchiveScenario={archiveScenario}
             onUnarchiveScenario={unarchiveScenario}
+            onDeleteScenario={deleteScenario}
             onDuplicateComparison={duplicateComparison}
             onArchiveComparison={archiveComparison}
             onUnarchiveComparison={unarchiveComparison}
+            onDeleteComparison={deleteComparison}
             onRefresh={refreshData}
             onRefreshComparisons={refreshComparisonsFromAppDb}
             comparisonsRefreshActive={comparisonsRefreshActive}
@@ -2258,13 +2721,13 @@ function App() {
             scenarioRunHeaders={scenarioState.headers}
             scenarioRunConfigs={scenarioState.configs}
             scenarioRunResultsDC={scenarioState.resultsDC}
-            scenarioRunResultsLanes={scenarioState.resultsLanes}
-            scenarioOverrides={scenarioState.overrides}
-            recentRuns={scenarioHistoryState[appState.selectedScenarioId] || []}
-            onDuplicateScenario={duplicateScenario}
-            onPublishScenario={publishScenario}
-            onApproveScenario={approveScenario}
-            onArchiveScenario={archiveScenario}
+          scenarioRunResultsLanes={scenarioState.resultsLanes}
+          scenarioOverrides={scenarioState.overrides}
+          recentRuns={scenarioHistoryState[appState.selectedScenarioId] || []}
+          onDuplicateScenario={duplicateScenario}
+          onPublishScenario={publishScenario}
+          onApproveScenario={approveScenario}
+          onArchiveScenario={archiveScenario}
             onAddComment={addScenarioComment}
             onApplyOverride={applyOverride}
           />
@@ -2299,16 +2762,16 @@ function App() {
     <>
       {renderPage()}
 
-      <NewScenarioWizard
-        isOpen={showNewScenario}
-        onClose={() => setShowNewScenario(false)}
-        onComplete={handleScenarioComplete}
-        dataHealthSnapshot={dataHealthSnapshot}
-        availableRegions={datasetContext.regions}
-        missingDataReasons={datasetContext.missingDataReasons}
-        scenarioTemplatesByRegion={scenarioTemplatesByRegion}
-        datasetOptions={datasetOptions}
-      />
+        <NewScenarioWizard
+          isOpen={showNewScenario}
+          onClose={() => setShowNewScenario(false)}
+          onComplete={handleScenarioComplete}
+          dataHealthSnapshot={dataHealthSnapshot}
+          availableRegions={['All', 'US', 'Canada']}
+          missingDataReasons={datasetContext.missingDataReasons}
+          scenarioTemplatesByRegion={scenarioTemplatesByRegion}
+          datasetOptions={datasetOptions}
+        />
 
       <NewComparisonModal
         isOpen={showNewComparison}
@@ -2365,4 +2828,3 @@ function App() {
 }
 
 export default App;
-

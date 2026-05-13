@@ -49,6 +49,7 @@ export const useScenarioDetails = ({
   const [overrideReason, setOverrideReason] = useState<ScenarioOverride['ReasonCode']>('Capacity');
   const [overrideComment, setOverrideComment] = useState('');
   const [networkView, setNetworkView] = useState<'current' | 'baseline' | 'difference'>('current');
+  const [laneZipSearch, setLaneZipSearch] = useState('');
   const [laneChannelFilter, setLaneChannelFilter] = useState('All');
   const [laneTermsFilter, setLaneTermsFilter] = useState('All');
   const [laneFlagFilter, setLaneFlagFilter] = useState('All');
@@ -72,20 +73,64 @@ export const useScenarioDetails = ({
   }, [scenarioRunHeaders]);
 
   const scenarioConfig = scenarioRunConfigs.find(c => c.ScenarioRunID === scenarioId);
-  const dcResults = scenarioRunResultsDC.filter(dc => dc.ScenarioRunID === scenarioId);
-  const laneResults = scenarioRunResultsLanes.filter(lane => lane.ScenarioRunID === scenarioId);
+  const dcResults = Array.from(
+    scenarioRunResultsDC
+      .filter(dc => dc.ScenarioRunID === scenarioId)
+      .reduce<Map<string, ScenarioRunResultsDC>>((acc, row) => {
+        if (!acc.has(row.DCName)) acc.set(row.DCName, row);
+        return acc;
+      }, new Map())
+      .values(),
+  );
+  const laneGroupKey = (lane: ScenarioRunResultsLane) => [
+    lane.Dest3Zip,
+    lane.Channel,
+    lane.Terms,
+    lane.DestState,
+    lane.ScenarioType,
+  ]
+    .map((part) => String(part || '').trim())
+    .filter(Boolean)
+    .join('|');
+
+  const laneOptionSort = (a: ScenarioRunResultsLane, b: ScenarioRunResultsLane) => {
+    const cpuA = a.CostPerUnit ?? a.LaneCost ?? 0;
+    const cpuB = b.CostPerUnit ?? b.LaneCost ?? 0;
+    if (cpuA !== cpuB) return cpuA - cpuB;
+    const warehouseA = `${a.CostingWarehouse || a.AssignedDC || ''}|${a.DefaultShipFrom || ''}`;
+    const warehouseB = `${b.CostingWarehouse || b.AssignedDC || ''}|${b.DefaultShipFrom || ''}`;
+    const warehouseCompare = warehouseA.localeCompare(warehouseB);
+    if (warehouseCompare !== 0) return warehouseCompare;
+    return String(a.Dest3Zip || '').localeCompare(String(b.Dest3Zip || ''));
+  };
+
+  const formatOptionDc = (lane: ScenarioRunResultsLane) => {
+    const warehouse = lane.CostingWarehouse || lane.AssignedDC || 'NA';
+    return `${warehouse}`;
+  };
+
+  const laneResults = scenarioRunResultsLanes
+    .filter(lane => lane.ScenarioRunID === scenarioId)
+    .slice()
+    .sort((a, b) => laneGroupKey(a).localeCompare(laneGroupKey(b)) || laneOptionSort(a, b));
+  const uniqueLaneResults = laneResults.filter((lane, index, rows) =>
+    rows.findIndex((item) => laneGroupKey(item) === laneGroupKey(lane)) === index,
+  );
   const overrides = scenarioOverrides.filter(o => o.ScenarioRunID === scenarioId);
 
-  const laneOptions: ScenarioLaneOption[] = laneResults.map((lane) => {
-    const key = `${lane.Dest3Zip}|${lane.Channel}|${lane.Terms}|${lane.CustomerGroup}`;
+  const laneOptions: ScenarioLaneOption[] = uniqueLaneResults.map((lane) => {
+    const key = laneGroupKey(lane);
+    const costPerUnit = typeof lane.CostPerUnit === 'number'
+      ? lane.CostPerUnit
+      : (lane.TotalCost ?? lane.LaneCost);
     return {
       key,
-      label: `${lane.Dest3Zip} ${lane.DestState} | ${lane.Channel} ${lane.Terms} | ${lane.CustomerGroup} | ${lane.AssignedDC}`,
+      label: `${lane.Dest3Zip} | ${lane.Channel} | ${lane.Terms} | ${lane.CostingWarehouse || lane.AssignedDC} | $${Number(costPerUnit || 0).toFixed(2)}${typeof lane.CostRank === 'number' ? ` | Rank #${lane.CostRank}` : ''}`,
       lane,
     };
   });
 
-  const lanesByDC = laneResults.reduce<Record<string, number>>((acc, lane) => {
+  const lanesByDC = uniqueLaneResults.reduce<Record<string, number>>((acc, lane) => {
     acc[lane.AssignedDC] = (acc[lane.AssignedDC] || 0) + 1;
     return acc;
   }, {});
@@ -104,22 +149,38 @@ export const useScenarioDetails = ({
 
   const baselineScenarioId = baselineScenario?.ScenarioRunID;
   const canShowDifference = Boolean(baselineScenarioId && baselineScenarioId !== scenarioId);
-  const baselineDcResults = baselineScenarioId
-    ? scenarioRunResultsDC.filter((dc) => dc.ScenarioRunID === baselineScenarioId)
-    : [];
+  const baselineDcResults = Array.from(
+    (baselineScenarioId ? scenarioRunResultsDC.filter((dc) => dc.ScenarioRunID === baselineScenarioId) : [])
+      .reduce<Map<string, ScenarioRunResultsDC>>((acc, row) => {
+        if (!acc.has(row.DCName)) acc.set(row.DCName, row);
+        return acc;
+      }, new Map())
+      .values(),
+  );
   const baselineLaneResults = baselineScenarioId
     ? scenarioRunResultsLanes.filter((lane) => lane.ScenarioRunID === baselineScenarioId)
     : [];
+  baselineLaneResults.sort((a, b) => laneGroupKey(a).localeCompare(laneGroupKey(b)) || laneOptionSort(a, b));
+  const uniqueBaselineLaneResults = baselineLaneResults.filter((lane, index, rows) =>
+    rows.findIndex((item) => laneGroupKey(item) === laneGroupKey(lane)) === index,
+  );
 
-  const baselineLanesByDC = baselineLaneResults.reduce<Record<string, number>>((acc, lane) => {
+  const baselineLanesByDC = uniqueBaselineLaneResults.reduce<Record<string, number>>((acc, lane) => {
     acc[lane.AssignedDC] = (acc[lane.AssignedDC] || 0) + 1;
     return acc;
   }, {});
 
-  const channelOptions = Array.from(new Set(laneResults.map((lane) => lane.Channel))).sort();
-  const termsOptions = Array.from(new Set(laneResults.map((lane) => lane.Terms))).sort();
+  const channelOptions = Array.from(new Set(uniqueLaneResults.map((lane) => lane.Channel))).sort();
+  const termsOptions = Array.from(new Set(uniqueLaneResults.map((lane) => lane.Terms))).sort();
+  const normalizedLaneZipSearch = laneZipSearch.trim().toLowerCase();
 
-  const filteredLanes = laneResults.filter((lane) => {
+  const filteredLanes = uniqueLaneResults.filter((lane) => {
+    if (
+      normalizedLaneZipSearch &&
+      String(lane.Dest3Zip || '').trim().toLowerCase() !== normalizedLaneZipSearch
+    ) {
+      return false;
+    }
     if (laneChannelFilter !== 'All' && lane.Channel !== laneChannelFilter) return false;
     if (laneTermsFilter !== 'All' && lane.Terms !== laneTermsFilter) return false;
     if (laneFlagFilter === 'SLA Breaches Only') return lane.SLABreachFlag === 'Y';
@@ -187,34 +248,40 @@ export const useScenarioDetails = ({
     return source.filter((dc) => dc.IsSuppressed === 'N').map((dc) => ({ dcName: dc.DCName, value: dc.AvgDays }));
   })();
 
-  const topFootprintLanes = [...laneResults]
+  const topFootprintLanes = [...uniqueLaneResults]
     .sort((a, b) => b.FootprintContribution - a.FootprintContribution)
     .slice(0, 5);
 
-  const handleExportDecisionPack = () => {
+  const handleExportDCDetails = () => {
     if (!scenario) return;
-    const rows = [{
-      ScenarioRunID: scenario.ScenarioRunID,
-      RunName: scenario.RunName,
-      Region: scenario.Region,
-      Status: scenario.Status,
-      ScenarioType: scenario.ScenarioType,
-      TotalCost: scenario.TotalCost,
-      CostPerUnit: scenario.CostPerUnit,
-      AvgDeliveryDays: scenario.AvgDeliveryDays,
-      SLABreachPct: scenario.SLABreachPct,
-      MaxUtilPct: scenario.MaxUtilPct,
-      TotalSpaceRequired: scenario.TotalSpaceRequired,
-      OverrideCount: scenario.OverrideCount,
-      LastUpdatedAt: scenario.LastUpdatedAt,
-    }];
+    const rows = dcResults.map((dc) => ({
+      ScenarioRunID: dc.ScenarioRunID,
+      DC: dc.DCName,
+      dcEntity: scenario.EntityScope,
+      dcRegion: scenario.Region,
+      scenarioType: scenario.ScenarioType,
+      totalCost: dc.TotalCost,
+      costPerUnit: dc.VolumeUnits > 0 ? Number((dc.TotalCost / dc.VolumeUnits).toFixed(2)) : 0,
+      averageDeliveryDays: Number(dc.AvgDays.toFixed(2)),
+      averageTransitDays: Number(dc.AvgDays.toFixed(2)),
+      maxUtilization: Number(dc.UtilPct.toFixed(2)),
+      coreSpace: dc.SpaceCore,
+      bcvSpace: dc.SpaceBCV,
+      spaceRequired: dc.SpaceRequired,
+      sqft: dc.SpaceCore,
+      slaBreach: dc.SLABreachCount,
+      'slaBreach%': Number(
+        ((dc.SLABreachCount / Math.max(1, dc.VolumeUnits)) * 100).toFixed(2)
+      ),
+      totalcount: dc.VolumeUnits,
+    }));
     const csv = toCSV(rows);
-    downloadBlob(csv, `${scenario.ScenarioRunID}_decision_pack.csv`, 'text/csv;charset=utf-8;');
-    triggerAction('scenario_export_decision');
+    downloadBlob(csv, `${scenario.ScenarioRunID}_dc_details.csv`, 'text/csv;charset=utf-8;');
+    triggerAction('scenario_export_dc_details');
   };
 
   const handleExportRoutingCSV = () => {
-    const rows = laneResults.map((lane) => ({
+    const rows = uniqueLaneResults.map((lane) => ({
       ScenarioRunID: lane.ScenarioRunID,
       Dest3Zip: lane.Dest3Zip,
       DestState: lane.DestState,
@@ -222,9 +289,29 @@ export const useScenarioDetails = ({
       Terms: lane.Terms,
       CustomerGroup: lane.CustomerGroup,
       AssignedDC: lane.AssignedDC,
+      CostRank: lane.CostRank ?? '',
       LaneCost: lane.LaneCost,
+      CostPerUnit: lane.CostPerUnit ?? '',
       DeliveryDays: lane.DeliveryDays,
       SLABreachFlag: lane.SLABreachFlag,
+      ExcludedBySLAFlag: lane.ExcludedBySLAFlag,
+      ScenarioType: lane.ScenarioType || '',
+      RunName: lane.RunName || '',
+      CostingWarehouse: lane.CostingWarehouse || '',
+      DefaultShipFrom: lane.DefaultShipFrom || '',
+      InboundSpend: lane.InboundSpend ?? '',
+      ParcelSpend: lane.ParcelSpend ?? '',
+      LtlSpend: lane.LtlSpend ?? '',
+      TotalCost: lane.TotalCost ?? lane.LaneCost,
+      WorkingCapacity: lane.WorkingCapacity ?? '',
+      DistributionCost: lane.DistributionCost ?? '',
+      TlSpend: lane.TlSpend ?? '',
+      BreachFlag: lane.BreachFlag || '',
+      OrderToDeliverCalendarDays: lane.OrderToDeliverCalendarDays ?? '',
+      ShipToDeliverCalendarDays: lane.ShipToDeliverCalendarDays ?? '',
+      State: lane.State || '',
+      PartyName: lane.PartyName || '',
+      Threshold: lane.Threshold ?? '',
     }));
     const csv = toCSV(rows);
     downloadBlob(csv, `${scenarioId}_routing_assignments.csv`, 'text/csv;charset=utf-8;');
@@ -232,7 +319,7 @@ export const useScenarioDetails = ({
   };
 
   const handleExportLaneCSV = () => {
-    const rows = laneResults.map((lane) => ({
+    const rows = uniqueLaneResults.map((lane) => ({
       ScenarioRunID: lane.ScenarioRunID,
       Dest3Zip: lane.Dest3Zip,
       DestState: lane.DestState,
@@ -260,6 +347,26 @@ export const useScenarioDetails = ({
       OverrideAppliedFlag: lane.OverrideAppliedFlag,
       OverrideVersion: lane.OverrideVersion,
       NotesFlag: lane.NotesFlag,
+      ScenarioType: lane.ScenarioType || '',
+      RunName: lane.RunName || '',
+      CostingWarehouse: lane.CostingWarehouse || '',
+      DefaultShipFrom: lane.DefaultShipFrom || '',
+      InboundSpend: lane.InboundSpend ?? '',
+      ParcelSpend: lane.ParcelSpend ?? '',
+      LtlSpend: lane.LtlSpend ?? '',
+      TotalCost: lane.TotalCost ?? lane.LaneCost,
+      CostRank: lane.CostRank ?? '',
+      CostPerUnit: lane.CostPerUnit ?? '',
+      WorkingCapacity: lane.WorkingCapacity ?? '',
+      DistributionCost: lane.DistributionCost ?? '',
+      TlSpend: lane.TlSpend ?? '',
+      BreachFlag: lane.BreachFlag || '',
+      OrderToDeliverCalendarDays: lane.OrderToDeliverCalendarDays ?? '',
+      ShipToDeliverCalendarDays: lane.ShipToDeliverCalendarDays ?? '',
+      State: lane.State || '',
+      PartyName: lane.PartyName || '',
+      Threshold: lane.Threshold ?? '',
+      SourceDatasetId: lane.SourceDatasetId || '',
     }));
     const csv = toCSV(rows);
     downloadBlob(csv, `${scenarioId}_lane_table.csv`, 'text/csv;charset=utf-8;');
@@ -267,7 +374,7 @@ export const useScenarioDetails = ({
   };
 
   const handleExportExceptionsCSV = () => {
-    const rows = laneResults
+    const rows = uniqueLaneResults
       .filter(l => l.SLABreachFlag === 'Y' || l.ExcludedBySLAFlag === 'Y' || l.OverrideAppliedFlag === 'Y')
       .map((lane) => ({
         ScenarioRunID: lane.ScenarioRunID,
@@ -277,11 +384,30 @@ export const useScenarioDetails = ({
         Terms: lane.Terms,
         CustomerGroup: lane.CustomerGroup,
         AssignedDC: lane.AssignedDC,
+        CostRank: lane.CostRank ?? '',
+        CostPerUnit: lane.CostPerUnit ?? '',
         SLABreachFlag: lane.SLABreachFlag,
         ExcludedBySLAFlag: lane.ExcludedBySLAFlag,
         OverrideAppliedFlag: lane.OverrideAppliedFlag,
         OverrideVersion: lane.OverrideVersion,
         NotesFlag: lane.NotesFlag,
+        ScenarioType: lane.ScenarioType || '',
+        RunName: lane.RunName || '',
+        CostingWarehouse: lane.CostingWarehouse || '',
+        DefaultShipFrom: lane.DefaultShipFrom || '',
+        InboundSpend: lane.InboundSpend ?? '',
+        ParcelSpend: lane.ParcelSpend ?? '',
+        LtlSpend: lane.LtlSpend ?? '',
+        TotalCost: lane.TotalCost ?? lane.LaneCost,
+        WorkingCapacity: lane.WorkingCapacity ?? '',
+        DistributionCost: lane.DistributionCost ?? '',
+        TlSpend: lane.TlSpend ?? '',
+        BreachFlag: lane.BreachFlag || '',
+        OrderToDeliverCalendarDays: lane.OrderToDeliverCalendarDays ?? '',
+        ShipToDeliverCalendarDays: lane.ShipToDeliverCalendarDays ?? '',
+        State: lane.State || '',
+        PartyName: lane.PartyName || '',
+        Threshold: lane.Threshold ?? '',
       }));
     const csv = toCSV(rows);
     downloadBlob(csv, `${scenarioId}_exceptions.csv`, 'text/csv;charset=utf-8;');
@@ -322,13 +448,15 @@ export const useScenarioDetails = ({
     entityLabels,
     scenarioConfig,
     dcResults,
-    laneResults,
+    laneResults: uniqueLaneResults,
     overrides,
     laneOptions,
     baselineScenarioId,
     canShowDifference,
     channelOptions,
     termsOptions,
+    laneZipSearch,
+    setLaneZipSearch,
     laneChannelFilter,
     setLaneChannelFilter,
     laneTermsFilter,
@@ -362,7 +490,7 @@ export const useScenarioDetails = ({
     setOverrideComment,
     isActionActive,
     triggerAction,
-    handleExportDecisionPack,
+    handleExportDCDetails,
     handleExportRoutingCSV,
     handleExportLaneCSV,
     handleExportExceptionsCSV,

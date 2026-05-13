@@ -90,7 +90,7 @@ export const ComparisonHeader: React.FC<ComparisonHeaderProps> = ({
             <button
               className={`w-full text-left px-4 py-2 text-sm hover:bg-slate-50 ${exportDcActive ? 'bg-amber-50 text-amber-800' : ''}`}
               onClick={onExportDCDiff}
-            >
+            > 
               {exportDcActive ? 'Exporting DC Diff...' : 'Export DC Diff CSV'}
             </button>
           </div>

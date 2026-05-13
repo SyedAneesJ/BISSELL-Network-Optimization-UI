@@ -13,11 +13,11 @@ interface ScenarioHeaderProps {
   onApproveScenario: (scenarioId: string) => void;
   onArchiveScenario: (scenarioId: string) => void;
   onOpenComment: () => void;
-  onExportDecisionPack: () => void;
+  onExportDCDetails: () => void;
   onExportRoutingCSV: () => void;
   onExportLaneCSV: () => void;
   onExportExceptionsCSV: () => void;
-  exportDecisionActive: boolean;
+  exportDCDetailsActive: boolean;
   exportRoutingActive: boolean;
   exportLaneActive: boolean;
   exportExceptionsActive: boolean;
@@ -38,11 +38,11 @@ export const ScenarioHeader: React.FC<ScenarioHeaderProps> = ({
   onApproveScenario,
   onArchiveScenario,
   onOpenComment,
-  onExportDecisionPack,
+  onExportDCDetails,
   onExportRoutingCSV,
   onExportLaneCSV,
   onExportExceptionsCSV,
-  exportDecisionActive,
+  exportDCDetailsActive,
   exportRoutingActive,
   exportLaneActive,
   exportExceptionsActive,
@@ -67,7 +67,7 @@ export const ScenarioHeader: React.FC<ScenarioHeaderProps> = ({
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-lg sm:text-xl font-semibold text-slate-900 break-words">{scenario.RunName}</h1>
             <StatusBadge status={scenario.Status} />
-            {scenario.AssumptionsSummary && (
+            {scenario.AssumptionsSummary!=='NA' && (
               <Tooltip content={scenario.AssumptionsSummary}>
                 <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded">
                   Assumptions
@@ -77,9 +77,9 @@ export const ScenarioHeader: React.FC<ScenarioHeaderProps> = ({
           </div>
           <div className="text-sm text-slate-600 mt-1 flex flex-wrap gap-x-3 gap-y-1">
             <span>{scenario.ScenarioType} | {scenario.Region} | {scenario.EntityScope}</span>
-            <span>
+            {/* <span>
               Mapped dataflow: {scenario.DataflowID || 'NA'}
-            </span>
+            </span> */}
             {scenario.ApprovedBy && (
               <span>Approved by {scenario.ApprovedBy}</span>
             )}
@@ -100,10 +100,10 @@ export const ScenarioHeader: React.FC<ScenarioHeaderProps> = ({
           </Button>
           <div className="hidden group-hover:block absolute left-0 top-full mt-1 w-64 bg-white border border-slate-200 rounded-lg shadow-lg z-10">
             <button
-              className={`w-full text-left px-4 py-2 text-sm hover:bg-slate-50 ${exportDecisionActive ? 'bg-amber-50 text-amber-800' : ''}`}
-              onClick={onExportDecisionPack}
+              className={`w-full text-left px-4 py-2 text-sm hover:bg-slate-50 ${exportDCDetailsActive ? 'bg-amber-50 text-amber-800' : ''}`}
+              onClick={onExportDCDetails}
             >
-              {exportDecisionActive ? 'Exporting Decision Pack...' : 'Export Decision Pack CSV'}
+              {exportDCDetailsActive ? 'Exporting DC Details...' : 'Export DC Details CSV'}
             </button>
             <button
               className={`w-full text-left px-4 py-2 text-sm hover:bg-slate-50 ${laneResultsCount === 0 ? 'text-slate-400 cursor-not-allowed' : ''} ${exportRoutingActive ? 'bg-amber-50 text-amber-800' : ''}`}

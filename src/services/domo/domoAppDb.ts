@@ -4,6 +4,8 @@ const BASE_URL = '/domo/datastores/v1';
 
 export const APPDB_COLLECTIONS = {
   comparisons: 'comparision_scenarios',
+  customScenarios: 'custom_scenarios',
+  customScenarioLanes: 'custom_scenario_lanes',
   notifications: 'notification',
 } as const;
 
@@ -63,6 +65,31 @@ export const getCollectionDocument = async (collection: string, documentId: stri
 
 export const updateCollectionDocument = async (collection: string, documentId: string, content: any) => {
   return DomoApi.put(`${BASE_URL}/collections/${collection}/documents/${documentId}`, { content });
+};
+
+export const deleteCollectionDocument = async (collection: string, documentId: string) => {
+  return DomoApi.del(`${BASE_URL}/collections/${collection}/documents/${documentId}`);
+};
+
+export const deleteCollectionDocumentsByField = async (
+  collection: string,
+  fieldName: string,
+  fieldValue: string,
+) => {
+  const documents = await listCollectionDocuments(collection);
+  const matches = documents.filter((doc: any) => String(doc?.[fieldName] ?? '').trim() === String(fieldValue).trim());
+
+  if (matches.length === 0) {
+    return 0;
+  }
+
+  await Promise.all(
+    matches
+      .filter((doc) => String(doc.__docId || '').trim() !== '')
+      .map((doc) => deleteCollectionDocument(collection, String(doc.__docId).trim())),
+  );
+
+  return matches.length;
 };
 
 export const upsertCollectionDocumentByField = async (

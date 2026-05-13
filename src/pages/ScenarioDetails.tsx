@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   BarChart3,
   Map,
@@ -29,7 +29,7 @@ import { ScenarioLaneDetailsModal } from '@/components/modals';
 import { ScenarioCommentModal } from '@/components/modals';
 import { ScenarioOverrideModal } from '@/components/modals';
 import { useScenarioDetails } from '@/hooks';
-import { ScenarioRunHistoryEntry } from '@/services/scenario';
+import { loadScenarioLaneSnapshotsFromAppDb, ScenarioRunHistoryEntry } from '@/services/scenario';
 
 interface ScenarioDetailsProps {
   scenarioId: string;
@@ -49,6 +49,47 @@ interface ScenarioDetailsProps {
 }
 
 export const ScenarioDetails: React.FC<ScenarioDetailsProps> = (props) => {
+  const baseLaneResults = useMemo(
+    () => props.scenarioRunResultsLanes.filter((lane) => lane.ScenarioRunID === props.scenarioId),
+    [props.scenarioId, props.scenarioRunResultsLanes],
+  );
+  const [hydratedLaneResults, setHydratedLaneResults] = useState<ScenarioRunResultsLane[]>(baseLaneResults);
+  const [isLaneDataLoading, setIsLaneDataLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setHydratedLaneResults(baseLaneResults);
+
+    if (baseLaneResults.length > 0) {
+      setIsLaneDataLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setIsLaneDataLoading(true);
+    void loadScenarioLaneSnapshotsFromAppDb(props.scenarioId)
+      .then((laneRows) => {
+        if (!cancelled && laneRows.length > 0) {
+          setHydratedLaneResults(laneRows);
+        }
+      })
+      .catch((error) => {
+        console.warn('Failed to load scenario lane snapshots for details view', error);
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsLaneDataLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [baseLaneResults, props.scenarioId]);
+
+  const laneResultsForDetails = hydratedLaneResults.length > 0 ? hydratedLaneResults : baseLaneResults;
+
   const {
     scenario,
     entityLabels,
@@ -61,6 +102,8 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = (props) => {
     canShowDifference,
     channelOptions,
     termsOptions,
+    laneZipSearch,
+    setLaneZipSearch,
     laneChannelFilter,
     setLaneChannelFilter,
     laneTermsFilter,
@@ -94,7 +137,7 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = (props) => {
     setOverrideComment,
     isActionActive,
     triggerAction,
-    handleExportDecisionPack,
+    handleExportDCDetails,
     handleExportRoutingCSV,
     handleExportLaneCSV,
     handleExportExceptionsCSV,
@@ -112,7 +155,7 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = (props) => {
     scenarioRunHeaders: props.scenarioRunHeaders,
     scenarioRunConfigs: props.scenarioRunConfigs,
     scenarioRunResultsDC: props.scenarioRunResultsDC,
-    scenarioRunResultsLanes: props.scenarioRunResultsLanes,
+    scenarioRunResultsLanes: laneResultsForDetails,
     scenarioOverrides: props.scenarioOverrides,
     onDuplicateScenario: props.onDuplicateScenario,
     onPublishScenario: props.onPublishScenario,
@@ -177,8 +220,17 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = (props) => {
       content: (
         <ScenarioRankedOptionsTab
           rankedOptionsColumns={rankedOptionsColumns}
-          laneResults={laneResults}
+          laneResults={filteredLanes}
+          laneZipSearch={laneZipSearch}
+          onLaneZipSearchChange={setLaneZipSearch}
+          channelOptions={channelOptions}
+          termsOptions={termsOptions}
+          laneChannelFilter={laneChannelFilter}
+          onLaneChannelFilterChange={setLaneChannelFilter}
+          laneTermsFilter={laneTermsFilter}
+          onLaneTermsFilterChange={setLaneTermsFilter}
           hasLaneData={laneResults.length > 0}
+          isLaneDataLoading={isLaneDataLoading}
         />
       ),
     },
@@ -188,7 +240,9 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = (props) => {
       icon: <FileSpreadsheet className="w-5 h-5" />,
       content: (
         <ScenarioLanesTab
-          laneResults={laneResults}
+          laneResults={filteredLanes}
+          laneZipSearch={laneZipSearch}
+          onLaneZipSearchChange={setLaneZipSearch}
           channelOptions={channelOptions}
           termsOptions={termsOptions}
           laneChannelFilter={laneChannelFilter}
@@ -201,6 +255,7 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = (props) => {
           laneColumns={laneColumns}
           onSelectLane={setSelectedLane}
           hasLaneData={laneResults.length > 0}
+          isLaneDataLoading={isLaneDataLoading}
         />
       ),
     },
@@ -213,6 +268,7 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = (props) => {
           dcResults={dcResults}
           dcColumns={dcColumns}
           topFootprintLanes={topFootprintLanes}
+          isLaneDataLoading={isLaneDataLoading}
         />
       ),
     },
@@ -247,11 +303,11 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = (props) => {
             setShowCommentModal(true);
             triggerAction('scenario_comment_open');
           }}
-          onExportDecisionPack={handleExportDecisionPack}
+          onExportDCDetails={handleExportDCDetails}
           onExportRoutingCSV={handleExportRoutingCSV}
           onExportLaneCSV={handleExportLaneCSV}
           onExportExceptionsCSV={handleExportExceptionsCSV}
-          exportDecisionActive={isActionActive('scenario_export_decision')}
+          exportDCDetailsActive={isActionActive('scenario_export_dc_details')}
           exportRoutingActive={isActionActive('scenario_export_routing')}
           exportLaneActive={isActionActive('scenario_export_lane')}
           exportExceptionsActive={isActionActive('scenario_export_exceptions')}

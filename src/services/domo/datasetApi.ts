@@ -32,19 +32,32 @@ const DatasetApi = {
     return data.access_token as string;
   },
 
-  async createDataset({ name, description, schema, token }: any) {
+  async createDataset({ name, description, rows = 0, schema, token }: any) {
     const response = await fetch('https://api.domo.com/v1/datasets', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ name, description, schema })
+      body: JSON.stringify({ name, description, rows, schema })
     });
 
     if (!response.ok) {
       const err = await response.text();
       throw new Error(`Create dataset failed: ${response.status} ${err}`);
+    }
+
+    return response.json();
+  },
+
+  async getDatasets(token: string) {
+    const response = await fetch('https://api.domo.com/v1/datasets', {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    if (!response.ok) {
+      throw new Error(`List datasets failed: ${response.status}`);
     }
 
     return response.json();

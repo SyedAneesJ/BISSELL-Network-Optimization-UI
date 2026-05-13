@@ -61,14 +61,69 @@ export const createScenarioLaneColumns = (): Column<ScenarioRunResultsLane>[] =>
   { key: 'DestState', header: 'State', width: '60px', sortable: true },
   { key: 'Channel', header: 'Channel', width: '80px', sortable: true },
   { key: 'Terms', header: 'Terms', width: '80px', sortable: true },
-  { key: 'CustomerGroup', header: 'Customer', width: '120px', sortable: true },
   { key: 'AssignedDC', header: 'Assigned DC', width: '120px', sortable: true },
+  {
+    key: 'CostingWarehouse',
+    header: 'Costing WH',
+    width: '120px',
+    sortable: true,
+    render: (row) => row.CostingWarehouse || row.AssignedDC,
+  },
+  {
+    key: 'DefaultShipFrom',
+    header: 'Default Ship From',
+    width: '140px',
+    sortable: true,
+    render: (row) => row.DefaultShipFrom || '-',
+  },
+  {
+    key: 'InboundSpend',
+    header: 'Inbound',
+    width: '90px',
+    sortable: true,
+    render: (row) => formatCurrencyOrNA(row.InboundSpend ?? null, 2),
+  },
+  {
+    key: 'ParcelSpend',
+    header: 'Parcel',
+    width: '90px',
+    sortable: true,
+    render: (row) => formatCurrencyOrNA(row.ParcelSpend ?? null, 2),
+  },
+  {
+    key: 'LtlSpend',
+    header: 'LTL Spend',
+    width: '100px',
+    sortable: true,
+    render: (row) => formatCurrencyOrNA(row.LtlSpend ?? null, 2),
+  },
+  {
+    key: 'CostPerUnit',
+    header: 'Cost / Unit',
+    width: '100px',
+    sortable: true,
+    render: (row) => formatCurrencyOrNA(row.CostPerUnit ?? null, 2),
+  },
   {
     key: 'LaneCost',
     header: 'Cost',
     width: '90px',
     sortable: true,
     render: (row) => formatCurrencyOrNA(row.LaneCost, 2),
+  },
+  {
+    key: 'TotalCost',
+    header: 'Total Cost',
+    width: '100px',
+    sortable: true,
+    render: (row) => formatCurrencyOrNA(row.TotalCost ?? row.LaneCost, 2),
+  },
+  {
+    key: 'ScenarioType',
+    header: 'Scenario Type',
+    width: '160px',
+    sortable: true,
+    render: (row) => formatTextOrNA(row.ScenarioType),
   },
   {
     key: 'CostDeltaVsBest',
@@ -103,7 +158,8 @@ export const createScenarioLaneColumns = (): Column<ScenarioRunResultsLane>[] =>
     width: '80px',
     render: (row) => (
       row.OverrideAppliedFlag === 'Y' ? (
-        <span className="text-blue-600 text-xs">{row.OverrideVersion}</span>
+        <span className="text
+        -blue-600 text-xs">{row.OverrideVersion}</span>
       ) : '-'
     ),
   },
@@ -113,7 +169,6 @@ export const createScenarioRankedOptionsColumns = (): Column<ScenarioRunResultsL
   { key: 'Dest3Zip', header: '3-Zip', width: '80px', sortable: true },
   { key: 'Channel', header: 'Channel', width: '80px', sortable: true },
   { key: 'Terms', header: 'Terms', width: '80px', sortable: true },
-  { key: 'CustomerGroup', header: 'Customer', width: '120px', sortable: true },
   {
     key: 'RankedOption1DC',
     header: 'Option #1',

@@ -5,6 +5,8 @@ import {
   ScenarioRunResultsLane,
   ScenarioOverride,
 } from '@/data';
+import type { DomoDcCapacityRow } from '@/services';
+import type { ScenarioExecutionPlan } from './scenarioLogicTypes';
 
 export interface ScenarioWizardInput {
   region: 'US' | 'Canada';
@@ -47,6 +49,9 @@ export interface ScenarioBuildContext {
   scenarioHeaders: ScenarioRunHeader[];
   scenarioResultsDC: ScenarioRunResultsDC[];
   scenarioResultsLanes: ScenarioRunResultsLane[];
+  laneRowsByScenarioId?: Record<string, ScenarioRunResultsLane[]>;
+  dcCapacityRows?: DomoDcCapacityRow[];
+  scenarioPlan?: ScenarioExecutionPlan;
   currentUserDisplayName: string;
   dataSnapshotVersion: string;
   hasCostVsServiceWeights: boolean;
@@ -99,7 +104,7 @@ export interface ScenarioDefinition {
   createdBy: string;
   createdAt: string;
   updatedAt: string;
-  status: 'Draft' | 'Running' | 'Completed' | 'Reviewed' | 'Published' | 'Archived';
+  status: 'Draft' | 'Running' | 'Completed' | 'Failed' | 'Reviewed' | 'Published' | 'Archived';
   lastRunBy?: string | null;
   lastRunAt?: string | null;
   lastRunExecutionId?: string | null;

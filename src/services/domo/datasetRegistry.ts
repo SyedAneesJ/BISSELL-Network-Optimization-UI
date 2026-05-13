@@ -5,6 +5,7 @@ export type ScenarioDatasetRegistryItem = {
   regionDefault: 'US' | 'Canada' | 'Auto';
   enabled: boolean;
   dataflowId?: string;
+  sortOrder?: number;
 };
 
 export const scenarioDatasetRegistry: ScenarioDatasetRegistryItem[] = [
@@ -26,5 +27,7 @@ export const scenarioDatasetRegistry: ScenarioDatasetRegistryItem[] = [
   { datasetId: '368699b9-895b-445e-9465-4fbc6032f7be', dataflowId: '3232', scenarioKey: 'etl_16', scenarioLabel: 'Dataset 16', regionDefault: 'Auto', enabled: true },
   { datasetId: 'ca512476-35cd-4889-92a2-d78494ca7be7', dataflowId: '3234', scenarioKey: 'etl_17', scenarioLabel: 'Dataset 17', regionDefault: 'Auto', enabled: true },
   { datasetId: 'f4cddd13-0419-4552-9487-b30580822651', dataflowId: '3235', scenarioKey: 'etl_18', scenarioLabel: 'Dataset 18', regionDefault: 'Auto', enabled: true },
-  { datasetId: '32850f65-eec1-427c-b010-a951e69b1ecd', dataflowId: '3211', scenarioKey: 'etl_19', scenarioLabel: 'Dataset 19', regionDefault: 'Auto', enabled: true },
+  { datasetId: 'bb807051-1b40-4484-97ae-aebf56604cb2', dataflowId: '3267', scenarioKey: 'etl_19', scenarioLabel: 'Dataset 19', regionDefault: 'Auto', enabled: true },
 ];
+
+export const DEFAULT_SCENARIO_DATASET_REGISTRY = scenarioDatasetRegistry;

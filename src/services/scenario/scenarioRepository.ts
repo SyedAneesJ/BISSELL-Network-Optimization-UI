@@ -46,6 +46,11 @@ const cloneRecord = (record: ScenarioRepositoryRecord): ScenarioRepositoryRecord
 
 export const listScenarioRecords = (): ScenarioRepositoryRecord[] => readRecords().map(cloneRecord);
 
+export const clearScenarioStorage = (): void => {
+  if (!isBrowser) return;
+  localStorage.removeItem(SCENARIO_STORAGE_KEY);
+};
+
 export const listScenarios = (): ScenarioDefinition[] =>
   listScenarioRecords().map((record) => ({ ...record.definition, selectedDcs: [...record.definition.selectedDcs], suppressedDcs: [...record.definition.suppressedDcs], tags: [...record.definition.tags] }));
 

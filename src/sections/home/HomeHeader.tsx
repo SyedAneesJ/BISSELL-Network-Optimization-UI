@@ -1,17 +1,26 @@
 import React, { useMemo, useRef, useEffect, useState } from 'react';
-import { Download, Plus, Search, X, ChevronDown } from 'lucide-react';
+import { Download, Plus, X, ChevronDown, Lock } from 'lucide-react';
 import { Button, NotificationBell } from '@/components';
+
+interface WorkspaceOption {
+  value: 'All' | 'US' | 'Canada';
+  label: string;
+  disabled?: boolean;
+}
+
+const workspaceOptions: WorkspaceOption[] = [
+  { value: 'All', label: 'All Workspaces', disabled: true },
+  { value: 'US', label: 'US' },
+  { value: 'Canada', label: 'Canada', disabled: true },
+];
 
 interface HomeHeaderProps {
   workspace: 'All' | 'US' | 'Canada';
   onWorkspaceChange: (workspace: 'All' | 'US' | 'Canada') => void;
-  searchTerm: string;
-  onSearchTermChange: (value: string) => void;
   currentUserDisplayName: string;
   currentUserEmail?: string | null;
   notificationCount: number;
   onOpenNotifications: () => void;
-  onDataHealth: () => void;
   onExportScenarioList: () => void;
   onExportComparisonList: () => void;
   onNewScenario: () => void;
@@ -24,13 +33,10 @@ interface HomeHeaderProps {
 export const HomeHeader: React.FC<HomeHeaderProps> = ({
   workspace,
   onWorkspaceChange,
-  searchTerm,
-  onSearchTermChange,
   currentUserDisplayName,
   currentUserEmail,
   notificationCount,
   onOpenNotifications,
-  onDataHealth,
   onExportScenarioList,
   onExportComparisonList,
   onNewScenario,
@@ -47,7 +53,6 @@ export const HomeHeader: React.FC<HomeHeaderProps> = ({
     return parts.slice(0, 2).map((part) => part[0]?.toUpperCase()).join('') || 'U';
   }, [currentUserDisplayName]);
 
-  // Close profile popup when clicking outside
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
@@ -60,49 +65,45 @@ export const HomeHeader: React.FC<HomeHeaderProps> = ({
 
   return (
     <div className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8 py-3">
-
-      {/* ── Main header row ── */}
       <div className="flex items-center gap-3 sm:gap-4">
-
-        {/* LEFT: Brand + workspace selector */}
         <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
           <h1 className="text-base sm:text-lg lg:text-xl font-semibold text-slate-900 whitespace-nowrap truncate leading-tight">
             BISSELL&nbsp;Network&nbsp;Optimization
           </h1>
 
-          <select
-            value={workspace}
-            onChange={(e) => onWorkspaceChange(e.target.value as 'All' | 'US' | 'Canada')}
-            className="hidden sm:block px-2.5 py-1.5 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 flex-shrink-0"
-          >
-            <option value="All">All Workspaces</option>
-            <option value="US">US</option>
-            <option value="Canada">Canada</option>
-          </select>
+          {/* <div className="flex flex-col gap-1 max-w-[240px]"> */}
+          {/* <label className="text-xs font-medium uppercase tracking-wide text-slate-500">
+              Workspace
+            </label> */}
+          <div className="relative group">
+            <select
+              value={workspace}
+              onChange={(event) => {
+                const nextWorkspace = event.target.value as 'All' | 'US' | 'Canada';
+                if (nextWorkspace === 'All' || nextWorkspace === 'Canada') return;
+                onWorkspaceChange(nextWorkspace);
+              }}
+              className="w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 py-2 pr-10 text-sm font-medium text-slate-700 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:bg-slate-100"
+              title="Only US is selectable for now"
+            >
+              {workspaceOptions.map((option) => (
+                <option key={option.value} value={option.value} disabled={option.disabled}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            {/* <span className="pointer-events-none absolute right-9 top-1/2 hidden -translate-y-1/2 items-center gap-1 rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-500 shadow-sm transition group-hover:flex">
+                <Lock className="h-3 w-3" />
+                Disabled
+              </span> */}
+          </div>
+          {/* <p className="text-[11px] text-slate-500">All Workspaces and Canada are visible but disabled.</p> */}
+          {/* </div> */}
         </div>
 
-        {/* CENTER: Search (hidden on xs, visible sm+) */}
-        <div className="hidden sm:flex relative flex-shrink-0">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-          <input
-            type="text"
-            placeholder="Search runs…"
-            value={searchTerm}
-            onChange={(e) => onSearchTermChange(e.target.value)}
-            className="pl-9 pr-3 py-1.5 border border-slate-300 rounded-lg text-sm w-44 lg:w-64 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-          />
-        </div>
-
-        {/* RIGHT: action buttons + notifications + profile */}
         <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
-
-          {/* Action buttons – visible md+ */}
           <div className="hidden md:flex items-center gap-1.5">
-            <Button onClick={onDataHealth} variant="secondary" size="small">
-              Data Health
-            </Button>
-
-            {/* Export dropdown */}
             <div className="relative group">
               <Button variant="secondary" size="small" icon={<Download className="w-4 h-4" />}>
                 Export
@@ -139,17 +140,14 @@ export const HomeHeader: React.FC<HomeHeaderProps> = ({
             </Button>
           </div>
 
-          {/* Mobile: compact New Scenario only */}
           <div className="flex md:hidden items-center gap-1.5">
             <Button onClick={onNewScenario} variant="primary" size="small" icon={<Plus className="w-4 h-4" />}>
               <span className="sr-only sm:not-sr-only">Scenario</span>
             </Button>
           </div>
 
-          {/* Notifications */}
           <NotificationBell count={notificationCount} onClick={onOpenNotifications} />
 
-          {/* Profile */}
           <div className="relative" ref={profileRef}>
             <button
               type="button"
@@ -192,37 +190,7 @@ export const HomeHeader: React.FC<HomeHeaderProps> = ({
         </div>
       </div>
 
-      {/* ── Mobile search row ── */}
-      <div className="mt-2 flex sm:hidden items-center gap-2">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-          <input
-            type="text"
-            placeholder="Search runs and comparisons…"
-            value={searchTerm}
-            onChange={(e) => onSearchTermChange(e.target.value)}
-            className="pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-sm w-full focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-          />
-        </div>
-
-        {/* Mobile workspace selector */}
-        <select
-          value={workspace}
-          onChange={(e) => onWorkspaceChange(e.target.value as 'All' | 'US' | 'Canada')}
-          className="px-2.5 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 flex-shrink-0"
-        >
-          <option value="All">All</option>
-          <option value="US">US</option>
-          <option value="Canada">Canada</option>
-        </select>
-      </div>
-
-      {/* ── Mobile action row ── */}
       <div className="mt-2 flex md:hidden flex-wrap items-center gap-1.5">
-        <Button onClick={onDataHealth} variant="secondary" size="small">
-          Data Health
-        </Button>
-
         <div className="relative group">
           <Button variant="secondary" size="small" icon={<Download className="w-4 h-4" />}>
             Export
@@ -253,7 +221,6 @@ export const HomeHeader: React.FC<HomeHeaderProps> = ({
           New Comparison
         </Button>
       </div>
-
     </div>
   );
 };

@@ -1,4 +1,5 @@
-import { AlertTriangle, Clock, FileText, Copy, Archive, RotateCcw, Download, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { AlertTriangle, Clock, FileText, Copy, Archive, RotateCcw, Download, MoreVertical, Trash2, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { Tooltip } from '@/components/ui';
 import { StatusBadge } from '@/components/ui';
 import { Column } from '@/components/ui';
@@ -12,8 +13,93 @@ interface ScenarioColumnsParams {
   onDuplicateScenario: (scenarioId: string) => void;
   onArchiveScenario: (scenarioId: string) => void;
   onUnarchiveScenario: (scenarioId: string) => void;
+  onDeleteScenario: (scenarioId: string) => void;
+  canDeleteScenario: (row: ScenarioRunHeader) => boolean;
   onExportScenarioRow: (row: ScenarioRunHeader) => void;
 }
+
+const ScenarioActionsMenu: React.FC<{
+  row: ScenarioRunHeader;
+  isActionActive: (key: string) => boolean;
+  triggerAction: (key: string) => void;
+  onArchiveScenario: (scenarioId: string) => void;
+  onUnarchiveScenario: (scenarioId: string) => void;
+  onDeleteScenario: (scenarioId: string) => void;
+  canDeleteScenario: boolean;
+}> = ({
+  row,
+  isActionActive,
+  triggerAction,
+  onArchiveScenario,
+  onUnarchiveScenario,
+  onDeleteScenario,
+  canDeleteScenario,
+}) => {
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClick = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  const handleArchiveToggle = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (row.Status === 'Archived') {
+      onUnarchiveScenario(row.ScenarioRunID);
+    } else {
+      onArchiveScenario(row.ScenarioRunID);
+    }
+    triggerAction(`scenario_archive_${row.ScenarioRunID}`);
+    setOpen(false);
+  };
+
+  const handleDelete = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onDeleteScenario(row.ScenarioRunID);
+    setOpen(false);
+  };
+
+  return (
+    <div ref={menuRef} className="relative inline-flex">
+      <button
+        className={`p-1 hover:bg-slate-100 rounded ${isActionActive(`scenario_archive_${row.ScenarioRunID}`) ? 'bg-amber-50' : ''}`}
+        title="More actions"
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((prev) => !prev);
+        }}
+      >
+        <MoreVertical className={`w-4 h-4 ${isActionActive(`scenario_archive_${row.ScenarioRunID}`) ? 'text-amber-700' : 'text-slate-600'}`} />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full z-30 mt-1 w-44 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
+          <button
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+            onClick={handleArchiveToggle}
+          >
+            {row.Status === 'Archived' ? <RotateCcw className="w-4 h-4" /> : <Archive className="w-4 h-4" />}
+            {row.Status === 'Archived' ? 'Unarchive' : 'Archive'}
+          </button>
+          {canDeleteScenario && (
+            <button
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
+              onClick={handleDelete}
+            >
+              <Trash2 className="w-4 h-4" />
+              Delete
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
 
 export const createScenarioColumns = ({
   entityLabels,
@@ -22,6 +108,8 @@ export const createScenarioColumns = ({
   onDuplicateScenario,
   onArchiveScenario,
   onUnarchiveScenario,
+  onDeleteScenario,
+  canDeleteScenario,
   onExportScenarioRow,
 }: ScenarioColumnsParams): Column<ScenarioRunHeader>[] => [
   {
@@ -245,25 +333,15 @@ export const createScenarioColumns = ({
         >
           <Download className={`w-4 h-4 ${isActionActive(`scenario_export_${row.ScenarioRunID}`) ? 'text-amber-700' : 'text-slate-600'}`} />
         </button>
-        <button
-          className={`p-1 hover:bg-slate-100 rounded ${isActionActive(`scenario_archive_${row.ScenarioRunID}`) ? 'bg-amber-50' : ''}`}
-          title={row.Status === 'Archived' ? 'Unarchive' : 'Archive'}
-          onClick={(e) => {
-            e.stopPropagation();
-            if (row.Status === 'Archived') {
-              onUnarchiveScenario(row.ScenarioRunID);
-            } else {
-              onArchiveScenario(row.ScenarioRunID);
-            }
-            triggerAction(`scenario_archive_${row.ScenarioRunID}`);
-          }}
-        >
-          {row.Status === 'Archived' ? (
-            <RotateCcw className={`w-4 h-4 ${isActionActive(`scenario_archive_${row.ScenarioRunID}`) ? 'text-amber-700' : 'text-slate-600'}`} />
-          ) : (
-            <Archive className={`w-4 h-4 ${isActionActive(`scenario_archive_${row.ScenarioRunID}`) ? 'text-amber-700' : 'text-slate-600'}`} />
-          )}
-        </button>
+        <ScenarioActionsMenu
+          row={row}
+          isActionActive={isActionActive}
+          triggerAction={triggerAction}
+          onArchiveScenario={onArchiveScenario}
+          onUnarchiveScenario={onUnarchiveScenario}
+          onDeleteScenario={onDeleteScenario}
+          canDeleteScenario={canDeleteScenario(row)}
+        />
       </div>
     ),
   },
@@ -277,8 +355,88 @@ interface ComparisonColumnsParams {
   onDuplicateComparison: (comparisonId: string) => void;
   onArchiveComparison: (comparisonId: string) => void;
   onUnarchiveComparison: (comparisonId: string) => void;
+  onDeleteComparison: (comparisonId: string) => void;
   onExportComparisonRow: (row: ComparisonHeader) => void;
 }
+
+const ComparisonActionsMenu: React.FC<{
+  row: ComparisonHeader;
+  isActionActive: (key: string) => boolean;
+  triggerAction: (key: string) => void;
+  onArchiveComparison: (comparisonId: string) => void;
+  onUnarchiveComparison: (comparisonId: string) => void;
+  onDeleteComparison: (comparisonId: string) => void;
+}> = ({
+  row,
+  isActionActive,
+  triggerAction,
+  onArchiveComparison,
+  onUnarchiveComparison,
+  onDeleteComparison,
+}) => {
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClick = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  const handleArchiveToggle = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (row.Status === 'Archived') {
+      onUnarchiveComparison(row.ComparisonID);
+    } else {
+      onArchiveComparison(row.ComparisonID);
+    }
+    triggerAction(`comparison_archive_${row.ComparisonID}`);
+    setOpen(false);
+  };
+
+  const handleDelete = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onDeleteComparison(row.ComparisonID);
+    setOpen(false);
+  };
+
+  return (
+    <div ref={menuRef} className="relative inline-flex">
+      <button
+        className={`p-1 hover:bg-slate-100 rounded ${isActionActive(`comparison_archive_${row.ComparisonID}`) ? 'bg-amber-50' : ''}`}
+        title="More actions"
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((prev) => !prev);
+        }}
+      >
+        <MoreVertical className={`w-4 h-4 ${isActionActive(`comparison_archive_${row.ComparisonID}`) ? 'text-amber-700' : 'text-slate-600'}`} />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full z-30 mt-1 w-44 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
+          <button
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+            onClick={handleArchiveToggle}
+          >
+            {row.Status === 'Archived' ? <RotateCcw className="w-4 h-4" /> : <Archive className="w-4 h-4" />}
+            {row.Status === 'Archived' ? 'Unarchive' : 'Archive'}
+          </button>
+          <button
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
+            onClick={handleDelete}
+          >
+            <Trash2 className="w-4 h-4" />
+            Delete
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
 
 export const createComparisonColumns = ({
   scenarioRunHeaders,
@@ -288,6 +446,7 @@ export const createComparisonColumns = ({
   onDuplicateComparison,
   onArchiveComparison,
   onUnarchiveComparison,
+  onDeleteComparison,
   onExportComparisonRow,
 }: ComparisonColumnsParams): Column<ComparisonHeader>[] => [
   {
@@ -458,25 +617,14 @@ export const createComparisonColumns = ({
         >
           <Download className={`w-4 h-4 ${isActionActive(`comparison_export_${row.ComparisonID}`) ? 'text-amber-700' : 'text-slate-600'}`} />
         </button>
-        <button
-          className={`p-1 hover:bg-slate-100 rounded ${isActionActive(`comparison_archive_${row.ComparisonID}`) ? 'bg-amber-50' : ''}`}
-          title={row.Status === 'Archived' ? 'Unarchive' : 'Archive'}
-          onClick={(e) => {
-            e.stopPropagation();
-            if (row.Status === 'Archived') {
-              onUnarchiveComparison(row.ComparisonID);
-            } else {
-              onArchiveComparison(row.ComparisonID);
-            }
-            triggerAction(`comparison_archive_${row.ComparisonID}`);
-          }}
-        >
-          {row.Status === 'Archived' ? (
-            <RotateCcw className={`w-4 h-4 ${isActionActive(`comparison_archive_${row.ComparisonID}`) ? 'text-amber-700' : 'text-slate-600'}`} />
-          ) : (
-            <Archive className={`w-4 h-4 ${isActionActive(`comparison_archive_${row.ComparisonID}`) ? 'text-amber-700' : 'text-slate-600'}`} />
-          )}
-        </button>
+        <ComparisonActionsMenu
+          row={row}
+          isActionActive={isActionActive}
+          triggerAction={triggerAction}
+          onArchiveComparison={onArchiveComparison}
+          onUnarchiveComparison={onUnarchiveComparison}
+          onDeleteComparison={onDeleteComparison}
+        />
       </div>
     ),
   },

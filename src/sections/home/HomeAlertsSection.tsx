@@ -1,6 +1,6 @@
 import React from 'react';
 import { AlertTriangle, Clock, FileText } from 'lucide-react';
-import { Button, StatusBadge } from '@/components/ui';
+import { StatusBadge } from '@/components/ui';
 import { DataHealthSnapshot } from '@/data';
 
 interface HomeAlertsSectionProps {
@@ -11,13 +11,11 @@ interface HomeAlertsSectionProps {
     assumptions: number;
   };
   dataHealthSnapshot: DataHealthSnapshot;
-  onDataHealth: () => void;
 }
 
 export const HomeAlertsSection: React.FC<HomeAlertsSectionProps> = ({
   alertCounts,
   dataHealthSnapshot,
-  onDataHealth,
 }) => {
   return (
     <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-4">
@@ -74,9 +72,6 @@ export const HomeAlertsSection: React.FC<HomeAlertsSectionProps> = ({
               BCV Dims: {dataHealthSnapshot.BCVDimsAvailability}
             </p>
           </div>
-          <Button onClick={onDataHealth} variant="secondary" size="small">
-            View Details
-          </Button>
         </div>
       </div>
     </div>

@@ -1,6 +1,6 @@
 import React from 'react';
 
-type Status = 'Draft' | 'Running' | 'Completed' | 'Reviewed' | 'Published' | 'Archived' | 'Working' | 'OK' | 'Warn' | 'Error';
+type Status = 'Draft' | 'Running' | 'Completed' | 'Failed' | 'Reviewed' | 'Published' | 'Archived' | 'Working' | 'OK' | 'Warn' | 'Error';
 
 interface StatusBadgeProps {
   status: Status;
@@ -16,6 +16,8 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, size = 'medium
         return 'bg-blue-100 text-blue-700 border-blue-300 animate-pulse';
       case 'Completed':
         return 'bg-green-100 text-green-700 border-green-300';
+      case 'Failed':
+        return 'bg-red-100 text-red-700 border-red-300';
       case 'Reviewed':
         return 'bg-blue-100 text-blue-700 border-blue-300';
       case 'Published':
