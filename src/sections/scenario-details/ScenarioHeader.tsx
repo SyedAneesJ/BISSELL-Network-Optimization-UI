@@ -1,5 +1,5 @@
 import React from 'react';
-import { Archive, ArrowLeft, CheckCircle, Copy, Download, MessageSquare } from 'lucide-react';
+import { ArrowLeft, CheckCircle, MessageSquare } from 'lucide-react';
 import { Button, StatusBadge, Tooltip } from '@/components/ui';
 import { ScenarioRunHeader } from '@/data';
 
@@ -8,24 +8,12 @@ interface ScenarioHeaderProps {
   scenarioId: string;
   laneResultsCount: number;
   onBack: () => void;
-  onDuplicateScenario: (scenarioId: string) => void;
   onPublishScenario: (scenarioId: string) => void;
   onApproveScenario: (scenarioId: string) => void;
-  onArchiveScenario: (scenarioId: string) => void;
   onOpenComment: () => void;
-  onExportDCDetails: () => void;
-  onExportRoutingCSV: () => void;
-  onExportLaneCSV: () => void;
-  onExportExceptionsCSV: () => void;
-  exportDCDetailsActive: boolean;
-  exportRoutingActive: boolean;
-  exportLaneActive: boolean;
-  exportExceptionsActive: boolean;
-  duplicateActive: boolean;
   publishActive: boolean;
   approveActive: boolean;
   commentOpenActive: boolean;
-  archiveActive: boolean;
 }
 
 export const ScenarioHeader: React.FC<ScenarioHeaderProps> = ({
@@ -33,24 +21,12 @@ export const ScenarioHeader: React.FC<ScenarioHeaderProps> = ({
   scenarioId,
   laneResultsCount,
   onBack,
-  onDuplicateScenario,
   onPublishScenario,
   onApproveScenario,
-  onArchiveScenario,
   onOpenComment,
-  onExportDCDetails,
-  onExportRoutingCSV,
-  onExportLaneCSV,
-  onExportExceptionsCSV,
-  exportDCDetailsActive,
-  exportRoutingActive,
-  exportLaneActive,
-  exportExceptionsActive,
-  duplicateActive,
   publishActive,
   approveActive,
   commentOpenActive,
-  archiveActive,
 }) => {
   return (
     <div className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8 py-4">
@@ -67,7 +43,7 @@ export const ScenarioHeader: React.FC<ScenarioHeaderProps> = ({
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-lg sm:text-xl font-semibold text-slate-900 break-words">{scenario.RunName}</h1>
             <StatusBadge status={scenario.Status} />
-            {scenario.AssumptionsSummary!=='NA' && (
+            {scenario.AssumptionsSummary !== 'NA' && (
               <Tooltip content={scenario.AssumptionsSummary}>
                 <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded">
                   Assumptions
@@ -77,9 +53,6 @@ export const ScenarioHeader: React.FC<ScenarioHeaderProps> = ({
           </div>
           <div className="text-sm text-slate-600 mt-1 flex flex-wrap gap-x-3 gap-y-1">
             <span>{scenario.ScenarioType} | {scenario.Region} | {scenario.EntityScope}</span>
-            {/* <span>
-              Mapped dataflow: {scenario.DataflowID || 'NA'}
-            </span> */}
             {scenario.ApprovedBy && (
               <span>Approved by {scenario.ApprovedBy}</span>
             )}
@@ -94,53 +67,6 @@ export const ScenarioHeader: React.FC<ScenarioHeaderProps> = ({
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative group">
-          <Button variant="secondary" size="small" icon={<Download className="w-4 h-4" />}>
-            Export
-          </Button>
-          <div className="hidden group-hover:block absolute left-0 top-full mt-1 w-64 bg-white border border-slate-200 rounded-lg shadow-lg z-10">
-            <button
-              className={`w-full text-left px-4 py-2 text-sm hover:bg-slate-50 ${exportDCDetailsActive ? 'bg-amber-50 text-amber-800' : ''}`}
-              onClick={onExportDCDetails}
-            >
-              {exportDCDetailsActive ? 'Exporting DC Details...' : 'Export DC Details CSV'}
-            </button>
-            <button
-              className={`w-full text-left px-4 py-2 text-sm hover:bg-slate-50 ${laneResultsCount === 0 ? 'text-slate-400 cursor-not-allowed' : ''} ${exportRoutingActive ? 'bg-amber-50 text-amber-800' : ''}`}
-              disabled={laneResultsCount === 0}
-              onClick={onExportRoutingCSV}
-            >
-              {exportRoutingActive ? 'Exporting Routing CSV...' : 'Export Routing Assignment CSV'}
-            </button>
-            <button
-              className={`w-full text-left px-4 py-2 text-sm hover:bg-slate-50 ${laneResultsCount === 0 ? 'text-slate-400 cursor-not-allowed' : ''} ${exportLaneActive ? 'bg-amber-50 text-amber-800' : ''}`}
-              disabled={laneResultsCount === 0}
-              onClick={onExportLaneCSV}
-            >
-              {exportLaneActive ? 'Exporting Lane Table...' : 'Export Lane Table CSV'}
-            </button>
-            <button
-              className={`w-full text-left px-4 py-2 text-sm hover:bg-slate-50 ${laneResultsCount === 0 ? 'text-slate-400 cursor-not-allowed' : ''} ${exportExceptionsActive ? 'bg-amber-50 text-amber-800' : ''}`}
-              disabled={laneResultsCount === 0}
-              onClick={onExportExceptionsCSV}
-            >
-              {exportExceptionsActive ? 'Exporting Exceptions...' : 'Export Exceptions CSV'}
-            </button>
-          </div>
-        </div>
-
-        <Button
-          variant="secondary"
-          size="small"
-          icon={<Copy className="w-4 h-4" />}
-          onClick={() => undefined}
-          disabled
-          title="Duplicate is temporarily disabled"
-          className="opacity-50 cursor-not-allowed"
-        >
-          Duplicate
-        </Button>
-
         {scenario.Status !== 'Published' && (
           <Button
             variant="primary"
@@ -175,15 +101,9 @@ export const ScenarioHeader: React.FC<ScenarioHeaderProps> = ({
           {commentOpenActive ? 'Adding...' : 'Add Comment'}
         </Button>
 
-        <Button
-          variant="ghost"
-          size="small"
-          icon={<Archive className="w-4 h-4" />}
-          onClick={() => onArchiveScenario(scenarioId)}
-          className={archiveActive ? 'bg-amber-100 text-amber-800' : ''}
-        >
-          {archiveActive ? 'Archived' : 'Archive'}
-        </Button>
+        <span className="ml-auto text-xs text-slate-500">
+          {laneResultsCount} lane rows
+        </span>
       </div>
     </div>
   );

@@ -1,7 +1,13 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { ChevronDown, Lock } from 'lucide-react';
 import { DatasetOptionSets } from '@/services';
 import { ScenarioTemplateOption } from '@/services/scenario';
+import {
+  getScenarioTypeSortRank,
+  normalizeScenarioTypeSpecificInput,
+  resolveScenarioTypePolicy,
+  scenarioTypeMatches,
+} from '@/services/scenario/scenarioTypeRules';
 import { NewScenarioFormData } from './types';
 
 interface Step1TemplateScopeProps {
@@ -20,37 +26,51 @@ const buildFormDataFromTemplate = (
   template: ScenarioTemplateOption | null,
   fallbackRegion: 'US' | 'Canada',
   fallbackDatasetOptions: DatasetOptionSets,
-): NewScenarioFormData => ({
-  region: template?.region || fallbackRegion,
-  baselineScenarioId: template?.scenarioId || '',
-  baselineDataflowId: template?.dataflowId || '',
-  scenarioType: template?.scenarioType || '',
-  entityScope: template?.entityScope || 'NA',
-  channelScope: template ? [...template.channelScopes] : [...fallbackDatasetOptions.channelScopes],
-  termsScope: template?.termsScopes[0] || fallbackDatasetOptions.termsScopes[0] || '',
-  runName: '',
-  tags: template ? [...template.tags] : [],
-  notes: '',
-  activeDCs: new Set(template?.availableDcs || []),
-  suppressedDCs: new Set<string>(),
-  footprintMode: template?.footprintMode || fallbackDatasetOptions.footprintModes[0] || 'NA',
-  utilCap: template?.utilCap ?? fallbackDatasetOptions.utilCaps[0] ?? 0,
-  levelLoad: template?.levelLoad ?? (fallbackDatasetOptions.levelLoadModes.includes('On')),
-  leadTimeCap: template?.leadTimeCap ?? fallbackDatasetOptions.leadTimeCaps[0] ?? 0,
-  excludeBeyondCap: template?.excludeBeyondCap ?? (fallbackDatasetOptions.excludeBeyondCap.includes(true)),
-  costVsService: template?.costVsService ?? fallbackDatasetOptions.costVsServiceWeights[0] ?? 0,
-  fuelSurchargeMode: template?.fuelSurchargeMode || fallbackDatasetOptions.fuelSurchargeModes[0] || 'NA',
-  fuelSurchargeOverride: template?.fuelSurchargeOverride ?? null,
-  accessorials: {
-    residential: template ? template.accessorialFlags.includes('Residential') : fallbackDatasetOptions.accessorialFlags.includes('Residential'),
-    liftgate: template ? template.accessorialFlags.includes('Liftgate') : fallbackDatasetOptions.accessorialFlags.includes('Liftgate'),
-    insideDelivery: template ? template.accessorialFlags.includes('InsideDelivery') : fallbackDatasetOptions.accessorialFlags.includes('InsideDelivery'),
-  },
-  allowRelocationPrepaid: template?.allowRelocationPrepaid ?? fallbackDatasetOptions.allowRelocationPrepaid.includes(true),
-  allowRelocationCollect: template?.allowRelocationCollect ?? fallbackDatasetOptions.allowRelocationCollect.includes(true),
-  bcvRuleSet: template?.bcvRuleSet || fallbackDatasetOptions.bcvRuleSets[0] || 'NA',
-  allowManualOverride: template?.allowManualOverride ?? fallbackDatasetOptions.allowManualOverride.includes(true),
-});
+): NewScenarioFormData => {
+  const policy = resolveScenarioTypePolicy(template?.scenarioType || '');
+  return normalizeScenarioTypeSpecificInput({
+    region: template?.region || fallbackRegion,
+    baselineScenarioId: template?.scenarioId || '',
+    baselineDataflowId: template?.dataflowId || '',
+    scenarioType: template?.scenarioType || '',
+    entityScope: template?.entityScope || 'NA',
+    channelScope: template ? [...template.channelScopes] : [...fallbackDatasetOptions.channelScopes],
+    termsScope: template?.termsScopes[0] || fallbackDatasetOptions.termsScopes[0] || '',
+    runName: '',
+    tags: template ? [...template.tags] : [],
+    notes: '',
+    activeDCs: new Set(policy.allowedDcs.length > 0 ? policy.allowedDcs : template?.availableDcs || []),
+    suppressedDCs: new Set<string>(),
+    footprintMode: template?.footprintMode || fallbackDatasetOptions.footprintModes[0] || 'NA',
+    utilCap: template?.utilCap ?? fallbackDatasetOptions.utilCaps[0] ?? 0,
+    levelLoad: template?.levelLoad ?? fallbackDatasetOptions.levelLoadModes.includes('On'),
+    leadTimeCap: template?.leadTimeCap ?? fallbackDatasetOptions.leadTimeCaps[0] ?? 0,
+    excludeBeyondCap: template?.excludeBeyondCap ?? fallbackDatasetOptions.excludeBeyondCap.includes(true),
+    costVsService: template?.costVsService ?? fallbackDatasetOptions.costVsServiceWeights[0] ?? 0,
+    fuelSurchargeMode: template?.fuelSurchargeMode || fallbackDatasetOptions.fuelSurchargeModes[0] || 'NA',
+    fuelSurchargeOverride: template?.fuelSurchargeOverride ?? null,
+    accessorials: {
+      residential: template ? template.accessorialFlags.includes('Residential') : fallbackDatasetOptions.accessorialFlags.includes('Residential'),
+      liftgate: template ? template.accessorialFlags.includes('Liftgate') : fallbackDatasetOptions.accessorialFlags.includes('Liftgate'),
+      insideDelivery: template ? template.accessorialFlags.includes('InsideDelivery') : fallbackDatasetOptions.accessorialFlags.includes('InsideDelivery'),
+    },
+    allowRelocationPrepaid: template?.allowRelocationPrepaid ?? fallbackDatasetOptions.allowRelocationPrepaid.includes(true),
+    allowRelocationCollect: template?.allowRelocationCollect ?? fallbackDatasetOptions.allowRelocationCollect.includes(true),
+    bcvRuleSet: template?.bcvRuleSet || fallbackDatasetOptions.bcvRuleSets[0] || 'NA',
+    allowManualOverride: template?.allowManualOverride ?? fallbackDatasetOptions.allowManualOverride.includes(true),
+  });
+};
+
+const scenarioTypeSortRank = (value: string): number => getScenarioTypeSortRank(value);
+const isExactBaselineScenario = (scenarioType: unknown): boolean =>
+  resolveScenarioTypePolicy(scenarioType).scenarioType === 'US Baseline';
+const isExactUsBaselineTemplate = (template: ScenarioTemplateOption | null): boolean =>
+  Boolean(template)
+  && isExactBaselineScenario(template?.scenarioType)
+  && String(template?.dataflowId || '').trim() === '3267';
+
+const findExactUsBaselineTemplate = (templates: ScenarioTemplateOption[]): ScenarioTemplateOption | null =>
+  templates.find((template) => isExactUsBaselineTemplate(template)) || null;
 
 export const Step1TemplateScope: React.FC<Step1TemplateScopeProps> = ({
   formData,
@@ -65,14 +85,37 @@ export const Step1TemplateScope: React.FC<Step1TemplateScopeProps> = ({
 }) => {
   const regionTemplates = templatesByRegion[formData.region] || baselineOptions;
   const selectedScenarioType = formData.scenarioType || '';
+  const selectedScenarioPolicy = resolveScenarioTypePolicy(selectedScenarioType || baselineOptions[0]?.scenarioType || '');
   const scenarioTypeOptions = Array.from(
     new Set(regionTemplates.map((option) => option.scenarioType).filter(Boolean))
+  ).sort((a, b) => {
+    const rankDelta = scenarioTypeSortRank(a) - scenarioTypeSortRank(b);
+    if (rankDelta !== 0) return rankDelta;
+    return String(a || '').trim().toLowerCase().localeCompare(String(b || '').trim().toLowerCase());
+  });
+  const baselineScenarioOptions = baselineOptions.filter((item) =>
+    isExactUsBaselineTemplate(item)
   );
+  const exactUsBaselineScenario = baselineScenarioOptions[0] || null;
   const selectedBaseScenario =
-    baselineOptions.find((item) => item.scenarioId === formData.baselineScenarioId)
-    || baselineOptions.find((item) => item.scenarioType === selectedScenarioType)
+    (selectedScenarioPolicy.allocationMode === 'baseline' ? exactUsBaselineScenario : null)
+    || baselineOptions.find((item) => item.scenarioId === formData.baselineScenarioId)
+    || baselineOptions.find((item) => scenarioTypeMatches(item.scenarioType, selectedScenarioType))
     || baselineOptions[0]
     || null;
+
+  useEffect(() => {
+    console.groupCollapsed('[Step 1] baseline selection');
+    console.log({
+      scenarioType: formData.scenarioType || 'NA',
+      selectedBaselineScenarioId:
+        (selectedScenarioPolicy.allocationMode === 'baseline'
+          ? exactUsBaselineScenario?.scenarioId
+          : formData.baselineScenarioId) || 'NA',
+      selectedBaselineScenarioName: selectedBaseScenario?.scenarioName || 'NA',
+    });
+    console.groupEnd();
+  }, [exactUsBaselineScenario?.scenarioId, formData.baselineScenarioId, formData.scenarioType, selectedScenarioPolicy.allocationMode, selectedBaseScenario?.scenarioName]);
 
   return (
     <div className="space-y-6">
@@ -104,22 +147,34 @@ export const Step1TemplateScope: React.FC<Step1TemplateScopeProps> = ({
           </label>
           <div className="relative group max-w-sm">
             <select
-              value={formData.region === 'US' ? 'US' : 'US'}
+              value="US"
               onChange={(e) => {
-                const nextRegion = e.target.value as 'All' | 'US' | 'Canada';
-                if (nextRegion !== 'US') return;
-                const nextRegionTemplates = templatesByRegion.US || baselineOptions;
-                const nextType = nextRegionTemplates[0]?.scenarioType || '';
-                const nextTemplate = nextType
-                  ? nextRegionTemplates.find((item) => item.scenarioType === nextType) || nextRegionTemplates[0] || null
-                  : nextRegionTemplates[0] || null;
-                onFormDataChange({
+              const nextRegion = e.target.value as 'All' | 'US' | 'Canada';
+              if (nextRegion !== 'US') return;
+              const nextRegionTemplates = templatesByRegion.US || baselineOptions;
+              const nextType = nextRegionTemplates[0]?.scenarioType || '';
+              const nextTemplate = nextType
+                ? (resolveScenarioTypePolicy(nextType).allocationMode === 'baseline'
+                  ? findExactUsBaselineTemplate(nextRegionTemplates)
+                    || nextRegionTemplates[0]
+                    || null
+                  : nextRegionTemplates.find((item) => scenarioTypeMatches(item.scenarioType, nextType))
+                    || nextRegionTemplates[0]
+                    || null)
+                : nextRegionTemplates[0] || null;
+                const nextFormData = {
                   ...buildFormDataFromTemplate(nextTemplate, 'US', datasetOptions),
                   region: 'US',
                   scenarioType: nextType,
                   runName: formData.runName,
                   notes: formData.notes,
-                });
+                } as NewScenarioFormData;
+                if (resolveScenarioTypePolicy(nextType).allocationMode === 'baseline' && exactUsBaselineScenario) {
+                  nextFormData.baselineScenarioId = exactUsBaselineScenario.scenarioId;
+                  nextFormData.baselineDataflowId = String(exactUsBaselineScenario.dataflowId || '3267');
+                  nextFormData.scenarioType = exactUsBaselineScenario.scenarioType;
+                }
+                onFormDataChange(nextFormData);
               }}
               className="w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 py-2 pr-10 text-sm font-medium text-slate-700 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:bg-slate-100"
               title="Only US is selectable for now"
@@ -148,15 +203,25 @@ export const Step1TemplateScope: React.FC<Step1TemplateScopeProps> = ({
             onChange={(e) => {
               const nextType = e.target.value;
               const matchingOptions = nextType
-                ? regionTemplates.filter((item) => item.scenarioType === nextType)
+                ? (resolveScenarioTypePolicy(nextType).allocationMode === 'baseline'
+                  ? baselineScenarioOptions
+                  : regionTemplates.filter((item) => scenarioTypeMatches(item.scenarioType, nextType)))
                 : regionTemplates;
-              const nextScenario = matchingOptions[0] || null;
-              onFormDataChange({
+              const nextScenario = resolveScenarioTypePolicy(nextType).allocationMode === 'baseline'
+                ? exactUsBaselineScenario
+                : matchingOptions[0] || null;
+              const nextFormData = {
                 ...buildFormDataFromTemplate(nextScenario, formData.region as 'US' | 'Canada', datasetOptions),
                 scenarioType: nextType,
                 runName: formData.runName,
                 notes: formData.notes,
-              });
+              } as NewScenarioFormData;
+              if (resolveScenarioTypePolicy(nextType).allocationMode === 'baseline' && exactUsBaselineScenario) {
+                nextFormData.baselineScenarioId = exactUsBaselineScenario.scenarioId;
+                nextFormData.baselineDataflowId = String(exactUsBaselineScenario.dataflowId || '3267');
+                nextFormData.scenarioType = exactUsBaselineScenario.scenarioType;
+              }
+              onFormDataChange(nextFormData);
             }}
             className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
@@ -166,6 +231,13 @@ export const Step1TemplateScope: React.FC<Step1TemplateScopeProps> = ({
             ))}
           </select>
           <p className="text-xs text-slate-500 mt-1">Choose one scenario type. The base scenario will be picked automatically from the original scenarios in that type.</p>
+          {selectedScenarioPolicy.helpText.length > 0 && (
+            <div className="mt-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+              {selectedScenarioPolicy.helpText.map((line) => (
+                <div key={line}>{line}</div>
+              ))}
+            </div>
+          )}
           {baselineOptions.length === 0 && (
             <p className="text-xs text-slate-500 mt-1">No scenario data available for this region.</p>
           )}

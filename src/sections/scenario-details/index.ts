@@ -5,4 +5,3 @@ export { ScenarioRankedOptionsTab } from './ScenarioRankedOptionsTab';
 export { ScenarioLanesTab } from './ScenarioLanesTab';
 export { ScenarioLaneFilters } from './ScenarioLaneFilters';
 export { ScenarioCapacityTab } from './ScenarioCapacityTab';
-export { ScenarioOverridesTab } from './ScenarioOverridesTab';

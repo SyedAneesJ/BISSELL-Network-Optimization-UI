@@ -4,7 +4,7 @@ import {
   ScenarioRunResultsDC,
   ScenarioRunResultsLane,
 } from '@/data';
-import { allocateScenarioOutputs } from './scenarioAllocator';
+import { allocateScenarioOutputs, annotateCapacityOutputs, buildCapacityMap } from './scenarioAllocator';
 import {
   ScenarioBuildContext,
   ScenarioBuildResult,
@@ -14,8 +14,17 @@ import {
   ScenarioRepositoryRecord,
   ScenarioRunSnapshot,
 } from './scenarioModels';
+import {
+  normalizeScenarioTypeSpecificInput,
+  resolveScenarioTypePolicy,
+  scenarioTypeMatches,
+} from './scenarioTypeRules';
 
-const buildScenarioId = (existingCount: number) => `SR${(existingCount + 1).toString().padStart(3, '0')}`;
+const buildScenarioId = (existingCount: number) => {
+  const ts = Date.now().toString(36).toUpperCase();
+  const suffix = Math.random().toString(36).substring(2, 6).toUpperCase();
+  return `SR_${ts}_${suffix}`;
+};
 
 const dedupeRowsByKey = <T>(rows: T[], getKey: (row: T) => string): T[] => {
   const seen = new Set<string>();
@@ -29,12 +38,79 @@ const dedupeRowsByKey = <T>(rows: T[], getKey: (row: T) => string): T[] => {
   return result;
 };
 
+const canonicalizeBaselineLaneRows = (rows: ScenarioRunResultsLane[]): ScenarioRunResultsLane[] =>
+  dedupeRowsByKey(rows, (row) => [
+    row.Dest3Zip || '',
+    row.Channel || '',
+    row.Terms || '',
+    row.DestState || '',
+    row.PartyName || row.CustomerGroup || '',
+    row.ScenarioType || '',
+  ].join('|'));
+
+const getBaselineLaneRows = (
+  context: ScenarioBuildContext,
+  scenarioType: string,
+  baselineScenarioId: string | null,
+): ScenarioRunResultsLane[] => {
+  const rawMap = context.laneRowsByScenarioId || {};
+  if (baselineScenarioId && rawMap[baselineScenarioId]?.length) {
+    return canonicalizeBaselineLaneRows(rawMap[baselineScenarioId]);
+  }
+
+  const scenarioTypeMatch = Object.entries(rawMap).find(([, rows]) =>
+    rows.some((row) => {
+      const rowType = String(row.ScenarioType || '').trim();
+      return scenarioTypeMatches(rowType, scenarioType);
+    })
+  );
+  if (scenarioTypeMatch?.[1]?.length) {
+    return canonicalizeBaselineLaneRows(scenarioTypeMatch[1]);
+  }
+
+  const firstRawLaneGroup = Object.values(rawMap).find((rows) => rows.length > 0) || [];
+  return canonicalizeBaselineLaneRows(firstRawLaneGroup);
+};
+
+const shouldLogLaneSource = String(import.meta.env.VITE_SCENARIO_LANE_SOURCE_LOGS ?? 'true').toLowerCase() !== 'false';
+
+const getScenarioMode = (
+  scenarioType: string,
+  utilCap: number,
+  suppressedDcs: string[],
+): 'baseline' | 'overload' | 'constrained' => {
+  const policy = resolveScenarioTypePolicy(scenarioType);
+  if (policy.allocationMode !== 'auto') {
+    if (policy.allocationMode === 'baseline') return 'baseline';
+    if (policy.allocationMode === 'overload' || policy.allocationMode === 'unconstrained') return 'overload';
+    if (policy.allocationMode === 'constrained' || policy.allocationMode === 'tacticalConsolidation') return 'constrained';
+  }
+  const safeUtilCap = Math.max(0, Math.min(100, Number(utilCap || 0)));
+  if (suppressedDcs.length === 0 && safeUtilCap >= 100) return 'baseline';
+  if (safeUtilCap >= 100) return 'overload';
+  return 'constrained';
+};
+
+const isBaselineScenarioType = (scenarioType: string): boolean =>
+  String(scenarioType || '').trim().toLowerCase() === 'baseline';
+
+const getExactBaselineHeader = (
+  scenarioHeaders: ScenarioRunHeader[],
+  region: 'US' | 'Canada',
+): ScenarioRunHeader | null =>
+  scenarioHeaders.find((s) =>
+    s.Region === region
+    && scenarioTypeMatches(String(s.ScenarioType || ''), 'Baseline')
+    && String(s.DataflowID || '').trim() === '3267',
+  ) || null;
+
 const buildLaneGroupKey = (lane: ScenarioRunResultsLane): string =>
   [
     lane.Dest3Zip || '',
     lane.Channel || '',
     lane.Terms || '',
     lane.DestState || '',
+    lane.PartyName || lane.CustomerGroup || '',
     lane.ScenarioType || '',
     lane.AssignedDC || lane.CostingWarehouse || lane.DefaultShipFrom || '',
   ].join('|');
@@ -48,6 +124,10 @@ const getBaselineHeader = (
     const direct = scenarioHeaders.find((s) => s.ScenarioRunID === baselineScenarioId);
     if (direct) return direct;
   }
+  const baselineByType = [...scenarioHeaders]
+    .filter((s) => s.Region === region && scenarioTypeMatches(String(s.ScenarioType || ''), 'Baseline'))
+    .sort((a, b) => new Date(b.LastUpdatedAt).getTime() - new Date(a.LastUpdatedAt).getTime())[0];
+  if (baselineByType) return baselineByType;
   const baseForRegion = [...scenarioHeaders]
     .filter((s) => s.Region === region && s.Status === 'Published')
     .sort((a, b) => new Date(b.LastUpdatedAt).getTime() - new Date(a.LastUpdatedAt).getTime())[0];
@@ -58,6 +138,17 @@ const getBaselineHeader = (
     scenarioHeaders[0] ??
     null
   );
+};
+
+const getLaneSourceBaselineHeader = (
+  scenarioHeaders: ScenarioRunHeader[],
+  region: 'US' | 'Canada',
+  scenarioType: string,
+  baselineScenarioId?: string | null,
+) => {
+  // Always prefer the user's explicit baselineScenarioId regardless of scenario type.
+  // Only fall back to generic region lookup when no explicit ID is provided.
+  return getBaselineHeader(scenarioHeaders, region, baselineScenarioId);
 };
 
 const getNowIso = () => new Date().toISOString();
@@ -144,26 +235,27 @@ const buildScenarioDefinition = (
   artifact: ScenarioBuildResult,
 ): ScenarioDefinition => {
   const now = getNowIso();
+  const normalizedInput = normalizeScenarioTypeSpecificInput(payload.input);
   return {
     scenarioId: artifact.header.ScenarioRunID,
     scenarioName: artifact.header.RunName,
-    region: payload.input.region,
-    scenarioType: payload.input.scenarioType || artifact.header.ScenarioType,
+    region: normalizedInput.region,
+    scenarioType: normalizedInput.scenarioType || artifact.header.ScenarioType,
     baselineScenarioId: artifact.baselineScenarioId,
     dataflowId: artifact.baselineDataflowId || artifact.header.DataflowID || '',
-    selectedDcs: [...payload.input.activeDCs],
-    suppressedDcs: [...payload.input.suppressedDCs],
-    utilCap: payload.input.utilCap,
-    leadTimeCap: payload.input.leadTimeCap,
-    costVsService: payload.input.costVsService,
-    termsScope: payload.input.termsScope,
-    footprintMode: payload.input.footprintMode,
-    levelLoad: payload.input.levelLoad,
-    bcvRuleSet: payload.input.bcvRuleSet,
-    fuelSurchargeMode: payload.input.fuelSurchargeMode,
-    fuelSurchargeOverride: payload.input.fuelSurchargeOverride,
-    notes: payload.input.notes,
-    tags: [...payload.input.tags],
+    selectedDcs: [...normalizedInput.activeDCs],
+    suppressedDcs: [...normalizedInput.suppressedDCs],
+    utilCap: normalizedInput.utilCap,
+    leadTimeCap: normalizedInput.leadTimeCap,
+    costVsService: normalizedInput.costVsService,
+    termsScope: normalizedInput.termsScope,
+    footprintMode: normalizedInput.footprintMode,
+    levelLoad: normalizedInput.levelLoad,
+    bcvRuleSet: normalizedInput.bcvRuleSet,
+    fuelSurchargeMode: normalizedInput.fuelSurchargeMode,
+    fuelSurchargeOverride: normalizedInput.fuelSurchargeOverride,
+    notes: normalizedInput.notes,
+    tags: [...normalizedInput.tags],
     createdBy: context.currentUserDisplayName,
     createdAt: artifact.header.CreatedAt || now,
     updatedAt: artifact.header.LastUpdatedAt || now,
@@ -226,19 +318,18 @@ const buildScenarioResultsDC = (
   context: ScenarioBuildContext,
 ): ScenarioRunResultsDC[] => {
   const clampPercent = (value: number) => Math.max(0, Math.min(100, Number(value.toFixed(2))));
-  const active = new Set(payload.input.activeDCs);
-  const baselineHeader = getBaselineHeader(context.scenarioHeaders, payload.input.region);
-  const baselineResults = baselineHeader
-    ? context.scenarioResultsDC.filter((r) => r.ScenarioRunID === baselineHeader.ScenarioRunID)
-    : [];
-
   if (baselineResults.length === 0) return [];
+
+  const active = new Set(activeDcs.map(dc => String(dc || '').trim().toLowerCase()));
+  const suppressed = new Set(suppressedDcs.map(dc => String(dc || '').trim().toLowerCase()));
 
   return dedupeRowsByKey(
     [...baselineResults]
       .sort((a, b) => {
-        const activeA = active.has(a.DCName);
-        const activeB = active.has(b.DCName);
+        const keyA = String(a.DCName || '').trim().toLowerCase();
+        const keyB = String(b.DCName || '').trim().toLowerCase();
+        const activeA = active.has(keyA);
+        const activeB = active.has(keyB);
         if (activeA !== activeB) return activeA ? -1 : 1;
         const costA = activeA ? a.TotalCost : Number.MAX_SAFE_INTEGER;
         const costB = activeB ? b.TotalCost : Number.MAX_SAFE_INTEGER;
@@ -352,6 +443,21 @@ const summarizeDcResults = (rows: ScenarioRunResultsDC[]): ScenarioBuildSummary 
   };
 };
 
+const summarizeBaselineFromHeader = (
+  header: ScenarioRunHeader,
+  rows: ScenarioRunResultsDC[],
+): ScenarioBuildSummary => ({
+  totalCost: Number(header.TotalCost ?? 0),
+  totalUnits: Number(header.TotalCount ?? 0),
+  costPerUnit: Number(header.CostPerUnit ?? 0),
+  avgDays: Number(header.AvgDeliveryDays ?? 0),
+  maxUtil: Number(header.MaxUtilPct ?? 0),
+  totalSpaceRequired: Number(header.TotalSpaceRequired ?? 0),
+  excludedBySla: Number(header.ExcludedBySLACount ?? 0),
+  slaBreachCount: rows.reduce((sum, row) => sum + row.SLABreachCount, 0),
+  missingAvgDays: rows.filter((row) => row.AvgDays === 0).length,
+});
+
 const buildAlertFlagsFromSummary = (summary: ScenarioBuildSummary) => {
   const flags: string[] = [];
   if (summary.maxUtil > 100) flags.push('OverCap');
@@ -416,28 +522,138 @@ export const buildScenarioArtifacts = (
   payload: ScenarioSubmit,
   context: ScenarioBuildContext,
 ): ScenarioBuildResult => {
+  const normalizedPayload: ScenarioSubmit = {
+    ...payload,
+    input: normalizeScenarioTypeSpecificInput(payload.input),
+  };
   const scenarioId = buildScenarioId(context.scenarioHeaders.length);
-  const baseline = getBaselineHeader(context.scenarioHeaders, payload.input.region, payload.input.baselineScenarioId);
-  const headerBase = buildScenarioHeader(payload, context, scenarioId);
-  const config = buildScenarioConfig(payload, scenarioId);
-  const baselineLaneRows = baseline
-    ? context.scenarioResultsLanes.filter((row) => row.ScenarioRunID === baseline.ScenarioRunID)
-    : context.scenarioResultsLanes;
-  const allocation = allocateScenarioOutputs({
-    scenarioId,
-    lanes: baselineLaneRows.length > 0 ? baselineLaneRows : context.scenarioResultsLanes,
-    activeDcs: payload.input.activeDCs,
-    suppressedDcs: payload.input.suppressedDCs,
-    dcCapacityRows: context.dcCapacityRows,
-    utilCap: payload.input.utilCap,
-  });
-  const resultsDC = allocation.resultsDC;
-  const resultsLanes = allocation.resultsLanes;
-  const summary = allocation.summary;
+  const scenarioTypeIsBaseline = isBaselineScenarioType(normalizedPayload.input.scenarioType);
+  const exactBaseline = scenarioTypeIsBaseline
+    ? getExactBaselineHeader(context.scenarioHeaders, normalizedPayload.input.region)
+    : null;
+  const effectiveBaselineScenarioId = scenarioTypeIsBaseline
+    ? exactBaseline?.ScenarioRunID ?? normalizedPayload.input.baselineScenarioId
+    : normalizedPayload.input.baselineScenarioId;
+  const baseline = getBaselineHeader(context.scenarioHeaders, normalizedPayload.input.region, effectiveBaselineScenarioId);
+  const laneSourceBaseline = getLaneSourceBaselineHeader(
+    context.scenarioHeaders,
+    normalizedPayload.input.region,
+    normalizedPayload.input.scenarioType,
+    effectiveBaselineScenarioId,
+  );
+  const headerBase = buildScenarioHeader(normalizedPayload, context, scenarioId);
+  const config = buildScenarioConfig(normalizedPayload, scenarioId);
+  const mode = isBaselineScenarioType(normalizedPayload.input.scenarioType) && getScenarioMode(normalizedPayload.input.scenarioType, normalizedPayload.input.utilCap, normalizedPayload.input.suppressedDCs) === 'baseline'
+    ? 'baseline'
+    : 'allocate';
+  const baselineDcRows = baseline
+    ? context.scenarioResultsDC.filter((row) => row.ScenarioRunID === baseline.ScenarioRunID)
+    : context.scenarioResultsDC;
+  const baselineLaneRows = getBaselineLaneRows(
+    context,
+    normalizedPayload.input.scenarioType,
+    laneSourceBaseline?.ScenarioRunID ?? baseline?.ScenarioRunID ?? normalizedPayload.input.baselineScenarioId ?? null,
+  );
+
+  if (shouldLogLaneSource) {
+    const laneSourceId = laneSourceBaseline?.ScenarioRunID ?? baseline?.ScenarioRunID ?? normalizedPayload.input.baselineScenarioId ?? null;
+    const sourceLabel = laneSourceId && context.laneRowsByScenarioId?.[laneSourceId]?.length
+      ? 'laneRowsByScenarioId'
+      : 'raw lane map fallback';
+
+    const rawFromMap = laneSourceId && context.laneRowsByScenarioId?.[laneSourceId];
+    const rawCount = rawFromMap?.length || 0;
+
+    // Sample a few rows to show their dedupe keys
+    const sampleRows = baselineLaneRows.slice(0, 6);
+    const sampleKeys = sampleRows.map((row) => ({
+      key: [row.Dest3Zip, row.Channel, row.Terms, row.DestState, row.PartyName || row.CustomerGroup || '', row.ScenarioType || ''].join('|'),
+      assignedDC: row.AssignedDC,
+      costingWH: row.CostingWarehouse,
+    }));
+
+    console.groupCollapsed('[Scenario Builder] lane source');
+    console.log({
+      scenarioId,
+      scenarioType: normalizedPayload.input.scenarioType,
+      baselineScenarioId: baseline?.ScenarioRunID ?? normalizedPayload.input.baselineScenarioId ?? null,
+      laneSourceScenarioId: laneSourceBaseline?.ScenarioRunID ?? null,
+      sourceLabel,
+      rawCountBeforeCanon: rawCount,
+      laneCountAfterCanon: baselineLaneRows.length,
+      sampleDedupeKeys: sampleKeys,
+    });
+    console.groupEnd();
+  }
+
+  let resultsDC: ScenarioRunResultsDC[];
+  let resultsLanes: ScenarioRunResultsLane[];
+  let summary: ScenarioBuildSummary;
+
+  if (mode === 'baseline') {
+    const canonicalDcRows = baselineDcRows.map((row) => ({ ...row, ScenarioRunID: scenarioId }));
+    const canonicalLaneRows = canonicalizeBaselineLaneRows(baselineLaneRows).map((row) => ({ ...row, ScenarioRunID: scenarioId }));
+    const capacityMap = buildCapacityMap(context.dcCapacityRows, normalizedPayload.input.utilCap);
+    if (shouldLogLaneSource) {
+      console.groupCollapsed('[Scenario Builder] baseline header');
+      console.table([{
+        scenarioId,
+        baselineScenarioId: baseline?.ScenarioRunID ?? normalizedPayload.input.baselineScenarioId ?? null,
+        storedTotalCost: baseline?.TotalCost ?? null,
+        storedCostPerUnit: baseline?.CostPerUnit ?? null,
+        storedAvgDeliveryDays: baseline?.AvgDeliveryDays ?? null,
+        storedMaxUtilPct: baseline?.MaxUtilPct ?? null,
+        storedTotalSpaceRequired: baseline?.TotalSpaceRequired ?? null,
+        storedTotalCount: baseline?.TotalCount ?? null,
+      }]);
+      console.groupEnd();
+    }
+    const annotated = annotateCapacityOutputs(
+      scenarioId,
+      canonicalLaneRows,
+      canonicalDcRows,
+      capacityMap.byName,
+      capacityMap.rawByName,
+    );
+    resultsDC = annotated.dcRows;
+    resultsLanes = annotated.laneRows;
+    summary = summarizeBaselineFromHeader(baseline ?? headerBase, resultsDC);
+  } else {
+    const allocation = allocateScenarioOutputs({
+      scenarioId,
+      scenarioType: normalizedPayload.input.scenarioType,
+      lanes: baselineLaneRows,
+      activeDcs: normalizedPayload.input.activeDCs,
+      suppressedDcs: normalizedPayload.input.suppressedDCs,
+      dcCapacityRows: context.dcCapacityRows,
+      utilCap: normalizedPayload.input.utilCap,
+    });
+    resultsDC = allocation.resultsDC;
+    resultsLanes = allocation.resultsLanes;
+    summary = allocation.summary;
+  }
 
   const header: ScenarioRunHeader = resultsDC.length === 0
     ? headerBase
-    : {
+    : mode === 'baseline' && baseline
+      ? {
+        ...headerBase,
+        TotalCost: Number(baseline.TotalCost ?? headerBase.TotalCost ?? 0),
+        CostPerUnit: Number(baseline.CostPerUnit ?? headerBase.CostPerUnit ?? 0),
+        AvgDeliveryDays: Number(baseline.AvgDeliveryDays ?? headerBase.AvgDeliveryDays ?? 0),
+        AvgTransitDays: baseline.AvgTransitDays ?? headerBase.AvgTransitDays ?? null,
+        TotalCount: Number(baseline.TotalCount ?? headerBase.TotalCount ?? 0),
+        SLABreachPct: Number(baseline.SLABreachPct ?? headerBase.SLABreachPct ?? 0),
+        ExcludedBySLACount: Number(baseline.ExcludedBySLACount ?? headerBase.ExcludedBySLACount ?? 0),
+        MaxUtilPct: Number(baseline.MaxUtilPct ?? headerBase.MaxUtilPct ?? 0),
+        TotalSpaceRequired: Number(baseline.TotalSpaceRequired ?? headerBase.TotalSpaceRequired ?? 0),
+        FootprintMode: baseline.FootprintMode || headerBase.FootprintMode || 'NA',
+        LevelLoad: baseline.LevelLoad || headerBase.LevelLoad || 'NA',
+        UtilizationCap: baseline.UtilizationCap || headerBase.UtilizationCap || 'NA',
+        CollectTreatment: baseline.CollectTreatment || headerBase.CollectTreatment || 'NA',
+        AlertFlags: baseline.AlertFlags || headerBase.AlertFlags || '',
+      }
+      : {
         ...headerBase,
         TotalCost: summary.totalCost,
         CostPerUnit: summary.costPerUnit,
@@ -450,8 +666,8 @@ export const buildScenarioArtifacts = (
       };
 
   return {
-    baselineScenarioId: baseline?.ScenarioRunID ?? payload.input.baselineScenarioId ?? null,
-    baselineDataflowId: baseline?.DataflowID ?? payload.input.baselineDataflowId,
+    baselineScenarioId: baseline?.ScenarioRunID ?? normalizedPayload.input.baselineScenarioId ?? null,
+    baselineDataflowId: baseline?.DataflowID ?? normalizedPayload.input.baselineDataflowId,
     header,
     config,
     resultsDC,

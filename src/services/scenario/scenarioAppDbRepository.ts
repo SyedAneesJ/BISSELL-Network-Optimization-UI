@@ -92,6 +92,61 @@ const buildSearchText = (record: ScenarioRepositoryRecord): string =>
 const buildLaneSearchText = (scenarioId: string, scenarioName: string): string =>
   `${scenarioId} ${scenarioName}`.replace(/\s+/g, ' ').trim().toLowerCase();
 
+const laneIdentityKey = (lane: ScenarioRunResultsLane): string =>
+  [
+    lane.ScenarioRunID || '',
+    lane.Dest3Zip || '',
+    lane.Channel || '',
+    lane.Terms || '',
+    lane.DestState || '',
+    lane.PartyName || lane.CustomerGroup || '',
+    lane.ScenarioType || '',
+  ].join('|');
+
+const laneQualityScore = (lane: ScenarioRunResultsLane): number => {
+  const assignedDc = String(lane.AssignedDC || lane.CostingWarehouse || lane.DefaultShipFrom || '').trim();
+  const ranked1Dc = String(lane.RankedOption1DC || '').trim();
+  const ranked1Cost = Number(lane.RankedOption1Cost ?? 0);
+  const costPerUnit = Number(lane.CostPerUnit ?? lane.LaneCost ?? lane.TotalCost ?? 0);
+  let score = 0;
+
+  if (ranked1Dc) score += 10;
+  if (Number(lane.RankedOption2Cost ?? 0) > 0) score += 5;
+  if (Number(lane.RankedOption3Cost ?? 0) > 0) score += 3;
+  if (String(lane.ChosenRank ?? '').trim()) score += 4;
+  if (assignedDc && ranked1Dc && assignedDc === ranked1Dc) score += 20;
+  if (costPerUnit > 0 && ranked1Cost > 0 && Math.abs(costPerUnit - ranked1Cost) < 0.01) score += 30;
+  if (Number(lane.TotalCost ?? 0) > 0) score += 1;
+
+  return score;
+};
+
+const canonicalizeLaneRows = (rows: ScenarioRunResultsLane[]): ScenarioRunResultsLane[] => {
+  const grouped = new Map<string, ScenarioRunResultsLane[]>();
+  rows.forEach((row) => {
+    const key = laneIdentityKey(row);
+    const list = grouped.get(key) || [];
+    list.push({ ...row });
+    grouped.set(key, list);
+  });
+
+  return Array.from(grouped.values()).map((group) =>
+    group.sort((a, b) => {
+      const scoreDelta = laneQualityScore(b) - laneQualityScore(a);
+      if (scoreDelta !== 0) return scoreDelta;
+      const cpuA = Number(a.CostPerUnit ?? a.LaneCost ?? a.TotalCost ?? 0);
+      const cpuB = Number(b.CostPerUnit ?? b.LaneCost ?? b.TotalCost ?? 0);
+      if (cpuA !== cpuB) return cpuA - cpuB;
+      const costA = Number(a.TotalCost ?? a.LaneCost ?? 0);
+      const costB = Number(b.TotalCost ?? b.LaneCost ?? 0);
+      if (costA !== costB) return costA - costB;
+      return String(a.AssignedDC || a.CostingWarehouse || a.DefaultShipFrom || '').localeCompare(
+        String(b.AssignedDC || b.CostingWarehouse || b.DefaultShipFrom || ''),
+      );
+    })[0],
+  );
+};
+
 const buildLaneChunks = (
   scenarioId: string,
   scenarioName: string,
@@ -236,9 +291,11 @@ const mergeLaneSnapshots = (
   laneDocs: Array<{ scenarioId: string; scenarioName: string; chunkIndex: number; lanes: ScenarioRunResultsLane[] }>,
 ): ScenarioRepositoryRecord['snapshot'] => {
   if (!baseSnapshot) return baseSnapshot;
-  const mergedLanes = laneDocs
+  const mergedLanes = canonicalizeLaneRows(
+    laneDocs
     .sort((a, b) => a.chunkIndex - b.chunkIndex)
-    .flatMap((chunk) => chunk.lanes.map((row) => ({ ...row })));
+    .flatMap((chunk) => chunk.lanes.map((row) => ({ ...row }))),
+  );
   if (mergedLanes.length === 0) return baseSnapshot;
   return {
     ...baseSnapshot,

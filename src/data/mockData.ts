@@ -2,7 +2,7 @@ export interface ScenarioRunHeader {
   ScenarioRunID: string;
   RunName: string;
   Region: 'US' | 'Canada';
-  ScenarioType: 'Baseline' | 'Tactical Fixed Footprint' | 'Strategic Unconstrained Footprint' | 'Consolidation Tactical' | 'Consolidation Strategic' | 'BCV Ingestion Only';
+  ScenarioType: 'Baseline' | 'Tactical Fixed Footprint' | 'Strategic Unconstrained Footprint' | 'Consolidation Tactical' | 'Consolidation Strategic' | 'BCV Ingestion Only' | 'BCV Ingestion' | 'Tactical Consolidation';
   EntityScope: string;
   ChannelScope: string;
   TermsScope: 'Collect' | 'Prepaid' | 'Collect+Prepaid';
@@ -68,6 +68,7 @@ export interface ScenarioRunResultsDC {
   VolumeUnits: number;
   AvgDays: number;
   UtilPct: number;
+  ActualSpace?: number;
   SpaceRequired: number;
   SpaceCore: number;
   SpaceBCV: number;
@@ -75,6 +76,7 @@ export interface ScenarioRunResultsDC {
   ExcludedBySLACount: number;
   RankOverall: number;
   IsSuppressed: 'Y' | 'N';
+  OvercapFlag?: 'Y' | 'N';
 }
 
 export interface ScenarioRunResultsLane {
@@ -124,6 +126,8 @@ export interface ScenarioRunResultsLane {
   State?: string;
   PartyName?: string;
   Threshold?: number;
+  SquareFootage?: number;
+  OvercapFlag?: 'Y' | 'N';
   SourceDatasetId?: string;
 }
 

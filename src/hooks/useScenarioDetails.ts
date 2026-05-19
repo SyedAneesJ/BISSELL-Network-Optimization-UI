@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ScenarioRunConfig,
   ScenarioRunHeader,
@@ -53,8 +53,33 @@ export const useScenarioDetails = ({
   const [laneChannelFilter, setLaneChannelFilter] = useState('All');
   const [laneTermsFilter, setLaneTermsFilter] = useState('All');
   const [laneFlagFilter, setLaneFlagFilter] = useState('All');
+  const [appliedLaneZipSearch, setAppliedLaneZipSearch] = useState('');
+  const [appliedLaneChannelFilter, setAppliedLaneChannelFilter] = useState('All');
+  const [appliedLaneTermsFilter, setAppliedLaneTermsFilter] = useState('All');
+  const [appliedLaneFlagFilter, setAppliedLaneFlagFilter] = useState('All');
+  const [isLaneFiltering, setIsLaneFiltering] = useState(false);
+  const laneFilteringTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const scenario = scenarioRunHeaders.find(s => s.ScenarioRunID === scenarioId);
+  const formatDcDisplayName = (value: unknown) => {
+    const text = String(value || '').trim();
+    if (!text) return '';
+    return text
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((token) => token.charAt(0).toUpperCase() + token.slice(1).toLowerCase())
+      .join(' ');
+  };
+  const normalizeLaneDisplay = (lane: ScenarioRunResultsLane): ScenarioRunResultsLane => ({
+    ...lane,
+    AssignedDC: formatDcDisplayName(lane.AssignedDC),
+    CostingWarehouse: formatDcDisplayName(lane.CostingWarehouse),
+    DefaultShipFrom: formatDcDisplayName(lane.DefaultShipFrom),
+  });
+  const normalizeDcDisplay = (dc: ScenarioRunResultsDC): ScenarioRunResultsDC => ({
+    ...dc,
+    DCName: formatDcDisplayName(dc.DCName),
+  });
   const entityLabels = useMemo(() => {
     const entities = new Set<string>();
     scenarioRunHeaders.forEach((s) => {
@@ -81,7 +106,7 @@ export const useScenarioDetails = ({
         return acc;
       }, new Map())
       .values(),
-  );
+  ).map(normalizeDcDisplay);
   const laneGroupKey = (lane: ScenarioRunResultsLane) => [
     lane.Dest3Zip,
     lane.Channel,
@@ -116,21 +141,23 @@ export const useScenarioDetails = ({
   const uniqueLaneResults = laneResults.filter((lane, index, rows) =>
     rows.findIndex((item) => laneGroupKey(item) === laneGroupKey(lane)) === index,
   );
+  const normalizedUniqueLaneResults = uniqueLaneResults.map(normalizeLaneDisplay);
   const overrides = scenarioOverrides.filter(o => o.ScenarioRunID === scenarioId);
+  const visibleLaneResults = normalizedUniqueLaneResults.filter((lane) => Number(lane.ChosenRank ?? lane.CostRank ?? 0) === 1);
 
-  const laneOptions: ScenarioLaneOption[] = uniqueLaneResults.map((lane) => {
+  const laneOptions: ScenarioLaneOption[] = visibleLaneResults.map((lane) => {
     const key = laneGroupKey(lane);
     const costPerUnit = typeof lane.CostPerUnit === 'number'
       ? lane.CostPerUnit
       : (lane.TotalCost ?? lane.LaneCost);
     return {
       key,
-      label: `${lane.Dest3Zip} | ${lane.Channel} | ${lane.Terms} | ${lane.CostingWarehouse || lane.AssignedDC} | $${Number(costPerUnit || 0).toFixed(2)}${typeof lane.CostRank === 'number' ? ` | Rank #${lane.CostRank}` : ''}`,
+      label: `${lane.Dest3Zip} | ${lane.Channel} | ${lane.Terms} | ${lane.CostingWarehouse || lane.AssignedDC} | $${Number(costPerUnit || 0).toFixed(2)}`,
       lane,
     };
   });
 
-  const lanesByDC = uniqueLaneResults.reduce<Record<string, number>>((acc, lane) => {
+  const lanesByDC = visibleLaneResults.reduce<Record<string, number>>((acc, lane) => {
     acc[lane.AssignedDC] = (acc[lane.AssignedDC] || 0) + 1;
     return acc;
   }, {});
@@ -156,7 +183,7 @@ export const useScenarioDetails = ({
         return acc;
       }, new Map())
       .values(),
-  );
+  ).map(normalizeDcDisplay);
   const baselineLaneResults = baselineScenarioId
     ? scenarioRunResultsLanes.filter((lane) => lane.ScenarioRunID === baselineScenarioId)
     : [];
@@ -164,29 +191,32 @@ export const useScenarioDetails = ({
   const uniqueBaselineLaneResults = baselineLaneResults.filter((lane, index, rows) =>
     rows.findIndex((item) => laneGroupKey(item) === laneGroupKey(lane)) === index,
   );
+  const visibleBaselineLaneResults = uniqueBaselineLaneResults
+    .map(normalizeLaneDisplay)
+    .filter((lane) => Number(lane.ChosenRank ?? lane.CostRank ?? 0) === 1);
 
-  const baselineLanesByDC = uniqueBaselineLaneResults.reduce<Record<string, number>>((acc, lane) => {
+  const baselineLanesByDC = visibleBaselineLaneResults.reduce<Record<string, number>>((acc, lane) => {
     acc[lane.AssignedDC] = (acc[lane.AssignedDC] || 0) + 1;
     return acc;
   }, {});
 
-  const channelOptions = Array.from(new Set(uniqueLaneResults.map((lane) => lane.Channel))).sort();
-  const termsOptions = Array.from(new Set(uniqueLaneResults.map((lane) => lane.Terms))).sort();
-  const normalizedLaneZipSearch = laneZipSearch.trim().toLowerCase();
+  const channelOptions = Array.from(new Set(visibleLaneResults.map((lane) => lane.Channel))).sort();
+  const termsOptions = Array.from(new Set(visibleLaneResults.map((lane) => lane.Terms))).sort();
+  const normalizedLaneZipSearch = appliedLaneZipSearch.trim().toLowerCase();
 
-  const filteredLanes = uniqueLaneResults.filter((lane) => {
+  const filteredLanes = visibleLaneResults.filter((lane) => {
     if (
       normalizedLaneZipSearch &&
       String(lane.Dest3Zip || '').trim().toLowerCase() !== normalizedLaneZipSearch
     ) {
       return false;
     }
-    if (laneChannelFilter !== 'All' && lane.Channel !== laneChannelFilter) return false;
-    if (laneTermsFilter !== 'All' && lane.Terms !== laneTermsFilter) return false;
-    if (laneFlagFilter === 'SLA Breaches Only') return lane.SLABreachFlag === 'Y';
-    if (laneFlagFilter === 'Excluded by SLA') return lane.ExcludedBySLAFlag === 'Y';
-    if (laneFlagFilter === 'Overrides Only') return lane.OverrideAppliedFlag === 'Y';
-    if (laneFlagFilter === 'Flagged Lanes') return lane.NotesFlag === 'Y';
+    if (appliedLaneChannelFilter !== 'All' && lane.Channel !== appliedLaneChannelFilter) return false;
+    if (appliedLaneTermsFilter !== 'All' && lane.Terms !== appliedLaneTermsFilter) return false;
+    if (appliedLaneFlagFilter === 'SLA Breaches Only') return lane.SLABreachFlag === 'Y';
+    if (appliedLaneFlagFilter === 'Excluded by SLA') return lane.ExcludedBySLAFlag === 'Y';
+    if (appliedLaneFlagFilter === 'Overrides Only') return lane.OverrideAppliedFlag === 'Y';
+    if (appliedLaneFlagFilter === 'Flagged Lanes') return lane.NotesFlag === 'Y';
     return true;
   });
 
@@ -198,7 +228,7 @@ export const useScenarioDetails = ({
         count: (lanesByDC[dc] || 0) - (baselineLanesByDC[dc] || 0),
       }));
     }
-    const source = networkView === 'baseline' ? baselineLanesByDC : lanesByDC;
+      const source = networkView === 'baseline' ? baselineLanesByDC : lanesByDC;
     return Object.entries(source).map(([dc, count]) => ({ dc, count }));
   })();
 
@@ -248,9 +278,32 @@ export const useScenarioDetails = ({
     return source.filter((dc) => dc.IsSuppressed === 'N').map((dc) => ({ dcName: dc.DCName, value: dc.AvgDays }));
   })();
 
-  const topFootprintLanes = [...uniqueLaneResults]
+  const topFootprintLanes = [...visibleLaneResults]
     .sort((a, b) => b.FootprintContribution - a.FootprintContribution)
     .slice(0, 5);
+
+  useEffect(() => {
+    if (laneFilteringTimerRef.current) {
+      clearTimeout(laneFilteringTimerRef.current);
+      laneFilteringTimerRef.current = null;
+    }
+    setIsLaneFiltering(true);
+    laneFilteringTimerRef.current = setTimeout(() => {
+      setAppliedLaneZipSearch(laneZipSearch);
+      setAppliedLaneChannelFilter(laneChannelFilter);
+      setAppliedLaneTermsFilter(laneTermsFilter);
+      setAppliedLaneFlagFilter(laneFlagFilter);
+      setIsLaneFiltering(false);
+      laneFilteringTimerRef.current = null;
+    }, 120);
+
+    return () => {
+      if (laneFilteringTimerRef.current) {
+        clearTimeout(laneFilteringTimerRef.current);
+        laneFilteringTimerRef.current = null;
+      }
+    };
+  }, [laneZipSearch, laneChannelFilter, laneTermsFilter, laneFlagFilter]);
 
   const handleExportDCDetails = () => {
     if (!scenario) return;
@@ -265,9 +318,11 @@ export const useScenarioDetails = ({
       averageDeliveryDays: Number(dc.AvgDays.toFixed(2)),
       averageTransitDays: Number(dc.AvgDays.toFixed(2)),
       maxUtilization: Number(dc.UtilPct.toFixed(2)),
+      actualSpace: dc.ActualSpace ?? '',
       coreSpace: dc.SpaceCore,
       bcvSpace: dc.SpaceBCV,
       spaceRequired: dc.SpaceRequired,
+      overcapFlag: dc.OvercapFlag ?? '',
       sqft: dc.SpaceCore,
       slaBreach: dc.SLABreachCount,
       'slaBreach%': Number(
@@ -281,7 +336,7 @@ export const useScenarioDetails = ({
   };
 
   const handleExportRoutingCSV = () => {
-    const rows = uniqueLaneResults.map((lane) => ({
+    const rows = visibleLaneResults.map((lane) => ({
       ScenarioRunID: lane.ScenarioRunID,
       Dest3Zip: lane.Dest3Zip,
       DestState: lane.DestState,
@@ -319,7 +374,7 @@ export const useScenarioDetails = ({
   };
 
   const handleExportLaneCSV = () => {
-    const rows = uniqueLaneResults.map((lane) => ({
+    const rows = visibleLaneResults.map((lane) => ({
       ScenarioRunID: lane.ScenarioRunID,
       Dest3Zip: lane.Dest3Zip,
       DestState: lane.DestState,
@@ -340,6 +395,7 @@ export const useScenarioDetails = ({
       LaneCost: lane.LaneCost,
       CostDeltaVsBest: lane.CostDeltaVsBest,
       DeliveryDays: lane.DeliveryDays,
+      OvercapFlag: lane.OvercapFlag ?? '',
       SLABreachFlag: lane.SLABreachFlag,
       ExcludedBySLAFlag: lane.ExcludedBySLAFlag,
       FootprintContribution: lane.FootprintContribution,
@@ -374,7 +430,7 @@ export const useScenarioDetails = ({
   };
 
   const handleExportExceptionsCSV = () => {
-    const rows = uniqueLaneResults
+    const rows = visibleLaneResults
       .filter(l => l.SLABreachFlag === 'Y' || l.ExcludedBySLAFlag === 'Y' || l.OverrideAppliedFlag === 'Y')
       .map((lane) => ({
         ScenarioRunID: lane.ScenarioRunID,
@@ -384,8 +440,8 @@ export const useScenarioDetails = ({
         Terms: lane.Terms,
         CustomerGroup: lane.CustomerGroup,
         AssignedDC: lane.AssignedDC,
-        CostRank: lane.CostRank ?? '',
         CostPerUnit: lane.CostPerUnit ?? '',
+        OvercapFlag: lane.OvercapFlag ?? '',
         SLABreachFlag: lane.SLABreachFlag,
         ExcludedBySLAFlag: lane.ExcludedBySLAFlag,
         OverrideAppliedFlag: lane.OverrideAppliedFlag,
@@ -448,7 +504,7 @@ export const useScenarioDetails = ({
     entityLabels,
     scenarioConfig,
     dcResults,
-    laneResults: uniqueLaneResults,
+    laneResults: visibleLaneResults,
     overrides,
     laneOptions,
     baselineScenarioId,
@@ -464,6 +520,7 @@ export const useScenarioDetails = ({
     laneFlagFilter,
     setLaneFlagFilter,
     filteredLanes,
+    isLaneFiltering,
     networkView,
     setNetworkView,
     networkLaneEntries,

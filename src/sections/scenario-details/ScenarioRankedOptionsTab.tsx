@@ -1,6 +1,6 @@
 import React from 'react';
-import { FileSpreadsheet, Loader2 } from 'lucide-react';
-import { DataTable, Column } from '@/components/ui';
+import { Download, FileSpreadsheet, Loader2 } from 'lucide-react';
+import { Button, DataTable, Column } from '@/components/ui';
 import { ScenarioRunResultsLane } from '@/data';
 import { ScenarioLaneFilters } from './ScenarioLaneFilters';
 
@@ -17,6 +17,9 @@ interface ScenarioRankedOptionsTabProps {
   onLaneTermsFilterChange: (value: string) => void;
   hasLaneData: boolean;
   isLaneDataLoading?: boolean;
+  isLaneFiltering?: boolean;
+  onExportRoutingCSV?: () => void;
+  exportRoutingActive?: boolean;
 }
 
 export const ScenarioRankedOptionsTab: React.FC<ScenarioRankedOptionsTabProps> = ({
@@ -32,14 +35,23 @@ export const ScenarioRankedOptionsTab: React.FC<ScenarioRankedOptionsTabProps> =
   onLaneTermsFilterChange,
   hasLaneData,
   isLaneDataLoading = false,
+  isLaneFiltering = false,
+  onExportRoutingCSV,
+  exportRoutingActive = false,
 }) => {
-  if (isLaneDataLoading) {
+  const showLoading = isLaneDataLoading || isLaneFiltering;
+
+  if (showLoading) {
     return (
       <div className="flex flex-col items-center justify-center py-16 bg-white border border-slate-200 rounded-lg shadow-sm">
         <Loader2 className="w-8 h-8 text-blue-500 animate-spin mb-4" />
-        <h3 className="text-lg font-medium text-slate-900 mb-2">Loading ranked options</h3>
+        <h3 className="text-lg font-medium text-slate-900 mb-2">
+          {isLaneDataLoading ? 'Loading ranked options' : 'Updating lane filters'}
+        </h3>
         <p className="text-slate-500 max-w-md text-center">
-          We are fetching the stored lane snapshots for this custom scenario.
+          {isLaneDataLoading
+            ? 'We are fetching the stored lane snapshots for this custom scenario.'
+            : 'Applying the selected ZIP, channel, and term filters.'}
         </p>
       </div>
     );
@@ -76,6 +88,17 @@ export const ScenarioRankedOptionsTab: React.FC<ScenarioRankedOptionsTabProps> =
         onLaneChannelFilterChange={onLaneChannelFilterChange}
         laneTermsFilter={laneTermsFilter}
         onLaneTermsFilterChange={onLaneTermsFilterChange}
+        rightActions={onExportRoutingCSV ? (
+          <Button
+            variant="secondary"
+            size="small"
+            icon={<Download className="w-4 h-4" />}
+            onClick={onExportRoutingCSV}
+            className={exportRoutingActive ? 'bg-amber-50 text-amber-800' : ''}
+          >
+            {exportRoutingActive ? 'Exporting Routing CSV…' : 'Export Routing Assignment CSV'}
+          </Button>
+        ) : undefined}
       />
 
       <DataTable

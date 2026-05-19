@@ -33,6 +33,12 @@ export const createScenarioDcColumns = (): Column<ScenarioRunResultsDC>[] => [
     ),
   },
   {
+    key: 'ActualSpace',
+    header: 'Actual Space',
+    sortable: true,
+    render: (row) => formatNumberOrNA(row.ActualSpace),
+  },
+  {
     key: 'SpaceRequired',
     header: 'Space Req',
     sortable: true,
@@ -46,6 +52,16 @@ export const createScenarioDcColumns = (): Column<ScenarioRunResultsDC>[] => [
       <span className={row.SLABreachCount > 5 ? 'text-red-600 font-medium' : ''}>
         {formatNumberOrNA(row.SLABreachCount)}
       </span>
+    ),
+  },
+  {
+    key: 'OvercapFlag',
+    header: 'Flag',
+    sortable: true,
+    render: (row) => (
+      row.OvercapFlag === 'Y'
+        ? <span className="px-2 py-0.5 rounded bg-red-100 text-red-700 text-xs font-semibold">Overcap</span>
+        : <span className="text-slate-400">-</span>
     ),
   },
   {
@@ -161,6 +177,17 @@ export const createScenarioLaneColumns = (): Column<ScenarioRunResultsLane>[] =>
         <span className="text
         -blue-600 text-xs">{row.OverrideVersion}</span>
       ) : '-'
+    ),
+  },
+  {
+    key: 'OvercapFlag',
+    header: 'Flag',
+    width: '90px',
+    sortable: true,
+    render: (row) => (
+      row.OvercapFlag === 'Y'
+        ? <span className="px-2 py-0.5 rounded bg-red-100 text-red-700 text-xs font-semibold">Overcap</span>
+        : <span className="text-slate-400">-</span>
     ),
   },
 ];

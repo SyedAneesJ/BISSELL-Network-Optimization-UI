@@ -48,12 +48,6 @@ export const ScenarioLaneDetailsModal: React.FC<ScenarioLaneDetailsModalProps> =
             <span className="text-slate-600">Assigned DC:</span>
             <span className="ml-2 font-medium text-blue-600">{lane.AssignedDC}</span>
           </div>
-          {typeof lane.CostRank === 'number' ? (
-            <div>
-              <span className="text-slate-600">Cost / Unit Rank:</span>
-              <span className="ml-2 font-medium">{lane.CostRank}</span>
-            </div>
-          ) : null}
           {lane.CostingWarehouse ? (
             <div>
               <span className="text-slate-600">Costing Warehouse:</span>
@@ -64,6 +58,16 @@ export const ScenarioLaneDetailsModal: React.FC<ScenarioLaneDetailsModalProps> =
             <div>
               <span className="text-slate-600">Default Ship From:</span>
               <span className="ml-2 font-medium">{lane.DefaultShipFrom}</span>
+            </div>
+          ) : null}
+          {lane.OvercapFlag ? (
+            <div>
+              <span className="text-slate-600">Flag:</span>
+              {lane.OvercapFlag === 'Y' ? (
+                <span className="ml-2 px-2 py-0.5 rounded bg-red-100 text-red-700 text-xs font-semibold">Overcap</span>
+              ) : (
+                <span className="ml-2 text-slate-400">-</span>
+              )}
             </div>
           ) : null}
           {lane.ScenarioType ? (

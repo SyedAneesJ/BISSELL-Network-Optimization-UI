@@ -13,6 +13,7 @@ export type DomoLaneRow = Record<string, string | number | boolean | null | unde
 export type DomoDcCapacityRow = {
   DCName: string;
   Sqft: number;
+  WorkingCapacitySqFt?: number;
   Region: string;
   Status: string;
   IsActive: boolean;
@@ -53,6 +54,8 @@ const RAW_LANE_DATASET_ENV_ID = String(
   import.meta.env.VITE_SCENARIO_LANE_DATASET_ID ||
   ''
 ).trim();
+const BCV_LANE_DATASET_ENV_ID = String(import.meta.env.VITE_SCENARIO_LANE_BCV_DATASET_ID || '').trim();
+const TACTICAL_CONSOLIDATION_LANE_DATASET_ENV_ID = String(import.meta.env.VITE_SCENARIO_LANE_TACTICAL_CONSOLIDATION_DATASET_ID || '').trim();
 const NORMALIZED_LANE_DATASET_ENV_ID = String(import.meta.env.VITE_SCENARIO_LANE_NORMALIZED_DATASET_ID || '').trim();
 const DC_CAPACITY_DATASET_ENV_ID = String(import.meta.env.VITE_DC_CAPACITY_DATASET_ID || '').trim();
 const REGISTRY_BOOTSTRAP_DATASET_NAME = 'Network Optimization Scenario Registry';
@@ -94,6 +97,7 @@ const RAW_LANE_FIELD_ALIASES = {
   scenarioType: ['scenarioType', 'ScenarioType'],
   shipToDeliverDays: ['Ship to Deliver Calendar Days', 'ShipToDeliverCalendarDays', 'shipToDeliverDays'],
   deliveryDays: ['DeliveryDays', 'deliveryDays'],
+  squareFootage: ['Square Footage', 'SquareFootage', 'squareFootage'],
   state: ['state', 'State'],
   terms: ['terms', 'Terms'],
   threshold: ['threshold', 'Threshold'],
@@ -138,6 +142,7 @@ const NORMALIZED_LANE_FIELD_ALIASES = {
   totalCost: ['TotalCost', 'totalCost'],
   costRank: ['CostRank', 'costRank'],
   workingCapacity: ['WorkingCapacity', 'workingCapacity'],
+  squareFootage: ['Square Footage', 'SquareFootage', 'squareFootage'],
   distributionCost: ['DistributionCost', 'distributionCost'],
   tlSpend: ['TlSpend', 'tlSpend'],
   breachFlag: ['BreachFlag', 'breachFlag'],
@@ -188,6 +193,7 @@ const LANE_NORMALIZED_SCHEMA = {
     { name: 'TotalCost', type: 'DOUBLE' },
     { name: 'CostRank', type: 'LONG' },
     { name: 'WorkingCapacity', type: 'DOUBLE' },
+    { name: 'SquareFootage', type: 'DOUBLE' },
     { name: 'DistributionCost', type: 'DOUBLE' },
     { name: 'TlSpend', type: 'DOUBLE' },
     { name: 'BreachFlag', type: 'STRING' },
@@ -323,13 +329,18 @@ const normalizeRawLaneRow = (
   const shipToDeliverDays = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.shipToDeliverDays]));
   const orderToDeliverDays = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.orderToDeliverDays]));
   const threshold = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.threshold]));
+  const squareFootage = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.squareFootage]));
   const scenarioType = readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.scenarioType]);
   const rawTotalCost = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.totalCost]));
   const breachFlag = normalizeLaneBreachFlag(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.breachFlag]));
   const assignedDc = costingWarehouse || defaultShipFrom || '';
   const laneCost = rawTotalCost > 0 ? rawTotalCost : Math.max(0, distributionCost + inboundSpend + parcelSpend + tlSpend);
   const deliveryDays = shipToDeliverDays > 0 ? shipToDeliverDays : orderToDeliverDays;
-  const footprintContribution = workingCapacity > 0 ? workingCapacity : threshold > 0 ? threshold : 0;
+  const footprintContribution = workingCapacity > 0
+    ? workingCapacity
+    : threshold > 0
+      ? threshold
+      : 0;
   const utilImpactPct = threshold > 0
     ? Number(((workingCapacity / threshold) * 100).toFixed(2))
     : 0;
@@ -381,6 +392,7 @@ const normalizeRawLaneRow = (
     State: state || undefined,
     PartyName: partyName || undefined,
     Threshold: threshold || undefined,
+    SquareFootage: squareFootage || undefined,
     SourceDatasetId: RAW_LANE_DATASET_ENV_ID || undefined,
   } as ScenarioRunResultsLane;
 };
@@ -402,6 +414,7 @@ const normalizeNormalizedLaneRow = (row: DomoLaneRow): ScenarioRunResultsLane | 
   const scenarioRunId = readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.scenarioRunId]) || normalized.ScenarioRunID;
   const scenarioType = readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.scenarioType]) || normalized.ScenarioType || '';
   const runName = readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.runName]) || normalized.RunName || '';
+  const squareFootage = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.squareFootage]), normalized.SquareFootage || 0);
 
   return {
     ...normalized,
@@ -454,6 +467,7 @@ const normalizeNormalizedLaneRow = (row: DomoLaneRow): ScenarioRunResultsLane | 
     State: readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.state]) || normalized.State,
     PartyName: readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.partyName]) || normalized.PartyName,
     Threshold: asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.threshold]), normalized.Threshold || 0) || undefined,
+    SquareFootage: squareFootage || undefined,
     SourceDatasetId: readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.sourceDatasetId]) || normalized.SourceDatasetId,
   };
 };
@@ -464,6 +478,7 @@ const laneGroupingKey = (row: ScenarioRunResultsLane): string =>
     row.Channel || '',
     row.Terms || '',
     row.DestState || '',
+    row.PartyName || row.CustomerGroup || '',
     row.ScenarioType || '',
   ].join('|');
 
@@ -514,7 +529,7 @@ const rankLaneRows = (rows: ScenarioRunResultsLane[]): ScenarioRunResultsLane[] 
         TotalCost: best.TotalCost ?? best.LaneCost ?? 0,
         CostPerUnit: best.CostPerUnit ?? bestCpu,
         CostDeltaVsBest: 0,
-        FootprintContribution: best.FootprintContribution || best.WorkingCapacity || best.Threshold || best.LaneCost || 0,
+        FootprintContribution: best.WorkingCapacity || best.FootprintContribution || best.Threshold || 0,
         UtilImpactPct: best.UtilImpactPct || (
           best.Threshold && best.Threshold > 0 && best.WorkingCapacity !== undefined
             ? Number(((best.WorkingCapacity / best.Threshold) * 100).toFixed(2))
@@ -578,6 +593,7 @@ const buildLaneNormalizedSeedRows = (rows: ScenarioRunResultsLane[]): Array<Reco
     State: row.State || row.DestState || '',
     PartyName: row.PartyName || row.CustomerGroup || '',
     Threshold: row.Threshold ?? 0,
+    SquareFootage: row.SquareFootage ?? 0,
     SourceDatasetId: row.SourceDatasetId || RAW_LANE_DATASET_ENV_ID || '',
   }));
 
@@ -664,18 +680,20 @@ const ensureLaneNormalizedDatasetId = async (): Promise<string> => {
   return createdId;
 };
 
-export const loadScenarioLaneDataset = async (
+const loadScenarioLaneDatasetFrom = async (
+  datasetId: string,
+  label: string,
   scenarioRunIdLookup: Record<string, string> = {},
 ): Promise<ScenarioRunResultsLane[]> => {
-  if (!RAW_LANE_DATASET_ENV_ID) {
-    console.log('[Domo Lanes Raw] source=fallback (VITE_SCENARIO_LANE_RAW_DATASET_ID not set)');
+  if (!datasetId) {
+    console.log(`[Domo Lanes ${label}] source=fallback (dataset id not set)`);
     return [];
   }
 
   try {
     const token = await DatasetApi.fetchAccessToken();
-    console.log('[Domo Lanes Raw] config=env', { datasetId: RAW_LANE_DATASET_ENV_ID });
-    const rawCsv = await DatasetApi.getDatasetDataCsv(RAW_LANE_DATASET_ENV_ID, token, 50000, 0);
+    console.log(`[Domo Lanes ${label}] config=env`, { datasetId });
+    const rawCsv = await DatasetApi.getDatasetDataCsv(datasetId, token, 50000, 0);
     const rawRows = csvToObjects(rawCsv) as DomoLaneRow[];
     const rawRowsWithScenarioRunId = rawRows.filter((row) => Boolean(resolveRawLaneScenarioRunId(row, scenarioRunIdLookup)));
     const normalizedFromRaw = rankLaneRows(
@@ -683,29 +701,59 @@ export const loadScenarioLaneDataset = async (
         .map((row) => normalizeRawLaneRow(row, scenarioRunIdLookup))
         .filter((item): item is ScenarioRunResultsLane => Boolean(item)),
     );
-    console.log('[Domo Lanes Raw] source=dataset', {
-      datasetId: RAW_LANE_DATASET_ENV_ID,
+    const debugZip = label === 'Raw' ? '427' : '';
+    const rawZipRows = rawRows.filter((row) => {
+      const rawZip = String(
+        readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.zip3]) ||
+        '',
+      ).trim();
+      return rawZip === debugZip;
+    });
+    const normalizedZipRows = normalizedFromRaw.filter((row) => String(row.Dest3Zip || '').trim() === debugZip);
+    console.log(`[Domo Lanes ${label}] source=dataset`, {
+      datasetId,
       rows: rawRows.length,
       rowsWithScenarioRunId: rawRowsWithScenarioRunId.length,
       missingScenarioRunIdRows: Math.max(0, rawRows.length - rawRowsWithScenarioRunId.length),
       normalizedRows: normalizedFromRaw.length,
     });
-    if (normalizedFromRaw.length === 0 && rawRows.length > 0) {
-      console.warn('[Domo Lanes Raw] No rows could be normalized because ScenarioRunID could not be derived from the raw lane dataset.');
-      console.log('[Domo Lanes Raw] sample columns', Object.keys(rawRows[0] || {}));
+    if (rawZipRows.length > 0 || normalizedZipRows.length > 0) {
+      console.groupCollapsed(`[Domo Lanes Debug] zip=${debugZip}`);
+      console.log('raw', rawZipRows);
+      console.log('normalized', normalizedZipRows);
+      console.groupEnd();
     }
-    console.log('[Domo Lanes Normalized] source=memory', {
+    if (normalizedFromRaw.length === 0 && rawRows.length > 0) {
+      console.warn(`[Domo Lanes ${label}] No rows could be normalized because ScenarioRunID could not be derived from the lane dataset.`);
+      console.log(`[Domo Lanes ${label}] sample columns`, Object.keys(rawRows[0] || {}));
+    }
+    console.log(`[Domo Lanes ${label}] normalized=memory`, {
       rows: normalizedFromRaw.length,
     });
     return normalizedFromRaw;
   } catch (error) {
-    console.warn('[Domo Lanes Raw] Failed to load raw lane dataset; using empty lane set.', error);
-    console.log('[Domo Lanes Raw] source=fallback (failed to load raw lane dataset)', {
-      datasetId: RAW_LANE_DATASET_ENV_ID,
+    console.warn(`[Domo Lanes ${label}] Failed to load lane dataset; using empty lane set.`, error);
+    console.log(`[Domo Lanes ${label}] source=fallback (failed to load lane dataset)`, {
+      datasetId,
     });
     return [];
   }
 };
+
+export const loadScenarioLaneDataset = async (
+  scenarioRunIdLookup: Record<string, string> = {},
+): Promise<ScenarioRunResultsLane[]> =>
+  loadScenarioLaneDatasetFrom(RAW_LANE_DATASET_ENV_ID, 'Raw', scenarioRunIdLookup);
+
+export const loadBcvScenarioLaneDataset = async (
+  scenarioRunIdLookup: Record<string, string> = {},
+): Promise<ScenarioRunResultsLane[]> =>
+  loadScenarioLaneDatasetFrom(BCV_LANE_DATASET_ENV_ID, 'BCV', scenarioRunIdLookup);
+
+export const loadTacticalConsolidationScenarioLaneDataset = async (
+  scenarioRunIdLookup: Record<string, string> = {},
+): Promise<ScenarioRunResultsLane[]> =>
+  loadScenarioLaneDatasetFrom(TACTICAL_CONSOLIDATION_LANE_DATASET_ENV_ID, 'Tactical Consolidation', scenarioRunIdLookup);
 
 export const loadDcCapacityDataset = async (): Promise<DomoDcCapacityRow[]> => {
   if (!DC_CAPACITY_DATASET_ENV_ID) {
@@ -723,11 +771,16 @@ export const loadDcCapacityDataset = async (): Promise<DomoDcCapacityRow[]> => {
         const dcName = readRegistryField(row as ScenarioDatasetRegistryCsvRow, ['Ship From', 'ShipFrom', 'DC', 'DCName']);
         if (!dcName) return null;
         const sqft = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, ['sqft', 'SquareFootage', 'squareFootage']));
+        const workingCapacitySqFt = asNumber(readRegistryField(
+          row as ScenarioDatasetRegistryCsvRow,
+          ['Working Capacity Sq Ft', 'WorkingCapacitySqFt', 'workingCapacitySqFt', 'Working Capacity', 'workingCapacity']
+        ));
         const region = readRegistryField(row as ScenarioDatasetRegistryCsvRow, ['region', 'Region']) || 'NA';
         const status = readRegistryField(row as ScenarioDatasetRegistryCsvRow, ['status', 'Status']) || 'Active';
         return {
           DCName: dcName,
           Sqft: sqft,
+          WorkingCapacitySqFt: workingCapacitySqFt > 0 ? workingCapacitySqFt : undefined,
           Region: region,
           Status: status,
           IsActive: status.trim().toLowerCase() === 'active',

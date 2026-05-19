@@ -469,14 +469,14 @@
     {
       "method": "POST",
       "route": "/dataprocessing",
-      "target": "https://gwcteq-partner.domo.com/api/dataprocessing/v1"
+      "target": "https://bissell.domo.com/api/dataprocessing/v1"
     },
     {
       "method": "GET",
       "route": "/dataprocessing",
-      "target": "https://gwcteq-partner.domo.com/api/dataprocessing/v1"
+      "target": "https://bissell.domo.com/api/dataprocessing/v1"
     }
   ],
-  "id": "b1d8ec18-091f-4277-b817-4ccc45cae882",
-  "proxyId": "b92e0c87-66de-403e-b245-995a203b1bd1"
+  "id": "6a475f08-6fa5-4e7d-b691-dac67c6bf17a",
+  "proxyId": "ad735cb7-c03c-4c1b-885e-5f8bd3cd5079"
 }

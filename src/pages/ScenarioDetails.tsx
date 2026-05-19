@@ -1,11 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   BarChart3,
   Map,
   ListOrdered,
   FileSpreadsheet,
   Package,
-  Settings,
+  Loader2,
 } from 'lucide-react';
 import { Button, Tab, Tabs } from '@/components/ui';
 import {
@@ -23,11 +23,9 @@ import {
   ScenarioRankedOptionsTab,
   ScenarioLanesTab,
   ScenarioCapacityTab,
-  ScenarioOverridesTab,
 } from '@/sections/scenario-details';
 import { ScenarioLaneDetailsModal } from '@/components/modals';
 import { ScenarioCommentModal } from '@/components/modals';
-import { ScenarioOverrideModal } from '@/components/modals';
 import { useScenarioDetails } from '@/hooks';
 import { loadScenarioLaneSnapshotsFromAppDb, ScenarioRunHistoryEntry } from '@/services/scenario';
 
@@ -55,6 +53,17 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = (props) => {
   );
   const [hydratedLaneResults, setHydratedLaneResults] = useState<ScenarioRunResultsLane[]>(baseLaneResults);
   const [isLaneDataLoading, setIsLaneDataLoading] = useState(false);
+  const [isTabSwitching, setIsTabSwitching] = useState(false);
+  const tabSwitchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (tabSwitchTimerRef.current) {
+        clearTimeout(tabSwitchTimerRef.current);
+        tabSwitchTimerRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -96,7 +105,6 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = (props) => {
     scenarioConfig,
     dcResults,
     laneResults,
-    overrides,
     laneOptions,
     baselineScenarioId,
     canShowDifference,
@@ -111,6 +119,7 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = (props) => {
     laneFlagFilter,
     setLaneFlagFilter,
     filteredLanes,
+    isLaneFiltering,
     networkView,
     setNetworkView,
     networkLaneEntries,
@@ -119,22 +128,12 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = (props) => {
     networkAvgDaysRowsDiff,
     networkAvgDaysRowsBase,
     topFootprintLanes,
-    showOverrideModal,
-    setShowOverrideModal,
     selectedLane,
     setSelectedLane,
     showCommentModal,
     setShowCommentModal,
     commentText,
     setCommentText,
-    overrideLaneKey,
-    setOverrideLaneKey,
-    overrideNewDC,
-    setOverrideNewDC,
-    overrideReason,
-    setOverrideReason,
-    overrideComment,
-    setOverrideComment,
     isActionActive,
     triggerAction,
     handleExportDCDetails,
@@ -142,11 +141,8 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = (props) => {
     handleExportLaneCSV,
     handleExportExceptionsCSV,
     handleSaveComment,
-    handleApplyOverride,
-    handleDuplicateScenario,
     handlePublishScenario,
     handleApproveScenario,
-    handleArchiveScenario,
     dcColumns,
     laneColumns,
     rankedOptionsColumns,
@@ -157,11 +153,11 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = (props) => {
     scenarioRunResultsDC: props.scenarioRunResultsDC,
     scenarioRunResultsLanes: laneResultsForDetails,
     scenarioOverrides: props.scenarioOverrides,
-    onDuplicateScenario: props.onDuplicateScenario,
     onPublishScenario: props.onPublishScenario,
     onApproveScenario: props.onApproveScenario,
-    onArchiveScenario: props.onArchiveScenario,
     onAddComment: props.onAddComment,
+    onDuplicateScenario: props.onDuplicateScenario,
+    onArchiveScenario: props.onArchiveScenario,
     onApplyOverride: props.onApplyOverride,
   });
 
@@ -191,6 +187,8 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = (props) => {
           dcResults={dcResults}
           laneResults={laneResults}
           topFootprintLanes={topFootprintLanes}
+          onExportDCDetails={handleExportDCDetails}
+          exportDCDetailsActive={isActionActive('scenario_export_dc_details')}
         />
       ),
     },
@@ -231,6 +229,9 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = (props) => {
           onLaneTermsFilterChange={setLaneTermsFilter}
           hasLaneData={laneResults.length > 0}
           isLaneDataLoading={isLaneDataLoading}
+          isLaneFiltering={isLaneFiltering}
+          onExportRoutingCSV={handleExportRoutingCSV}
+          exportRoutingActive={isActionActive('scenario_export_routing')}
         />
       ),
     },
@@ -256,6 +257,11 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = (props) => {
           onSelectLane={setSelectedLane}
           hasLaneData={laneResults.length > 0}
           isLaneDataLoading={isLaneDataLoading}
+          isLaneFiltering={isLaneFiltering}
+          onExportLaneCSV={handleExportLaneCSV}
+          onExportExceptionsCSV={handleExportExceptionsCSV}
+          exportLaneActive={isActionActive('scenario_export_lane')}
+          exportExceptionsActive={isActionActive('scenario_export_exceptions')}
         />
       ),
     },
@@ -265,23 +271,12 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = (props) => {
       icon: <Package className="w-5 h-5" />,
       content: (
         <ScenarioCapacityTab
+          scenario={scenario}
+          scenarioConfig={scenarioConfig}
           dcResults={dcResults}
           dcColumns={dcColumns}
           topFootprintLanes={topFootprintLanes}
           isLaneDataLoading={isLaneDataLoading}
-        />
-      ),
-    },
-    {
-      id: 'overrides',
-      label: 'Overrides',
-      icon: <Settings className="w-5 h-5" />,
-      content: (
-        <ScenarioOverridesTab
-          overrides={overrides}
-          scenario={scenario}
-          laneResults={laneResults}
-          onOpenOverrideModal={() => setShowOverrideModal(true)}
         />
       ),
     },
@@ -295,78 +290,99 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = (props) => {
           scenarioId={props.scenarioId}
           laneResultsCount={laneResults.length}
           onBack={props.onBack}
-          onDuplicateScenario={() => handleDuplicateScenario()}
           onPublishScenario={() => handlePublishScenario()}
           onApproveScenario={() => handleApproveScenario()}
-          onArchiveScenario={() => handleArchiveScenario()}
           onOpenComment={() => {
             setShowCommentModal(true);
             triggerAction('scenario_comment_open');
           }}
-          onExportDCDetails={handleExportDCDetails}
-          onExportRoutingCSV={handleExportRoutingCSV}
-          onExportLaneCSV={handleExportLaneCSV}
-          onExportExceptionsCSV={handleExportExceptionsCSV}
-          exportDCDetailsActive={isActionActive('scenario_export_dc_details')}
-          exportRoutingActive={isActionActive('scenario_export_routing')}
-          exportLaneActive={isActionActive('scenario_export_lane')}
-          exportExceptionsActive={isActionActive('scenario_export_exceptions')}
-          duplicateActive={isActionActive('scenario_duplicate')}
           publishActive={isActionActive('scenario_publish')}
           approveActive={isActionActive('scenario_approve')}
           commentOpenActive={isActionActive('scenario_comment_open')}
-          archiveActive={isActionActive('scenario_archive')}
         />
       }
     >
-      <Tabs tabs={tabs} defaultTab="summary" />
+      <div className="relative">
+        {(isLaneDataLoading && laneResults.length === 0) || isTabSwitching ? (
+          <div className="absolute inset-0 z-20 flex items-center justify-center rounded-xl border border-blue-200 bg-white/85 px-6 py-16 backdrop-blur-sm">
+            <div className="text-center">
+              <Loader2 className="mx-auto h-8 w-8 animate-spin text-blue-600" />
+              <p className="mt-4 text-base font-medium text-slate-900">
+                {isTabSwitching ? 'Switching tabs...' : 'Loading scenario details...'}
+              </p>
+              <p className="mt-1 text-sm text-slate-500">
+                {isTabSwitching
+                  ? 'Refreshing the selected tab content.'
+                  : 'We are fetching the stored scenario results.'}
+              </p>
+            </div>
+          </div>
+        ) : null}
 
-      <div className="mx-0 mt-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <div>
-            <h3 className="text-lg font-semibold text-slate-900">Recent Runs</h3>
-            <p className="text-sm text-slate-500">Loaded from the persisted scenario repository.</p>
-          </div>
-          <span className="rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-600">
-            {props.recentRuns.length} entries
-          </span>
-        </div>
-        {props.recentRuns.length === 0 ? (
-          <p className="text-sm text-slate-500">No run history available yet.</p>
-        ) : (
-          <div className="space-y-3">
-            {props.recentRuns.slice(0, 5).map((run) => (
-              <div
-                key={run.runId}
-                className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 sm:flex-row sm:items-center sm:justify-between"
-              >
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-medium text-slate-900">{run.status}</span>
-                    <span className="rounded-full border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600">
-                      {run.executionId || 'No execution id'}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-sm text-slate-600">
-                    Triggered by {run.triggeredBy} on {new Date(run.startedAt).toLocaleString()}
-                    {run.completedAt ? `, completed ${new Date(run.completedAt).toLocaleString()}` : ''}
-                  </p>
-                  {run.message && (
-                    <p className="mt-1 text-sm text-slate-500">{run.message}</p>
-                  )}
-                </div>
-                <div className="text-xs text-slate-500 sm:text-right">
-                  <p>Dataflow: {run.dataflowId || 'NA'}</p>
-                  <p>
-                    Duration: {typeof run.durationMs === 'number'
-                      ? `${Math.max(0, Math.round(run.durationMs / 1000))}s`
-                      : 'NA'}
-                  </p>
-                </div>
+        <div className={isTabSwitching ? 'pointer-events-none select-none opacity-60' : ''}>
+          <Tabs
+            tabs={tabs}
+            defaultTab="summary"
+            onChange={() => {
+              if (tabSwitchTimerRef.current) {
+                clearTimeout(tabSwitchTimerRef.current);
+              }
+              setIsTabSwitching(true);
+              tabSwitchTimerRef.current = setTimeout(() => {
+                setIsTabSwitching(false);
+                tabSwitchTimerRef.current = null;
+              }, 160);
+            }}
+          />
+
+          <div className="mx-0 mt-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">Recent Runs</h3>
+                <p className="text-sm text-slate-500">Loaded from the persisted scenario repository.</p>
               </div>
-            ))}
+              <span className="rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-600">
+                {props.recentRuns.length} entries
+              </span>
+            </div>
+            {props.recentRuns.length === 0 ? (
+              <p className="text-sm text-slate-500">No run history available yet.</p>
+            ) : (
+              <div className="space-y-3">
+                {props.recentRuns.slice(0, 5).map((run) => (
+                  <div
+                    key={run.runId}
+                    className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium text-slate-900">{run.status}</span>
+                        <span className="rounded-full border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600">
+                          {run.executionId || 'No execution id'}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-sm text-slate-600">
+                        Triggered by {run.triggeredBy} on {new Date(run.startedAt).toLocaleString()}
+                        {run.completedAt ? `, completed ${new Date(run.completedAt).toLocaleString()}` : ''}
+                      </p>
+                      {run.message && (
+                        <p className="mt-1 text-sm text-slate-500">{run.message}</p>
+                      )}
+                    </div>
+                    <div className="text-xs text-slate-500 sm:text-right">
+                      <p>Dataflow: {run.dataflowId || 'NA'}</p>
+                      <p>
+                        Duration: {typeof run.durationMs === 'number'
+                          ? `${Math.max(0, Math.round(run.durationMs / 1000))}s`
+                          : 'NA'}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
 
       <ScenarioLaneDetailsModal
@@ -382,22 +398,6 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = (props) => {
         onCancel={() => setShowCommentModal(false)}
         onSave={handleSaveComment}
         saveActive={isActionActive('scenario_comment_save')}
-      />
-
-      <ScenarioOverrideModal
-        isOpen={showOverrideModal}
-        laneOptions={laneOptions}
-        overrideLaneKey={overrideLaneKey}
-        onOverrideLaneKeyChange={setOverrideLaneKey}
-        overrideNewDC={overrideNewDC}
-        onOverrideNewDCChange={setOverrideNewDC}
-        overrideReason={overrideReason}
-        onOverrideReasonChange={setOverrideReason}
-        overrideComment={overrideComment}
-        onOverrideCommentChange={setOverrideComment}
-        onCancel={() => setShowOverrideModal(false)}
-        onApply={handleApplyOverride}
-        canApply={Boolean(overrideLaneKey && overrideNewDC.trim())}
       />
     </AppPage>
   );

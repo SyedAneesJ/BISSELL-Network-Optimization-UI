@@ -84,6 +84,7 @@ export const Home: React.FC<HomeProps> = ({
   testEmailActive,
 }) => {
   const { trigger: triggerAction, isActive: isActionActive } = useActionFeedback();
+  const disableComparisons = true;
   const handleRefresh = () => {
     onRefresh();
     triggerAction('refresh_data');
@@ -314,7 +315,7 @@ export const Home: React.FC<HomeProps> = ({
     const isOriginalScenario = (scenario: ScenarioRunHeader) =>
       !String(scenario.CreatedBy || '').trim() || String(scenario.CreatedBy || '').trim() === 'NA';
     const baselineDataflowIdsByRegion: Record<'US' | 'Canada', string> = {
-      US: '3228',
+      US: '3267',
       Canada: '3211',
     };
 
@@ -550,7 +551,7 @@ export const Home: React.FC<HomeProps> = ({
   return (
     <AppPage
       header={
-        <HomeHeader
+      <HomeHeader
           workspace={workspace}
           onWorkspaceChange={onWorkspaceChange}
           currentUserDisplayName={currentUserDisplayName}
@@ -560,10 +561,11 @@ export const Home: React.FC<HomeProps> = ({
           onExportScenarioList={handleExportScenarioList}
           onExportComparisonList={handleExportComparisonList}
           onNewScenario={onNewScenario}
-            onNewComparison={() => onNewComparison()}
+          onNewComparison={() => onNewComparison()}
           hasComparisons={hasComparisons}
           exportScenarioActive={isActionActive('export_scenario_list')}
           exportComparisonActive={isActionActive('export_comparison_list')}
+          comparisonActionsDisabled={disableComparisons}
         />
       }
     >
@@ -585,21 +587,24 @@ export const Home: React.FC<HomeProps> = ({
         onOnlyPublishedChange={setOnlyPublished}
         showCompareSelected={selectedScenarios.size === 2}
         onCompareSelected={handleCompareSelected}
-        canCompare={selectedScenarios.size === 2}
+        canCompare={selectedScenarios.size === 2 && !disableComparisons}
+        comparisonActionsDisabled={disableComparisons}
         onRunSelected={handleRunSelected}
         canRun={canRunSelected}
         onRefresh={handleRefresh}
         refreshActive={isActionActive('refresh_data')}
       />
 
-      <HomeComparisonsSection
-        comparisonColumns={comparisonColumns}
-        filteredComparisons={filteredComparisons}
-        onOpenComparison={onOpenComparison}
-        emptyStateMessage={comparisonEmptyStateMessage}
-        onRefresh={handleRefreshComparisons}
-        refreshActive={comparisonsRefreshActive}
-      />
+      <div className={disableComparisons ? 'hidden' : ''}>
+        <HomeComparisonsSection
+          comparisonColumns={comparisonColumns}
+          filteredComparisons={filteredComparisons}
+          onOpenComparison={onOpenComparison}
+          emptyStateMessage={comparisonEmptyStateMessage}
+          onRefresh={handleRefreshComparisons}
+          refreshActive={comparisonsRefreshActive}
+        />
+      </div>
 
       {false && (
         <HomeAlertsSection

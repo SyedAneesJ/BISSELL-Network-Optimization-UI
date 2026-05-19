@@ -7,6 +7,7 @@ import {
 } from '@/data';
 import type { DomoDcCapacityRow } from '@/services';
 import type { ScenarioExecutionPlan } from './scenarioLogicTypes';
+import type { ScenarioTypePolicy } from './scenarioTypeRules';
 
 export interface ScenarioWizardInput {
   region: 'US' | 'Canada';
@@ -52,6 +53,7 @@ export interface ScenarioBuildContext {
   laneRowsByScenarioId?: Record<string, ScenarioRunResultsLane[]>;
   dcCapacityRows?: DomoDcCapacityRow[];
   scenarioPlan?: ScenarioExecutionPlan;
+  scenarioTypePolicy?: ScenarioTypePolicy;
   currentUserDisplayName: string;
   dataSnapshotVersion: string;
   hasCostVsServiceWeights: boolean;

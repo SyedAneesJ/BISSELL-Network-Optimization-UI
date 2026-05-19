@@ -1,4 +1,5 @@
 import React from 'react';
+import { ReactNode } from 'react';
 
 interface ScenarioLaneFiltersProps {
   laneZipSearch: string;
@@ -12,6 +13,7 @@ interface ScenarioLaneFiltersProps {
   laneFlagFilter?: string;
   onLaneFlagFilterChange?: (value: string) => void;
   showFlagFilter?: boolean;
+  rightActions?: ReactNode;
 }
 
 export const ScenarioLaneFilters: React.FC<ScenarioLaneFiltersProps> = ({
@@ -26,40 +28,42 @@ export const ScenarioLaneFilters: React.FC<ScenarioLaneFiltersProps> = ({
   laneFlagFilter,
   onLaneFlagFilterChange,
   showFlagFilter = false,
+  rightActions,
 }) => {
   return (
-    <div className="flex flex-wrap gap-2">
-      <input
-        type="search"
-        className="px-3 py-2 border border-slate-300 rounded-lg text-sm min-w-[180px]"
-        value={laneZipSearch}
-        onChange={(e) => onLaneZipSearchChange(e.target.value)}
-        placeholder="Search ZIP"
-      />
+    <div className="flex flex-wrap items-end justify-between gap-2">
+      <div className="flex flex-wrap gap-2">
+        <input
+          type="search"
+          className="px-3 py-2 border border-slate-300 rounded-lg text-sm min-w-[180px]"
+          value={laneZipSearch}
+          onChange={(e) => onLaneZipSearchChange(e.target.value)}
+          placeholder="Search ZIP"
+        />
 
-      <select
-        className="px-3 py-2 border border-slate-300 rounded-lg text-sm"
-        value={laneChannelFilter}
-        onChange={(e) => onLaneChannelFilterChange(e.target.value)}
-      >
-        <option value="All">All Channels</option>
-        {channelOptions.map((channel) => (
-          <option key={channel} value={channel}>{channel}</option>
-        ))}
-      </select>
+        <select
+          className="px-3 py-2 border border-slate-300 rounded-lg text-sm"
+          value={laneChannelFilter}
+          onChange={(e) => onLaneChannelFilterChange(e.target.value)}
+        >
+          <option value="All">All Channels</option>
+          {channelOptions.map((channel) => (
+            <option key={channel} value={channel}>{channel}</option>
+          ))}
+        </select>
 
-      <select
-        className="px-3 py-2 border border-slate-300 rounded-lg text-sm"
-        value={laneTermsFilter}
-        onChange={(e) => onLaneTermsFilterChange(e.target.value)}
-      >
-        <option value="All">All Terms</option>
-        {termsOptions.map((term) => (
-          <option key={term} value={term}>{term}</option>
-        ))}
-      </select>
+        <select
+          className="px-3 py-2 border border-slate-300 rounded-lg text-sm"
+          value={laneTermsFilter}
+          onChange={(e) => onLaneTermsFilterChange(e.target.value)}
+        >
+          <option value="All">All Terms</option>
+          {termsOptions.map((term) => (
+            <option key={term} value={term}>{term}</option>
+          ))}
+        </select>
 
-      {/* {showFlagFilter && laneFlagFilter && onLaneFlagFilterChange && (
+        {/* {showFlagFilter && laneFlagFilter && onLaneFlagFilterChange && (
         <select
           className="px-3 py-2 border border-slate-300 rounded-lg text-sm"
           value={laneFlagFilter}
@@ -71,7 +75,10 @@ export const ScenarioLaneFilters: React.FC<ScenarioLaneFiltersProps> = ({
           <option value="Overrides Only">Overrides Only</option>
           <option value="Flagged Lanes">Flagged Lanes</option>
         </select>
-      )} */}
+        )} */}
+      </div>
+
+      {rightActions && <div className="flex flex-wrap gap-2">{rightActions}</div>}
     </div>
   );
 };

@@ -8,3 +8,4 @@ export * from './scenarioPlanParser';
 export * from './scenarioMetrics';
 export * from './scenarioEngine';
 export * from './scenarioExecutionStore';
+export * from './scenarioTypeRules';

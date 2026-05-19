@@ -7,6 +7,11 @@ import { buildScenarioArtifacts as buildScenarioArtifactsLegacy } from './scenar
 import { loadScenarioLogicDocument } from './scenarioLogicLoader';
 import { parseScenarioLogicDocument } from './scenarioPlanParser';
 import type { ScenarioRunResultsDC, ScenarioRunResultsLane } from '@/data';
+import {
+  getScenarioTypeAllowedDcs,
+  normalizeScenarioTypeSpecificInput,
+  scenarioTypeMatches,
+} from './scenarioTypeRules';
 
 const getEngineMode = (): 'sample' | 'dataflow' => {
   const mode = String(import.meta.env.VITE_SCENARIO_ENGINE_MODE || 'sample').trim().toLowerCase();
@@ -51,6 +56,16 @@ const getBaselineHeader = (
   );
 };
 
+const getExactBaselineHeader = (
+  context: ScenarioBuildContext,
+  region: 'US' | 'Canada',
+): ReturnType<typeof getBaselineHeader> =>
+  context.scenarioHeaders.find((s) =>
+    s.Region === region
+    && scenarioTypeMatches(String(s.ScenarioType || ''), 'Baseline')
+    && String(s.DataflowID || '').trim() === '3267',
+  ) || null;
+
 const getActiveCapacityDcs = (context: ScenarioBuildContext): string[] => {
   const rows = context.dcCapacityRows || [];
   return rows
@@ -59,14 +74,37 @@ const getActiveCapacityDcs = (context: ScenarioBuildContext): string[] => {
     .filter(Boolean);
 };
 
+const getScenarioFamilyAllowedDcs = (scenarioType: unknown, context: ScenarioBuildContext): string[] => {
+  const allActive = getActiveCapacityDcs(context);
+  const familyScope = getScenarioTypeAllowedDcs(scenarioType);
+  const allowedKeys = new Set(familyScope.map((dc) => normalizeKey(dc)));
+  return allActive.filter((dc) => allowedKeys.has(normalizeKey(dc)));
+};
+
+const getScenarioFamilyCapacityRows = (
+  scenarioType: unknown,
+  context: ScenarioBuildContext,
+): NonNullable<ScenarioBuildContext['dcCapacityRows']> => {
+  const familyScope = getScenarioTypeAllowedDcs(scenarioType);
+  const allowedKeys = new Set(familyScope.map((dc) => normalizeKey(dc)));
+  return (context.dcCapacityRows || []).filter((row) => allowedKeys.has(normalizeKey(row.DCName)));
+};
+
 const resolveActiveDcs = (
   payload: ScenarioSubmit,
   context: ScenarioBuildContext,
   allowedDcs: string[],
 ): string[] => {
   const capacityActive = getActiveCapacityDcs(context);
+  const familyAllowed = getScenarioFamilyAllowedDcs(payload.input.scenarioType, context);
   const baseAllowed = allowedDcs.length > 0 ? allowedDcs : capacityActive;
-  const allowedSet = new Set(baseAllowed.map((dc) => String(dc || '').trim()).filter(Boolean));
+  const familyAllowedSet = new Set(familyAllowed.map((dc) => normalizeKey(dc)));
+  const allowedSet = new Set(
+    baseAllowed
+      .map((dc) => String(dc || '').trim())
+      .filter(Boolean)
+      .filter((dc) => familyAllowedSet.size === 0 || familyAllowedSet.has(normalizeKey(dc))),
+  );
   const userActive = payload.input.activeDCs.map((dc) => String(dc || '').trim()).filter(Boolean);
   if (userActive.length > 0) {
     const userSet = new Set(userActive);
@@ -90,10 +128,12 @@ const resolveSuppressedDcs = (
   const explicit = payload.input.suppressedDcs.map((dc) => String(dc || '').trim()).filter(Boolean);
   const activeSet = new Set(activeDcs.map((dc) => String(dc || '').trim()).filter(Boolean));
   const activeCapacity = new Set(getActiveCapacityDcs(context));
+  const familyCapacity = new Set(getScenarioFamilyAllowedDcs(payload.input.scenarioType, context));
   const suppressed = new Set<string>();
   explicit.forEach((dc) => suppressed.add(dc));
   planSuppressed.forEach((dc) => suppressed.add(dc));
   (context.dcCapacityRows || []).forEach((row) => {
+    if (familyCapacity.size > 0 && !familyCapacity.has(row.DCName)) return;
     if (!row.IsActive || !activeCapacity.has(row.DCName) || (!activeSet.has(row.DCName) && row.IsActive)) {
       suppressed.add(row.DCName);
     }
@@ -107,6 +147,7 @@ const buildLaneGroupKey = (lane: ScenarioRunResultsLane): string =>
     lane.Channel || '',
     lane.Terms || '',
     lane.DestState || '',
+    lane.PartyName || lane.CustomerGroup || '',
     lane.ScenarioType || '',
   ].join('|');
 
@@ -149,10 +190,9 @@ const pickBestLaneInGroup = (rows: ScenarioRunResultsLane[]): ScenarioRunResults
   const best = sorted[0];
   return {
     ...best,
-    RankedOption1DC: best.AssignedDC || best.CostingWarehouse || best.DefaultShipFrom || best.RankedOption1DC,
-    RankedOption1Cost: laneCostPerUnit(best),
-    RankedOption1Days: best.DeliveryDays || best.RankedOption1Days,
     LaneCost: laneCostToDisplay(best),
+    TotalCost: laneCostToDisplay(best),
+    CostPerUnit: Number((best.CostPerUnit ?? laneCostPerUnit(best)).toFixed(2)),
     CostDeltaVsBest: 0,
     DeliveryDays: best.DeliveryDays || best.RankedOption1Days,
     ChosenRank: 1,
@@ -194,7 +234,7 @@ const buildScenarioLanes = (
         return `${a.Dest3Zip}|${a.Channel}|${a.Terms}|${a.DestState}`.localeCompare(`${b.Dest3Zip}|${b.Channel}|${b.Terms}|${b.DestState}`);
       });
 
-      const [best = null, second = null, third = null] = ranked;
+      const [best = null] = ranked;
       const selected = ranked.find((lane) => laneIsActive(lane, activeSet, suppressedSet)) || best || null;
       if (!selected) return null;
       const selectedRank = Math.max(1, ranked.findIndex((lane) => lane === selected) + 1);
@@ -207,15 +247,6 @@ const buildScenarioLanes = (
         ...baseRow,
         ScenarioRunID: scenarioId,
         AssignedDC: selectedDc,
-        RankedOption1DC: best?.AssignedDC || best?.CostingWarehouse || best?.DefaultShipFrom || 'NA',
-        RankedOption1Cost: best ? laneCostPerUnit(best) : selectedCpu,
-        RankedOption1Days: best ? laneDaysToDisplay(best) : laneDaysToDisplay(selected),
-        RankedOption2DC: second?.AssignedDC || second?.CostingWarehouse || second?.DefaultShipFrom || '',
-        RankedOption2Cost: second ? laneCostPerUnit(second) : 0,
-        RankedOption2Days: second ? laneDaysToDisplay(second) : 0,
-        RankedOption3DC: third?.AssignedDC || third?.CostingWarehouse || third?.DefaultShipFrom || '',
-        RankedOption3Cost: third ? laneCostPerUnit(third) : 0,
-        RankedOption3Days: third ? laneDaysToDisplay(third) : 0,
         ChosenRank: selectedRank,
         LaneCost: selectedCost,
         TotalCost: selectedCost,
@@ -224,7 +255,7 @@ const buildScenarioLanes = (
         DeliveryDays: laneDaysToDisplay(selected),
         SLABreachFlag: String(selected.BreachFlag || selected.SLABreachFlag || '').toLowerCase() === 'breach' ? 'Y' : 'N',
         ExcludedBySLAFlag: String(selected.BreachFlag || selected.SLABreachFlag || '').toLowerCase() === 'breach' ? 'Y' : 'N',
-        FootprintContribution: selected.FootprintContribution || selected.WorkingCapacity || selected.Threshold || 0,
+        FootprintContribution: selected.WorkingCapacity || selected.FootprintContribution || selected.Threshold || 0,
         UtilImpactPct: selected.UtilImpactPct || (
           selected.Threshold && selected.Threshold > 0 && selected.WorkingCapacity !== undefined
             ? Number(((selected.WorkingCapacity / selected.Threshold) * 100).toFixed(2))
@@ -266,29 +297,6 @@ const buildScenarioLanes = (
       if (costA !== costB) return costA - costB;
       return String(a.AssignedDC || a.CostingWarehouse || '').localeCompare(String(b.AssignedDC || b.CostingWarehouse || ''));
     });
-};
-
-const getScenarioLaneSourceRows = (
-  context: ScenarioBuildContext,
-  baselineScenarioId: string | null,
-  fallbackRows: ScenarioRunResultsLane[],
-): ScenarioRunResultsLane[] => {
-  const rawMap = context.laneRowsByScenarioId || {};
-  const candidateIds = [
-    baselineScenarioId,
-    ...Object.keys(rawMap),
-  ]
-    .map((value) => String(value || '').trim())
-    .filter(Boolean);
-
-  for (const scenarioId of candidateIds) {
-    const rows = rawMap[scenarioId];
-    if (rows && rows.length > 0) {
-      return rows;
-    }
-  }
-
-  return fallbackRows;
 };
 
 const buildScenarioDcRows = (
@@ -335,21 +343,39 @@ export const buildScenarioArtifactsWithLogic = async (
   context: ScenarioBuildContext,
 ): Promise<ScenarioBuildResult> => {
   const engineMode = getEngineMode();
-  const baseline = getBaselineHeader(context, payload.input.region, payload.input.baselineScenarioId);
+  const normalizedPayload: ScenarioSubmit = {
+    ...payload,
+    input: normalizeScenarioTypeSpecificInput(payload.input),
+  };
+  const exactBaseline = normalizedPayload.input.scenarioType.trim().toLowerCase() === 'baseline'
+    ? getExactBaselineHeader(context, normalizedPayload.input.region)
+    : null;
+  const resolvedBaselineScenarioId =
+    exactBaseline?.ScenarioRunID
+    ?? normalizedPayload.input.baselineScenarioId
+    ?? null;
+  const resolvedBaselineDataflowId =
+    exactBaseline?.DataflowID
+    ?? normalizedPayload.input.baselineDataflowId
+    ?? null;
+  const baseline = getBaselineHeader(context, normalizedPayload.input.region, resolvedBaselineScenarioId);
   const logicDocument = await loadScenarioLogicDocument({
     mode: engineMode,
-    region: payload.input.region,
-    dataflowId: payload.input.baselineDataflowId || baseline?.DataflowID || null,
+    region: normalizedPayload.input.region,
+    dataflowId: resolvedBaselineDataflowId || baseline?.DataflowID || null,
   });
   const plan = parseScenarioLogicDocument(logicDocument);
-  const allowedDcs = plan.allowedDcs.length > 0 ? plan.allowedDcs : payload.input.activeDCs;
-  const activeDcs = resolveActiveDcs(payload, context, allowedDcs);
-  const suppressedDcs = resolveSuppressedDcs(payload, context, activeDcs, plan.suppressedDcs);
+  const allowedDcs = plan.allowedDcs.length > 0 ? plan.allowedDcs : normalizedPayload.input.activeDCs;
+  const activeDcs = resolveActiveDcs(normalizedPayload, context, allowedDcs);
+  const suppressedDcs = resolveSuppressedDcs(normalizedPayload, context, activeDcs, plan.suppressedDcs);
+  const familyCapacityRows = getScenarioFamilyCapacityRows(normalizedPayload.input.scenarioType, context);
 
   const adjustedPayload: ScenarioSubmit = {
     ...payload,
     input: {
-      ...payload.input,
+      ...normalizedPayload.input,
+      baselineScenarioId: resolvedBaselineScenarioId ?? normalizedPayload.input.baselineScenarioId,
+      baselineDataflowId: resolvedBaselineDataflowId ?? normalizedPayload.input.baselineDataflowId,
       activeDCs: activeDcs,
       suppressedDCs,
     },
@@ -357,6 +383,7 @@ export const buildScenarioArtifactsWithLogic = async (
 
   const artifact = buildScenarioArtifactsLegacy(adjustedPayload, {
     ...context,
+    dcCapacityRows: familyCapacityRows,
     scenarioPlan: plan,
   } as ScenarioBuildContext);
 

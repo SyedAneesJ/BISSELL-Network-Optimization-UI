@@ -20,6 +20,7 @@ interface HomeScenarioRunsSectionProps {
   showCompareSelected: boolean;
   onCompareSelected: () => void;
   canCompare: boolean;
+  comparisonActionsDisabled?: boolean;
   onRefresh: () => void;
   refreshActive: boolean;
   onRunSelected?: () => void;
@@ -43,6 +44,7 @@ export const HomeScenarioRunsSection: React.FC<HomeScenarioRunsSectionProps> = (
   showCompareSelected,
   onCompareSelected,
   canCompare,
+  comparisonActionsDisabled = false,
   onRefresh,
   refreshActive,
   onRunSelected,
@@ -82,7 +84,13 @@ export const HomeScenarioRunsSection: React.FC<HomeScenarioRunsSectionProps> = (
             </Button>
           )}
           {showCompareSelected && (
-            <Button onClick={onCompareSelected} variant="secondary" size="small" disabled={!canCompare}>
+            <Button
+              onClick={onCompareSelected}
+              variant="secondary"
+              size="small"
+              disabled={!canCompare || comparisonActionsDisabled}
+              className={comparisonActionsDisabled ? 'opacity-50 cursor-not-allowed' : ''}
+            >
               Compare Selected
             </Button>
           )}
@@ -140,9 +148,10 @@ export const HomeScenarioRunsSection: React.FC<HomeScenarioRunsSectionProps> = (
             variant="secondary"
             size="small"
             icon={<RefreshCw className={`w-4 h-4 ${refreshActive ? 'animate-spin' : ''}`} />}
-            className={refreshActive ? 'bg-amber-100 text-amber-800' : ''}
+            disabled
+            className="opacity-50 cursor-not-allowed"
           >
-            {refreshActive ? 'Refreshing...' : 'Refresh'}
+            Refresh
           </Button>
         </div>
 

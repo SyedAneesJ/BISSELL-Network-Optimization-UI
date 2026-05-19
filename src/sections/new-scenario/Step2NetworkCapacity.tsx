@@ -1,6 +1,7 @@
 import React from 'react';
 import { Tooltip } from '@/components/ui';
 import { DatasetOptionSets } from '@/services';
+import type { ScenarioTypePolicy } from '@/services/scenario/scenarioTypeRules';
 import { NewScenarioFormData } from './types';
 
 interface Step2NetworkCapacityProps {
@@ -12,6 +13,7 @@ interface Step2NetworkCapacityProps {
   onDCToggle: (dc: string) => void;
   utilCapMin: number;
   utilCapMax: number;
+  scenarioPolicy: ScenarioTypePolicy;
 }
 
 export const Step2NetworkCapacity: React.FC<Step2NetworkCapacityProps> = ({
@@ -23,7 +25,13 @@ export const Step2NetworkCapacity: React.FC<Step2NetworkCapacityProps> = ({
   onDCToggle,
   utilCapMin,
   utilCapMax,
+  scenarioPolicy,
 }) => {
+  const isBcvDc = (dc: string): boolean => {
+    const normalized = String(dc || '').trim().toLowerCase();
+    return normalized === 'pharr tx' || normalized === 'stratford ct';
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -42,15 +50,25 @@ export const Step2NetworkCapacity: React.FC<Step2NetworkCapacityProps> = ({
             return (
               <div
                 key={dc}
-                className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${
+              className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${
                   isActive
                     ? 'border-blue-500 bg-blue-50'
                     : 'border-slate-200 bg-slate-50'
                 }`}
-                onClick={() => onDCToggle(dc)}
+                onClick={() => {
+                  if (scenarioPolicy.locks.activeDcs) return;
+                  onDCToggle(dc);
+                }}
               >
                 <div className="flex items-center justify-between mb-2">
-                  <span className="font-semibold text-slate-900">{dc}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-slate-900">{dc}</span>
+                    {isBcvDc(dc) && (
+                      <span className="inline-flex items-center rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-700">
+                        BCV
+                      </span>
+                    )}
+                  </div>
                   <span
                     className={`text-xs px-2 py-1 rounded ${
                       isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
@@ -111,6 +129,7 @@ export const Step2NetworkCapacity: React.FC<Step2NetworkCapacityProps> = ({
                     checked={formData.footprintMode === mode}
                     onChange={(e) => onFormDataChange({ ...formData, footprintMode: e.target.value })}
                     className="text-blue-600"
+                    disabled={scenarioPolicy.locks.footprintMode}
                   />
                   <span className="text-sm text-slate-700">{mode}</span>
                 </label>
@@ -133,6 +152,7 @@ export const Step2NetworkCapacity: React.FC<Step2NetworkCapacityProps> = ({
                 checked={formData.levelLoad}
                 onChange={(e) => onFormDataChange({ ...formData, levelLoad: e.target.checked })}
                 className="rounded"
+                disabled={scenarioPolicy.locks.levelLoad}
               />
               <span className="text-sm font-medium text-slate-700">Enable Level-Load</span>
             </label>
@@ -154,7 +174,7 @@ export const Step2NetworkCapacity: React.FC<Step2NetworkCapacityProps> = ({
           value={formData.utilCap}
           onChange={(e) => onFormDataChange({ ...formData, utilCap: Number(e.target.value) })}
           className="w-full"
-          disabled={datasetOptions.utilCaps.length === 0}
+          disabled={datasetOptions.utilCaps.length === 0 || scenarioPolicy.locks.utilCap}
         />
         <div className="flex justify-between text-xs text-slate-500">
           <span>{utilCapMin}%</span>

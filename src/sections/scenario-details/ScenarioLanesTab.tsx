@@ -1,6 +1,6 @@
 import React from 'react';
-import { FileSpreadsheet, Loader2 } from 'lucide-react';
-import { DataTable, Column } from '@/components/ui';
+import { Download, FileSpreadsheet, Loader2 } from 'lucide-react';
+import { Button, DataTable, Column } from '@/components/ui';
 import { ScenarioRunResultsLane } from '@/data';
 import { ScenarioLaneFilters } from './ScenarioLaneFilters';
 
@@ -21,6 +21,11 @@ interface ScenarioLanesTabProps {
   onSelectLane: (lane: ScenarioRunResultsLane) => void;
   hasLaneData: boolean;
   isLaneDataLoading?: boolean;
+  isLaneFiltering?: boolean;
+  onExportLaneCSV?: () => void;
+  onExportExceptionsCSV?: () => void;
+  exportLaneActive?: boolean;
+  exportExceptionsActive?: boolean;
 }
 
 export const ScenarioLanesTab: React.FC<ScenarioLanesTabProps> = ({
@@ -40,14 +45,25 @@ export const ScenarioLanesTab: React.FC<ScenarioLanesTabProps> = ({
   onSelectLane,
   hasLaneData,
   isLaneDataLoading = false,
+  isLaneFiltering = false,
+  onExportLaneCSV,
+  onExportExceptionsCSV,
+  exportLaneActive = false,
+  exportExceptionsActive = false,
 }) => {
-  if (isLaneDataLoading) {
+  const showLoading = isLaneDataLoading || isLaneFiltering;
+
+  if (showLoading) {
     return (
       <div className="flex flex-col items-center justify-center py-16 bg-white border border-slate-200 rounded-lg shadow-sm">
         <Loader2 className="w-8 h-8 text-blue-500 animate-spin mb-4" />
-        <h3 className="text-lg font-medium text-slate-900 mb-2">Loading lane details</h3>
+        <h3 className="text-lg font-medium text-slate-900 mb-2">
+          {isLaneDataLoading ? 'Loading lane details' : 'Updating lane filters'}
+        </h3>
         <p className="text-slate-500 max-w-md text-center">
-          We are fetching the stored lane snapshots for this custom scenario.
+          {isLaneDataLoading
+            ? 'We are fetching the stored lane snapshots for this custom scenario.'
+            : 'Applying the selected ZIP, channel, and term filters.'}
         </p>
       </div>
     );
@@ -81,6 +97,32 @@ export const ScenarioLanesTab: React.FC<ScenarioLanesTabProps> = ({
         laneFlagFilter={laneFlagFilter}
         onLaneFlagFilterChange={onLaneFlagFilterChange}
         showFlagFilter
+        rightActions={
+          <div className="flex flex-wrap gap-2">
+            {onExportLaneCSV && (
+              <Button
+                variant="secondary"
+                size="small"
+                icon={<Download className="w-4 h-4" />}
+                onClick={onExportLaneCSV}
+                className={exportLaneActive ? 'bg-amber-50 text-amber-800' : ''}
+              >
+                {exportLaneActive ? 'Exporting Lane Table…' : 'Export Lane Table CSV'}
+              </Button>
+            )}
+            {/* {onExportExceptionsCSV && (
+              <Button
+                variant="secondary"
+                size="small"
+                icon={<Download className="w-4 h-4" />}
+                onClick={onExportExceptionsCSV}
+                className={exportExceptionsActive ? 'bg-amber-50 text-amber-800' : ''}
+              >
+                {exportExceptionsActive ? 'Exporting Exceptions…' : 'Export Exceptions CSV'}
+              </Button>
+            )} */}
+          </div>
+        }
       />
 
       <DataTable

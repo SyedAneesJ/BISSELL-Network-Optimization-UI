@@ -1,9 +1,23 @@
+const formatTimestamp = (date = new Date()): string => {
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}_${pad(date.getHours())}-${pad(date.getMinutes())}-${pad(date.getSeconds())}`;
+};
+
+const withTimestamp = (filename: string): string => {
+  const trimmed = String(filename || '').trim();
+  if (!trimmed) return `export-${formatTimestamp()}`;
+  const match = trimmed.match(/^(.*?)(\.[^.]+)?$/);
+  const base = match?.[1] || trimmed;
+  const ext = match?.[2] || '';
+  return `${base}-${formatTimestamp()}${ext}`;
+};
+
 export const downloadBlob = (content: string, filename: string, type: string) => {
   const blob = new Blob([content], { type });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = filename;
+  link.download = withTimestamp(filename);
   document.body.appendChild(link);
   link.click();
   link.remove();

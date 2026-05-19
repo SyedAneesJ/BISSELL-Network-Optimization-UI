@@ -24,9 +24,11 @@ import {
   buildDataHealthSnapshotFromRows,
   buildDatasetOptionSets,
   DatasetOptionSets,
+  loadBcvScenarioLaneDataset,
   fetchAllScenarioDatasets,
   loadDcCapacityDataset,
   loadScenarioLaneDataset,
+  loadTacticalConsolidationScenarioLaneDataset,
   getEntityOrder,
   mapDcResultsFromRows,
   resolveRegistryItemFromMeta,
@@ -54,6 +56,11 @@ import {
   type ScenarioBuildContext,
   type ScenarioRepositoryRecord,
 } from '@/services/scenario';
+import {
+  getScenarioTypeAllowedDcs,
+  resolveScenarioFamilyKey,
+  resolveScenarioTypePolicy,
+} from '@/services/scenario/scenarioTypeRules';
 import {
   APPDB_COLLECTIONS,
   createCollectionDocument,
@@ -126,6 +133,84 @@ const cloneScenarioResultsDC = (rows: ScenarioRunResultsDC[]): ScenarioRunResult
 const cloneScenarioResultsLanes = (rows: ScenarioRunResultsLane[]): ScenarioRunResultsLane[] =>
   rows.map((row) => ({ ...row }));
 
+const scenarioLaneIdentityKey = (lane: ScenarioRunResultsLane): string =>
+  [
+    lane.ScenarioRunID || '',
+    lane.Dest3Zip || '',
+    lane.Channel || '',
+    lane.Terms || '',
+    lane.DestState || '',
+    lane.PartyName || lane.CustomerGroup || '',
+    lane.ScenarioType || '',
+  ].join('|');
+
+const laneQualityScore = (lane: ScenarioRunResultsLane): number => {
+  const assignedDc = String(lane.AssignedDC || lane.CostingWarehouse || lane.DefaultShipFrom || '').trim();
+  const ranked1Dc = String(lane.RankedOption1DC || '').trim();
+  const ranked2Dc = String(lane.RankedOption2DC || '').trim();
+  const ranked3Dc = String(lane.RankedOption3DC || '').trim();
+  const ranked1Cost = Number(lane.RankedOption1Cost ?? 0);
+  const ranked2Cost = Number(lane.RankedOption2Cost ?? 0);
+  const ranked3Cost = Number(lane.RankedOption3Cost ?? 0);
+  const costPerUnit = Number(lane.CostPerUnit ?? lane.LaneCost ?? lane.TotalCost ?? 0);
+  let score = 0;
+
+  if (ranked1Dc) score += 10;
+  if (ranked2Dc) score += 8;
+  if (ranked3Dc) score += 6;
+  if (ranked1Cost > 0) score += 10;
+  if (ranked2Cost > 0) score += 8;
+  if (ranked3Cost > 0) score += 6;
+  if (String(lane.ChosenRank ?? '').trim()) score += 4;
+  if (String(lane.CostRank ?? '').trim()) score += 2;
+  if (assignedDc && ranked1Dc && assignedDc === ranked1Dc) score += 20;
+  if (costPerUnit > 0 && ranked1Cost > 0 && Math.abs(costPerUnit - ranked1Cost) < 0.01) score += 30;
+  if (Number(lane.TotalCost ?? 0) > 0) score += 1;
+
+  return score;
+};
+
+const canonicalizeScenarioResultsLanes = (rows: ScenarioRunResultsLane[]): ScenarioRunResultsLane[] => {
+  const grouped = new Map<string, ScenarioRunResultsLane[]>();
+  rows.forEach((row) => {
+    const key = scenarioLaneIdentityKey(row);
+    const list = grouped.get(key) || [];
+    list.push({ ...row });
+    grouped.set(key, list);
+  });
+
+  return Array.from(grouped.values()).map((group) =>
+    group.sort((a, b) => {
+      const scoreDelta = laneQualityScore(b) - laneQualityScore(a);
+      if (scoreDelta !== 0) return scoreDelta;
+      const cpuA = Number(a.CostPerUnit ?? a.LaneCost ?? a.TotalCost ?? 0);
+      const cpuB = Number(b.CostPerUnit ?? b.LaneCost ?? b.TotalCost ?? 0);
+      if (cpuA !== cpuB) return cpuA - cpuB;
+      const costA = Number(a.TotalCost ?? a.LaneCost ?? 0);
+      const costB = Number(b.TotalCost ?? b.LaneCost ?? 0);
+      if (costA !== costB) return costA - costB;
+      const daysA = Number(a.DeliveryDays ?? 0);
+      const daysB = Number(b.DeliveryDays ?? 0);
+      if (daysA !== daysB) return daysA - daysB;
+      return String(a.AssignedDC || a.CostingWarehouse || a.DefaultShipFrom || '').localeCompare(
+        String(b.AssignedDC || b.CostingWarehouse || b.DefaultShipFrom || ''),
+      );
+    })[0],
+  );
+};
+
+const dedupeScenarioResultsLanes = (rows: ScenarioRunResultsLane[]): ScenarioRunResultsLane[] => {
+  const seen = new Set<string>();
+  const deduped: ScenarioRunResultsLane[] = [];
+  rows.forEach((row) => {
+    const key = scenarioLaneIdentityKey(row);
+    if (seen.has(key)) return;
+    seen.add(key);
+    deduped.push({ ...row });
+  });
+  return deduped;
+};
+
 const cloneDcCapacityRows = (rows: DomoDcCapacityRow[]): DomoDcCapacityRow[] =>
   rows.map((row) => ({ ...row }));
 
@@ -139,6 +224,7 @@ const mergeScenarioStateWithRecords = (
   const configs = new Map<string, ScenarioRunConfig>();
   const resultsDC = new Map<string, ScenarioRunResultsDC[]>();
   const resultsLanes = new Map<string, ScenarioRunResultsLane[]>();
+  const freshLanesByScenarioId = new Map<string, ScenarioRunResultsLane[]>();
 
   base.headers.forEach((header) => {
     headers.set(header.ScenarioRunID, cloneScenarioHeader(header));
@@ -160,6 +246,14 @@ const mergeScenarioStateWithRecords = (
   base.resultsLanes.forEach((row) => {
     if (!resultsLanes.has(row.ScenarioRunID)) {
       resultsLanes.set(
+        row.ScenarioRunID,
+        canonicalizeScenarioResultsLanes(base.resultsLanes.filter((item) => item.ScenarioRunID === row.ScenarioRunID)),
+      );
+    }
+  });
+  base.resultsLanes.forEach((row) => {
+    if (!freshLanesByScenarioId.has(row.ScenarioRunID)) {
+      freshLanesByScenarioId.set(
         row.ScenarioRunID,
         cloneScenarioResultsLanes(base.resultsLanes.filter((item) => item.ScenarioRunID === row.ScenarioRunID)),
       );
@@ -193,7 +287,12 @@ const mergeScenarioStateWithRecords = (
     headers.set(scenarioId, hydratedHeader);
     configs.set(scenarioId, cloneScenarioConfig(record.snapshot.config));
     resultsDC.set(scenarioId, cloneScenarioResultsDC(record.snapshot.resultsDC));
-    resultsLanes.set(scenarioId, cloneScenarioResultsLanes(record.snapshot.resultsLanes));
+    resultsLanes.set(
+      scenarioId,
+      freshLanesByScenarioId.get(scenarioId)?.length
+        ? canonicalizeScenarioResultsLanes(freshLanesByScenarioId.get(scenarioId) || [])
+        : canonicalizeScenarioResultsLanes(record.snapshot.resultsLanes.map(l => ({ ...l, ScenarioRunID: scenarioId }))),
+    );
   });
 
   const overrides = [...base.overrides];
@@ -588,6 +687,7 @@ function App() {
   const [comparisonState, setComparisonState] = useState<ComparisonState>(EMPTY_COMPARISON_STATE);
   const [domoDcLoaded, setDomoDcLoaded] = useState(false);
   const [dataHealthSnapshot, setDataHealthSnapshot] = useState(() => buildDataHealthSnapshotFromRows([]));
+  const [rawScenarioLaneRows, setRawScenarioLaneRows] = useState<ScenarioRunResultsLane[]>([]);
   const [preselectedRuns, setPreselectedRuns] = useState<{ a?: string; b?: string }>({});
   const [archivedScenarioPrevStatus, setArchivedScenarioPrevStatus] = useState<Record<string, ScenarioRunHeader['Status']>>({});
   const [archivedComparisonPrevStatus, setArchivedComparisonPrevStatus] = useState<Record<string, ComparisonHeader['Status']>>({});
@@ -600,6 +700,7 @@ function App() {
   const [showNewScenario, setShowNewScenario] = useState(false);
   const [showNewComparison, setShowNewComparison] = useState(false);
   const [showDataHealth, setShowDataHealth] = useState(false);
+  const [uiBusyMessage, setUiBusyMessage] = useState<string | null>(null);
   const [runningScenarioId, setRunningScenarioId] = useState<string | null>(null);
   const [currentUserDisplayName, setCurrentUserDisplayName] = useState('You');
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -740,18 +841,36 @@ function App() {
   }, [scenarioState, datasetOptions, dcCapacityRows]);
 
   const lanesByScenarioId = useMemo<Record<string, ScenarioRunResultsLane[]>>(() => {
-    return scenarioState.resultsLanes.reduce<Record<string, ScenarioRunResultsLane[]>>((acc, lane) => {
+    return rawScenarioLaneRows.reduce<Record<string, ScenarioRunResultsLane[]>>((acc, lane) => {
       if (!acc[lane.ScenarioRunID]) {
         acc[lane.ScenarioRunID] = [];
       }
       acc[lane.ScenarioRunID].push(lane);
       return acc;
     }, {});
-  }, [scenarioState.resultsLanes]);
+  }, [rawScenarioLaneRows]);
 
   const scenarioTemplatesByRegion = useMemo<Record<'US' | 'Canada', ScenarioTemplateOption[]>>(() => {
     const isOriginalScenarioHeader = (header: ScenarioRunHeader) =>
       !String(header.CreatedBy || '').trim() || String(header.CreatedBy || '').trim() === 'NA';
+    const normalizeText = (value: unknown): string => String(value || '').trim().toLowerCase();
+    const baseUsDcs = ['Elwood', 'Dallas', 'Los Angeles', 'R Virginia'];
+    const bcvDcs = [...baseUsDcs, 'Pharr TX'];
+    const tacticalConsolidationDcs = [...baseUsDcs, 'Pharr TX', 'Stratford CT'];
+
+    const getScenarioDcScope = (scenarioType: string): string[] => {
+      const normalized = normalizeText(scenarioType);
+      if (normalized.includes('tactical consolidation') || normalized.includes('consolidation tactical')) {
+        return tacticalConsolidationDcs;
+      }
+      if (normalized.includes('consolidation strategic unconstrained')) {
+        return tacticalConsolidationDcs;
+      }
+      if (normalized.includes('bcv ingestion')) {
+        return bcvDcs;
+      }
+      return baseUsDcs;
+    };
 
     const buildTemplate = (header: ScenarioRunHeader): ScenarioTemplateOption | null => {
       if (!isOriginalScenarioHeader(header)) return null;
@@ -763,7 +882,10 @@ function App() {
         ? config.AccessorialFlags.split(',').map((flag) => flag.trim()).filter(Boolean)
         : header.Tags.split(',').map((tag) => tag.trim()).filter(Boolean);
 
-      const activeCapacityRows = dcCapacityRows.filter(isActiveDcCapacity);
+      const allowedDcScope = new Set(getScenarioDcScope(header.ScenarioType).map(normalizeText));
+      const activeCapacityRows = dcCapacityRows.filter((row) =>
+        isActiveDcCapacity(row) && allowedDcScope.has(normalizeText(row.DCName))
+      );
       const availableDcCapacity = activeCapacityRows.reduce<Record<string, number>>((acc, row) => {
         acc[row.DCName] = row.Sqft;
         return acc;
@@ -1065,9 +1187,21 @@ function App() {
         return acc;
       }, {});
 
-      const laneDatasetRows = await loadScenarioLaneDataset(laneScenarioRunIdLookup);
+      const [laneDatasetRows, bcvLaneDatasetRows, tacticalConsolidationLaneDatasetRows] = await Promise.all([
+        loadScenarioLaneDataset(laneScenarioRunIdLookup),
+        loadBcvScenarioLaneDataset(laneScenarioRunIdLookup),
+        loadTacticalConsolidationScenarioLaneDataset(laneScenarioRunIdLookup),
+      ]);
+      const combinedLaneDatasetRows = [
+        ...laneDatasetRows,
+        ...bcvLaneDatasetRows,
+        ...tacticalConsolidationLaneDatasetRows,
+      ];
       console.log('[Domo Lanes] loaded for scenarios', {
-        laneRows: laneDatasetRows.length,
+        baselineLaneRows: laneDatasetRows.length,
+        bcvLaneRows: bcvLaneDatasetRows.length,
+        tacticalConsolidationLaneRows: tacticalConsolidationLaneDatasetRows.length,
+        combinedLaneRows: combinedLaneDatasetRows.length,
       });
 
       const dataflowSortValue = (value?: string) => {
@@ -1079,19 +1213,44 @@ function App() {
         if (byDataflow !== 0) return byDataflow;
         return a.header.RunName.localeCompare(b.header.RunName);
       });
+      const uniqueScenarioPayloads = (() => {
+        const seen = new Set<string>();
+        return sortedScenarioPayloads.filter((payload) => {
+          const scenarioId = String(payload.header.ScenarioRunID || '').trim();
+          if (!scenarioId) return false;
+          if (seen.has(scenarioId)) return false;
+          seen.add(scenarioId);
+          return true;
+        });
+      })();
+      if (uniqueScenarioPayloads.length !== sortedScenarioPayloads.length) {
+        console.warn('[Scenario State] deduped duplicate scenario payloads', {
+          before: sortedScenarioPayloads.length,
+          after: uniqueScenarioPayloads.length,
+        });
+      }
 
       setDatasetOptions(buildDatasetOptionSets(allRows));
       setDataHealthSnapshot(buildDataHealthSnapshotFromRows(allRows));
-      const safeLoadedLanes = Array.isArray(laneDatasetRows) ? laneDatasetRows : [];
+      const safeLoadedLanes = Array.isArray(combinedLaneDatasetRows) ? combinedLaneDatasetRows : [];
+      setRawScenarioLaneRows(safeLoadedLanes);
       const baseScenarioState: ScenarioState = {
-        headers: sortedScenarioPayloads.map((p) => p.header),
+        headers: uniqueScenarioPayloads.map((p) => p.header),
         configs: [],
-        resultsDC: sortedScenarioPayloads.flatMap((p) => p.dcResults),
-        resultsLanes: sortedScenarioPayloads.flatMap((p) =>
+        resultsDC: uniqueScenarioPayloads.flatMap((p) => p.dcResults),
+        resultsLanes: uniqueScenarioPayloads.flatMap((p) =>
           safeLoadedLanes.filter((lane) => lane.ScenarioRunID === p.header.ScenarioRunID)
         ),
         overrides: [],
       };
+      const freshLanesByScenarioId = safeLoadedLanes.reduce<Map<string, ScenarioRunResultsLane[]>>((acc, lane) => {
+        const scenarioId = String(lane.ScenarioRunID || '').trim();
+        if (!scenarioId) return acc;
+        const list = acc.get(scenarioId) || [];
+        list.push({ ...lane });
+        acc.set(scenarioId, list);
+        return acc;
+      }, new Map<string, ScenarioRunResultsLane[]>());
       const persistedBeforeSeed = listScenarioRecords();
       console.log('[Scenario State] source=localStorage', {
         records: persistedBeforeSeed.length,
@@ -1150,7 +1309,41 @@ function App() {
         seededFromDomo,
         scenarioPersistenceSource: scenarioPersistenceSourceRef.current,
       });
-      const mergedState = mergeScenarioStateWithRecords(baseScenarioState, persistedRecords);
+      const repairedRecords: ScenarioRepositoryRecord[] = [];
+      const repairedRecordIds = new Set<string>();
+      persistedRecords.forEach((record) => {
+        const freshLanes = freshLanesByScenarioId.get(record.definition.scenarioId) || [];
+        if (freshLanes.length > 0 && record.snapshot) {
+          const nextSnapshot = {
+            ...record.snapshot,
+            resultsLanes: canonicalizeScenarioResultsLanes(freshLanes),
+            updatedAt: new Date().toISOString(),
+          };
+          const nextRecord: ScenarioRepositoryRecord = {
+            ...record,
+            snapshot: nextSnapshot,
+          };
+          repairedRecords.push(nextRecord);
+          repairedRecordIds.add(record.definition.scenarioId);
+        } else {
+          repairedRecords.push(record);
+        }
+      });
+      const scenarioRepairUpdates = repairedRecords.filter((record) => repairedRecordIds.has(record.definition.scenarioId));
+      if (scenarioRepairUpdates.length > 0) {
+        await Promise.all(scenarioRepairUpdates.map((record) => persistScenarioRecordToPrimaryStore(record)));
+      }
+      persistedRecords = repairedRecords;
+      setScenarioRepositoryCache(repairedRecords, scenarioPersistenceSourceRef.current);
+
+      const mergedState = mergeScenarioStateWithRecords(baseScenarioState, repairedRecords);
+      const debugZip = '427';
+      const uiZipRows = mergedState.resultsLanes.filter((lane) => String(lane.Dest3Zip || '').trim() === debugZip);
+      if (uiZipRows.length > 0) {
+        console.groupCollapsed(`[Scenario UI Debug] zip=${debugZip}`);
+        console.log('ui', uiZipRows);
+        console.groupEnd();
+      }
       const persistedScenarioIds = new Set(persistedRecords.map((r) => r.definition.scenarioId));
       console.groupCollapsed(`[Scenario Sources] ${mergedState.headers.length} scenarios after merge`);
       console.table(
@@ -1391,60 +1584,151 @@ function App() {
   }, []);
 
   const handleScenarioComplete = async (payload: NewScenarioSubmit) => {
+    setUiBusyMessage('Creating scenario...');
     const selectedTemplate = scenarioTemplatesByRegion[payload.input.region]?.find(
       (template) => template.scenarioId === payload.input.baselineScenarioId,
     ) || null;
-    if (!payload.input.baselineDataflowId) {
-      pushToast('Select a baseline scenario with a valid dataflow before creating a new scenario.', 'error');
-      pushNotification({
-        kind: 'error',
-        title: 'Scenario creation blocked',
-        message: 'The selected baseline scenario does not have a valid dataflow mapping.',
-        entity: { type: 'scenario', id: payload.input.baselineScenarioId || 'unknown' },
-      });
-      return;
-    }
-
-    const buildContext: ScenarioBuildContext = {
-      scenarioHeaders: scenarioState.headers,
-      scenarioResultsDC: scenarioState.resultsDC,
-      scenarioResultsLanes: scenarioState.resultsLanes,
-      laneRowsByScenarioId: lanesByScenarioId,
-      dcCapacityRows,
-      currentUserDisplayName,
-      dataSnapshotVersion: dataHealthSnapshot?.SnapshotTime || 'NA',
-      hasCostVsServiceWeights: selectedTemplate
-        ? selectedTemplate.costVsService > 0
-        : datasetOptions.costVsServiceWeights.length > 0,
-      hasUtilCaps: selectedTemplate
-        ? selectedTemplate.utilCap > 0
-        : datasetOptions.utilCaps.length > 0,
-      hasLeadTimeCaps: selectedTemplate
-        ? selectedTemplate.leadTimeCap > 0
-        : datasetOptions.leadTimeCaps.length > 0,
-    };
-    let artifact = buildScenarioArtifactsLegacy(payload, buildContext);
     try {
-      artifact = await buildScenarioArtifactsWithLogic(payload, buildContext);
-    } catch (error) {
-      console.warn('[Scenario Engine] Falling back to legacy builder for new scenario creation.', error);
-      artifact = buildScenarioArtifactsLegacy(payload, buildContext);
+      if (!payload.input.baselineDataflowId) {
+        pushToast('Select a baseline scenario with a valid dataflow before creating a new scenario.', 'error');
+        pushNotification({
+          kind: 'error',
+          title: 'Scenario creation blocked',
+          message: 'The selected baseline scenario does not have a valid dataflow mapping.',
+          entity: { type: 'scenario', id: payload.input.baselineScenarioId || 'unknown' },
+        });
+        return;
+      }
+
+      const normalizeText = (value: unknown): string => String(value || '').trim().toLowerCase();
+      const familyPolicy = resolveScenarioTypePolicy(payload.input.scenarioType);
+      const familyKey = familyPolicy.familyKey;
+      const familyDcs = getScenarioTypeAllowedDcs(payload.input.scenarioType);
+      const familyDcSet = new Set(familyDcs.map(normalizeText));
+      const normalizedActiveDcs = familyDcs;
+      const normalizedSuppressedDcs = Array.from(
+        new Set(payload.input.suppressedDCs.filter((dc) => familyDcSet.has(normalizeText(dc)))),
+      );
+      const scopedDcCapacityRows = dcCapacityRows.filter((row) => familyDcSet.has(normalizeText(row.DCName)));
+      const scopedLaneRowsByScenarioId = Object.entries(lanesByScenarioId).reduce<Record<string, ScenarioRunResultsLane[]>>((acc, [scenarioId, rows]) => {
+        const filteredRows = rows.filter((row) => resolveScenarioFamilyKey(row.ScenarioType) === familyKey);
+        if (filteredRows.length > 0) {
+          acc[scenarioId] = filteredRows;
+        }
+        return acc;
+      }, {});
+
+      if (DEBUG_DOMO_MAPPING) {
+        console.groupCollapsed('[Scenario Build] family routing');
+        console.table([
+          {
+            ScenarioType: payload.input.scenarioType,
+            FamilyKey: familyKey,
+            AllowedDcCount: familyDcs.length,
+            AllowedDcs: familyDcs.join(', '),
+            LaneBucketCount: Object.keys(scopedLaneRowsByScenarioId).length,
+            LaneRowCount: Object.values(scopedLaneRowsByScenarioId).reduce((sum, rows) => sum + rows.length, 0),
+            CapacityRowCount: scopedDcCapacityRows.length,
+          },
+        ]);
+        console.table(
+          Object.entries(scopedLaneRowsByScenarioId).map(([scenarioId, rows]) => ({
+            ScenarioRunID: scenarioId,
+            LaneCount: rows.length,
+          }))
+        );
+        console.groupEnd();
+      }
+
+      const buildContext: ScenarioBuildContext = {
+        scenarioHeaders: scenarioState.headers,
+        scenarioResultsDC: scenarioState.resultsDC,
+        scenarioResultsLanes: scenarioState.resultsLanes,
+        laneRowsByScenarioId: scopedLaneRowsByScenarioId,
+        dcCapacityRows: scopedDcCapacityRows,
+        scenarioTypePolicy: familyPolicy,
+        currentUserDisplayName,
+        dataSnapshotVersion: dataHealthSnapshot?.SnapshotTime || 'NA',
+        hasCostVsServiceWeights: selectedTemplate
+          ? selectedTemplate.costVsService > 0
+          : datasetOptions.costVsServiceWeights.length > 0,
+        hasUtilCaps: selectedTemplate
+          ? selectedTemplate.utilCap > 0
+          : datasetOptions.utilCaps.length > 0,
+        hasLeadTimeCaps: selectedTemplate
+          ? selectedTemplate.leadTimeCap > 0
+          : datasetOptions.leadTimeCaps.length > 0,
+      };
+
+      if (DEBUG_DOMO_MAPPING) {
+        console.groupCollapsed('[Scenario Build] raw lane counts');
+        console.table(
+          Object.entries(lanesByScenarioId).map(([scenarioId, rows]) => ({
+            ScenarioRunID: scenarioId,
+            RawLaneCount: rows.length,
+          }))
+        );
+        console.groupEnd();
+      }
+
+      let artifact = buildScenarioArtifactsLegacy(payload, buildContext);
+      try {
+        artifact = await buildScenarioArtifactsWithLogic(
+          {
+            ...payload,
+            input: {
+              ...payload.input,
+              activeDCs: normalizedActiveDcs,
+              suppressedDCs: normalizedSuppressedDcs,
+            },
+          },
+          buildContext,
+        );
+      } catch (error) {
+        console.warn('[Scenario Engine] Falling back to legacy builder for new scenario creation.', error);
+        artifact = buildScenarioArtifactsLegacy(
+          {
+            ...payload,
+            input: {
+              ...payload.input,
+              activeDCs: normalizedActiveDcs,
+              suppressedDCs: normalizedSuppressedDcs,
+            },
+          },
+          buildContext,
+        );
+      }
+      const repositoryRecord = buildScenarioRepositoryRecord(
+        {
+          ...payload,
+          input: {
+            ...payload.input,
+            activeDCs: normalizedActiveDcs,
+            suppressedDCs: normalizedSuppressedDcs,
+          },
+        },
+        buildContext,
+        artifact,
+      );
+      try {
+        await persistScenarioRecordToPrimaryStore(repositoryRecord);
+      } catch (error) {
+        console.warn('[Scenario AppDB] Failed to persist new scenario', error);
+      }
+      const { header, config, resultsDC, resultsLanes } = artifact;
+
+      setScenarioState((prev) => ({
+        headers: [header, ...prev.headers],
+        configs: [config, ...prev.configs],
+        resultsDC: [...resultsDC, ...prev.resultsDC],
+        resultsLanes: [...resultsLanes, ...prev.resultsLanes],
+        overrides: [...prev.overrides],
+      }));
+
+      navigateToHome();
+    } finally {
+      setUiBusyMessage(null);
     }
-    const repositoryRecord = buildScenarioRepositoryRecord(payload, buildContext, artifact);
-    void persistScenarioRecordToPrimaryStore(repositoryRecord).catch((error) => {
-      console.warn('[Scenario AppDB] Failed to persist new scenario', error);
-    });
-    const { header, config, resultsDC, resultsLanes } = artifact;
-
-    setScenarioState((prev) => ({
-      headers: [header, ...prev.headers],
-      configs: [config, ...prev.configs],
-      resultsDC: [...resultsDC, ...prev.resultsDC],
-      resultsLanes: [...resultsLanes, ...prev.resultsLanes],
-      overrides: [...prev.overrides],
-    }));
-
-    navigateToHome();
   };
 
   const persistHeaderToRepository = useCallback((
@@ -1769,39 +2053,45 @@ function App() {
       return;
     }
 
-    const deleted = await deleteScenarioRecordFromPrimaryStore(scenarioId);
-    if (!deleted) {
-      pushToast('Scenario could not be deleted.', 'error');
-      return;
-    }
+    setUiBusyMessage('Deleting scenario...');
+    try {
+      const deleted = await deleteScenarioRecordFromPrimaryStore(scenarioId);
+      if (!deleted) {
+        pushToast('Scenario could not be deleted.', 'error');
+        return;
+      }
 
-    setScenarioState((prev) => ({
-      headers: prev.headers.filter((s) => s.ScenarioRunID !== scenarioId),
-      configs: prev.configs.filter((c) => c.ScenarioRunID !== scenarioId),
-      resultsDC: prev.resultsDC.filter((r) => r.ScenarioRunID !== scenarioId),
-      resultsLanes: prev.resultsLanes.filter((r) => r.ScenarioRunID !== scenarioId),
-      overrides: prev.overrides.filter((o) => o.ScenarioRunID !== scenarioId),
-    }));
-    setScenarioHistoryState((prev) => {
-      const next = { ...prev };
-      delete next[scenarioId];
-      return next;
-    });
-    setArchivedScenarioPrevStatus((prev) => {
-      const next = { ...prev };
-      delete next[scenarioId];
-      return next;
-    });
-    if (appState.selectedScenarioId === scenarioId) {
-      navigateToHome();
+      setScenarioState((prev) => ({
+        headers: prev.headers.filter((s) => s.ScenarioRunID !== scenarioId),
+        configs: prev.configs.filter((c) => c.ScenarioRunID !== scenarioId),
+        resultsDC: prev.resultsDC.filter((r) => r.ScenarioRunID !== scenarioId),
+        resultsLanes: prev.resultsLanes.filter((r) => r.ScenarioRunID !== scenarioId),
+        overrides: prev.overrides.filter((o) => o.ScenarioRunID !== scenarioId),
+      }));
+      setScenarioHistoryState((prev) => {
+        const next = { ...prev };
+        delete next[scenarioId];
+        return next;
+      });
+      setArchivedScenarioPrevStatus((prev) => {
+        const next = { ...prev };
+        delete next[scenarioId];
+        return next;
+      });
+      if (appState.selectedScenarioId === scenarioId) {
+        navigateToHome();
+      }
+      pushToast(`Deleted ${target.RunName}.`, 'success');
+    } finally {
+      setUiBusyMessage(null);
     }
-    pushToast(`Deleted ${target.RunName}.`, 'success');
   };
 
   const deleteComparison = async (comparisonId: string) => {
     const target = comparisonState.headers.find((c) => c.ComparisonID === comparisonId);
     if (!target) return;
 
+    setUiBusyMessage('Deleting comparison...');
     try {
       const deletedCount = await deleteCollectionDocumentsByField(
         APPDB_COLLECTIONS.comparisons,
@@ -1833,6 +2123,8 @@ function App() {
     } catch (error) {
       console.warn('Failed to delete comparison from AppDB', error);
       pushToast('Comparison could not be deleted.', 'error');
+    } finally {
+      setUiBusyMessage(null);
     }
   };
 
@@ -2669,6 +2961,7 @@ function App() {
       pushToast(`Failed to trigger ETL for ${scenario.RunName || scenarioId}. Dataflow ${dataflowId}. ${message}`, 'error');
     }
   };
+  const blockingMessage = uiBusyMessage || (!domoDcLoaded ? 'Loading scenario data...' : '');
   const renderPage = () => {
     switch (appState.currentPage) {
       case 'home':
@@ -2761,6 +3054,18 @@ function App() {
   return (
     <>
       {renderPage()}
+
+      {blockingMessage ? (
+        <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-slate-950/45 backdrop-blur-sm">
+          <div className="flex min-w-[18rem] flex-col items-center gap-3 rounded-2xl border border-white/10 bg-white px-6 py-5 shadow-2xl">
+            <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-blue-600" />
+            <div className="text-center">
+              <div className="text-sm font-semibold text-slate-900">{blockingMessage}</div>
+              <div className="mt-1 text-xs text-slate-500">Please wait, this may take few seconds.</div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
         <NewScenarioWizard
           isOpen={showNewScenario}

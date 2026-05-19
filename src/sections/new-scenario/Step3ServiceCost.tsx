@@ -14,6 +14,14 @@ export const Step3ServiceCost: React.FC<Step3ServiceCostProps> = ({
   onFormDataChange,
   datasetOptions,
 }) => {
+  const isServiceFocused = Number(formData.costVsService || 0) >= 50;
+  const setCostVsServicePreset = (preset: 'cost' | 'service') => {
+    onFormDataChange({
+      ...formData,
+      costVsService: preset === 'service' ? 100 : 0,
+    });
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -73,23 +81,40 @@ export const Step3ServiceCost: React.FC<Step3ServiceCostProps> = ({
           <label className="text-sm font-medium text-slate-700">
             Cost vs Service Priority
           </label>
-          <Tooltip content="0 = Minimize cost only. 100 = Prioritize service (speed) over cost. 50 = Balanced approach." />
+          <Tooltip content="Toggle between cost focus and service focus. The scenario math still uses the underlying 0-100 value." />
         </div>
-        <input
-          type="range"
-          min="0"
-          max="100"
-          value={formData.costVsService}
-          onChange={(e) => onFormDataChange({ ...formData, costVsService: Number(e.target.value) })}
-          className="w-full"
-          disabled={datasetOptions.costVsServiceWeights.length === 0}
-        />
-        <div className="flex justify-between text-xs text-slate-500">
-          <span>Minimize Cost (0)</span>
+        <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1 shadow-sm">
+          <button
+            type="button"
+            className={`rounded-md px-4 py-2 text-sm font-medium transition ${
+              !isServiceFocused
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+            onClick={() => setCostVsServicePreset('cost')}
+            disabled={datasetOptions.costVsServiceWeights.length === 0}
+          >
+            Cost
+          </button>
+          <button
+            type="button"
+            className={`rounded-md px-4 py-2 text-sm font-medium transition ${
+              isServiceFocused
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+            onClick={() => setCostVsServicePreset('service')}
+            disabled={datasetOptions.costVsServiceWeights.length === 0}
+          >
+            Service
+          </button>
+        </div>
+        <div className="flex justify-between text-xs text-slate-500 mt-2">
+          <span>Cost focus</span>
           <span className="font-medium text-slate-700">
-            {datasetOptions.costVsServiceWeights.length === 0 ? 'NA' : formData.costVsService}
+            {datasetOptions.costVsServiceWeights.length === 0 ? 'NA' : (isServiceFocused ? 'Service' : 'Cost')}
           </span>
-          <span>Prioritize Service (100)</span>
+          <span>Service focus</span>
         </div>
         {datasetOptions.costVsServiceWeights.length === 0 && (
           <p className="text-xs text-slate-500 mt-1">No cost vs service data available.</p>
