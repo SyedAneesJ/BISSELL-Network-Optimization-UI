@@ -10,11 +10,14 @@ export type ScenarioAllocationPreset =
 
 export interface ScenarioTypePolicy {
   scenarioType: string;
+  baseScenarioType: string;
+  outputScenarioType: string;
   familyKey: ScenarioFamilyKey;
   familyLabel: string;
   aliases: string[];
   allowedDcs: string[];
   allocationMode: ScenarioAllocationPreset;
+  collectTreatmentLabel: string;
   defaults: {
     footprintMode: string;
     utilCap: number;
@@ -73,17 +76,20 @@ const scenarioTypeMatchesAlias = (scenarioType: string, aliases: string[]): bool
 const scenarioTypeRules: ScenarioTypePolicy[] = [
   {
     scenarioType: 'US Baseline',
+    baseScenarioType: 'US Baseline',
+    outputScenarioType: 'US Baseline',
     familyKey: 'base-us',
     familyLabel: 'Base US Family',
     aliases: ['baseline', 'us baseline'],
     allowedDcs: BASE_US_DCS,
     allocationMode: 'baseline',
+    collectTreatmentLabel: 'NA',
     defaults: {
       footprintMode: 'NA',
       utilCap: 100,
       levelLoad: false,
       allowRelocationPrepaid: true,
-      allowRelocationCollect: true,
+      allowRelocationCollect: false,
       bcvRuleSet: 'NA',
       allowManualOverride: false,
     },
@@ -112,12 +118,15 @@ const scenarioTypeRules: ScenarioTypePolicy[] = [
     helpText: ['Baseline parity: all 4 base DCs stay active and util cap is fixed at 100%.'],
   },
   {
-    scenarioType: 'Tactical Pro Forma',
+    scenarioType: 'Tactical Pro Forma (Collect Relocatable)',
+    baseScenarioType: 'Tactical Pro Forma',
+    outputScenarioType: 'Tactical Pro Forma',
     familyKey: 'base-us',
     familyLabel: 'Base US Family',
-    aliases: ['tactical pro forma'],
+    aliases: ['tactical pro forma collect relocatable', 'tactical pro forma collect relo', 'tactical collect relo'],
     allowedDcs: BASE_US_DCS,
     allocationMode: 'constrained',
+    collectTreatmentLabel: 'Collect Relocatable',
     defaults: {
       footprintMode: 'Fixed',
       utilCap: 80,
@@ -133,8 +142,51 @@ const scenarioTypeRules: ScenarioTypePolicy[] = [
       footprintMode: true,
       utilCap: false,
       levelLoad: false,
-      allowRelocationPrepaid: false,
+      allowRelocationPrepaid: true,
+      allowRelocationCollect: true,
+      bcvRuleSet: true,
+      allowManualOverride: true,
+    },
+    supports: {
+      dcSuppression: true,
+      footprintMode: true,
+      utilCap: true,
+      levelLoad: true,
+      relocationPrepaid: true,
+      relocationCollect: true,
+      bcvMapping: false,
+      overrides: false,
+    },
+    sortOrder: 2.5,
+    helpText: ['Collect-relocatable tactical pro forma lets both prepaid and collect lanes be reassigned while keeping fixed footprint.'],
+  },
+  {
+    scenarioType: 'Tactical Pro Forma',
+    baseScenarioType: 'Tactical Pro Forma',
+    outputScenarioType: 'Tactical Pro Forma',
+    familyKey: 'base-us',
+    familyLabel: 'Base US Family',
+    aliases: ['tactical pro forma'],
+    allowedDcs: BASE_US_DCS,
+    allocationMode: 'constrained',
+    collectTreatmentLabel: 'Fixed',
+    defaults: {
+      footprintMode: 'Fixed',
+      utilCap: 80,
+      levelLoad: true,
+      allowRelocationPrepaid: true,
       allowRelocationCollect: false,
+      bcvRuleSet: 'NA',
+      allowManualOverride: false,
+    },
+    locks: {
+      activeDcs: false,
+      suppressedDcs: false,
+      footprintMode: true,
+      utilCap: false,
+      levelLoad: false,
+      allowRelocationPrepaid: false,
+      allowRelocationCollect: true,
       bcvRuleSet: true,
       allowManualOverride: true,
     },
@@ -149,15 +201,18 @@ const scenarioTypeRules: ScenarioTypePolicy[] = [
       overrides: false,
     },
     sortOrder: 2,
-    helpText: ['Tactical Pro Forma uses fixed footprint, allows DC suppression, and supports util cap editing.'],
+    helpText: ['Tactical Pro Forma uses fixed footprint, allows DC suppression, and keeps collect lanes fixed by default.'],
   },
   {
-    scenarioType: 'Strategic Pro Forma',
+    scenarioType: 'Strategic Pro Forma (Collect Relocatable)',
+    baseScenarioType: 'Strategic Pro Forma',
+    outputScenarioType: 'Strategic Pro Forma',
     familyKey: 'base-us',
     familyLabel: 'Base US Family',
-    aliases: ['strategic pro forma'],
+    aliases: ['strategic pro forma collect relocatable', 'strategic pro forma collect relo', 'strategic collect relo'],
     allowedDcs: BASE_US_DCS,
     allocationMode: 'overload',
+    collectTreatmentLabel: 'Collect Relocatable',
     defaults: {
       footprintMode: 'Unconstrained',
       utilCap: 100,
@@ -173,8 +228,51 @@ const scenarioTypeRules: ScenarioTypePolicy[] = [
       footprintMode: true,
       utilCap: true,
       levelLoad: true,
-      allowRelocationPrepaid: false,
+      allowRelocationPrepaid: true,
+      allowRelocationCollect: true,
+      bcvRuleSet: true,
+      allowManualOverride: true,
+    },
+    supports: {
+      dcSuppression: true,
+      footprintMode: true,
+      utilCap: true,
+      levelLoad: true,
+      relocationPrepaid: true,
+      relocationCollect: true,
+      bcvMapping: false,
+      overrides: false,
+    },
+    sortOrder: 3.5,
+    helpText: ['Collect-relocatable strategic pro forma lets both prepaid and collect lanes be reassigned with unconstrained footprint.'],
+  },
+  {
+    scenarioType: 'Strategic Pro Forma',
+    baseScenarioType: 'Strategic Pro Forma',
+    outputScenarioType: 'Strategic Pro Forma',
+    familyKey: 'base-us',
+    familyLabel: 'Base US Family',
+    aliases: ['strategic pro forma'],
+    allowedDcs: BASE_US_DCS,
+    allocationMode: 'overload',
+    collectTreatmentLabel: 'Fixed',
+    defaults: {
+      footprintMode: 'Unconstrained',
+      utilCap: 100,
+      levelLoad: false,
+      allowRelocationPrepaid: true,
       allowRelocationCollect: false,
+      bcvRuleSet: 'NA',
+      allowManualOverride: false,
+    },
+    locks: {
+      activeDcs: false,
+      suppressedDcs: false,
+      footprintMode: true,
+      utilCap: true,
+      levelLoad: true,
+      allowRelocationPrepaid: false,
+      allowRelocationCollect: true,
       bcvRuleSet: true,
       allowManualOverride: true,
     },
@@ -193,11 +291,14 @@ const scenarioTypeRules: ScenarioTypePolicy[] = [
   },
   {
     scenarioType: 'BCV Ingestion Only',
+    baseScenarioType: 'BCV Ingestion Only',
+    outputScenarioType: 'BCV Ingestion Only',
     familyKey: 'bcv-family',
     familyLabel: 'BCV Family',
     aliases: ['bcv ingestion', 'bcv ingestion only', 'bcv ingestion only collect relo', 'bcv - collect relo', 'bcv collect relo'],
     allowedDcs: BCV_DCS,
     allocationMode: 'unconstrained',
+    collectTreatmentLabel: 'Fixed',
     defaults: {
       footprintMode: 'Unconstrained',
       utilCap: 100,
@@ -233,11 +334,14 @@ const scenarioTypeRules: ScenarioTypePolicy[] = [
   },
   {
     scenarioType: 'Consolidation Tactical',
+    baseScenarioType: 'Consolidation Tactical',
+    outputScenarioType: 'Consolidation Tactical',
     familyKey: 'consolidation-family',
     familyLabel: 'Consolidation Family',
     aliases: ['tactical consolidation', 'consolidation tactical', 'consolidation tactical relo'],
     allowedDcs: CONSOLIDATION_DCS,
     allocationMode: 'tacticalConsolidation',
+    collectTreatmentLabel: 'Fixed',
     defaults: {
       footprintMode: 'Fixed',
       utilCap: 80,
@@ -273,11 +377,14 @@ const scenarioTypeRules: ScenarioTypePolicy[] = [
   },
   {
     scenarioType: 'Consolidation Strategic Unconstrained',
+    baseScenarioType: 'Consolidation Strategic Unconstrained',
+    outputScenarioType: 'Consolidation Strategic Unconstrained',
     familyKey: 'consolidation-family',
     familyLabel: 'Consolidation Family',
     aliases: ['consolidation strategic unconstrained', 'strategic consolidation', 'consolidation strategic relo', 'consolidation strategic unconstrained relo'],
     allowedDcs: CONSOLIDATION_DCS,
     allocationMode: 'overload',
+    collectTreatmentLabel: 'Fixed',
     defaults: {
       footprintMode: 'Unconstrained',
       utilCap: 100,
@@ -344,7 +451,9 @@ export const getScenarioTypeAllowedDcs = (scenarioType: unknown): string[] =>
 export const getScenarioTypeSortRank = (scenarioType: unknown): number => {
   const normalized = normalizeScenarioType(scenarioType);
   if (normalized.includes('baseline')) return 1;
+  if (normalized.includes('tactical pro forma') && normalized.includes('collect') && normalized.includes('relo')) return 2.5;
   if (normalized.includes('tactical pro forma')) return 2;
+  if (normalized.includes('strategic pro forma') && normalized.includes('collect') && normalized.includes('relo')) return 3.5;
   if (normalized.includes('strategic pro forma')) return 3;
   if (normalized.includes('bcv ingestion') && normalized.includes('collect') && normalized.includes('relo')) return 9;
   if (normalized.includes('bcv ingestion')) return 4;
@@ -444,16 +553,24 @@ export const normalizeScenarioTypeSpecificInput = <T extends {
       ? policy.defaults.levelLoad
       : normalizeBoolean(input.levelLoad, policy.defaults.levelLoad),
     allowRelocationPrepaid: policy.supports.relocationPrepaid
-      ? normalizeBoolean(input.allowRelocationPrepaid, policy.defaults.allowRelocationPrepaid)
+      ? (policy.locks.allowRelocationPrepaid
+        ? policy.defaults.allowRelocationPrepaid
+        : normalizeBoolean(input.allowRelocationPrepaid, policy.defaults.allowRelocationPrepaid))
       : false,
     allowRelocationCollect: policy.supports.relocationCollect
-      ? normalizeBoolean(input.allowRelocationCollect, policy.defaults.allowRelocationCollect)
+      ? (policy.locks.allowRelocationCollect
+        ? policy.defaults.allowRelocationCollect
+        : normalizeBoolean(input.allowRelocationCollect, policy.defaults.allowRelocationCollect))
       : false,
     bcvRuleSet: policy.supports.bcvMapping
-      ? normalizeString(input.bcvRuleSet, policy.defaults.bcvRuleSet)
+      ? (policy.locks.bcvRuleSet
+        ? policy.defaults.bcvRuleSet
+        : normalizeString(input.bcvRuleSet, policy.defaults.bcvRuleSet))
       : policy.defaults.bcvRuleSet,
     allowManualOverride: policy.supports.overrides
-      ? normalizeBoolean(input.allowManualOverride, policy.defaults.allowManualOverride)
+      ? (policy.locks.allowManualOverride
+        ? policy.defaults.allowManualOverride
+        : normalizeBoolean(input.allowManualOverride, policy.defaults.allowManualOverride))
       : false,
   } as T;
 };

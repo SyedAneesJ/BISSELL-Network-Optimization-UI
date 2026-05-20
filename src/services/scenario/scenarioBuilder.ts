@@ -92,7 +92,7 @@ const getScenarioMode = (
 };
 
 const isBaselineScenarioType = (scenarioType: string): boolean =>
-  String(scenarioType || '').trim().toLowerCase() === 'baseline';
+  resolveScenarioTypePolicy(scenarioType).allocationMode === 'baseline';
 
 const getExactBaselineHeader = (
   scenarioHeaders: ScenarioRunHeader[],
@@ -146,7 +146,11 @@ const getLaneSourceBaselineHeader = (
   scenarioType: string,
   baselineScenarioId?: string | null,
 ) => {
-  // Always prefer the user's explicit baselineScenarioId regardless of scenario type.
+  if (resolveScenarioTypePolicy(scenarioType).allocationMode === 'baseline') {
+    const exact = getExactBaselineHeader(scenarioHeaders, region);
+    if (exact) return exact;
+  }
+  // Prefer the user's explicit baselineScenarioId for non-baseline scenarios.
   // Only fall back to generic region lookup when no explicit ID is provided.
   return getBaselineHeader(scenarioHeaders, region, baselineScenarioId);
 };
@@ -159,6 +163,7 @@ const buildScenarioHeader = (
   scenarioId: string,
 ): ScenarioRunHeader => {
   const now = new Date().toISOString();
+  const policy = resolveScenarioTypePolicy(payload.input.scenarioType);
   const baseline = getBaselineHeader(context.scenarioHeaders, payload.input.region, payload.input.baselineScenarioId);
 
   const costShift = context.hasCostVsServiceWeights ? (payload.input.costVsService - 50) / 500 : 0;
@@ -190,7 +195,7 @@ const buildScenarioHeader = (
     Region: payload.input.region,
     BaselineScenarioId: payload.input.baselineScenarioId || null,
     DataflowID: baseline?.DataflowID ?? payload.input.baselineDataflowId,
-    ScenarioType: (payload.input.scenarioType || baseline?.ScenarioType || 'Baseline') as ScenarioRunHeader['ScenarioType'],
+    ScenarioType: (policy.outputScenarioType || payload.input.scenarioType || baseline?.ScenarioType || 'Baseline') as ScenarioRunHeader['ScenarioType'],
     EntityScope: payload.input.entityScope,
     ChannelScope: payload.input.channelScope.length > 0 ? payload.input.channelScope.join(',') : 'NA',
     TermsScope: (payload.input.termsScope || 'Collect+Prepaid') as ScenarioRunHeader['TermsScope'],
@@ -222,7 +227,7 @@ const buildScenarioHeader = (
     FootprintMode: payload.input.footprintMode || baseline?.FootprintMode || 'NA',
     LevelLoad: payload.input.levelLoad ? 'On' : (baseline?.LevelLoad || 'NA'),
     UtilizationCap: payload.input.utilCap || baseline?.UtilizationCap || 'NA',
-    CollectTreatment: baseline?.CollectTreatment || 'NA',
+    CollectTreatment: policy.collectTreatmentLabel || baseline?.CollectTreatment || 'NA',
     OverrideCount: 0,
     LaneCount: baseline ? baseline.LaneCount : 0,
     ChangedLaneCountVsBaseline: payload.action === 'draft' ? 0 : baseline ? Math.round(baseline.ChangedLaneCountVsBaseline * (1 + costShift)) : 0,
@@ -236,11 +241,12 @@ const buildScenarioDefinition = (
 ): ScenarioDefinition => {
   const now = getNowIso();
   const normalizedInput = normalizeScenarioTypeSpecificInput(payload.input);
+  const policy = resolveScenarioTypePolicy(normalizedInput.scenarioType);
   return {
     scenarioId: artifact.header.ScenarioRunID,
     scenarioName: artifact.header.RunName,
     region: normalizedInput.region,
-    scenarioType: normalizedInput.scenarioType || artifact.header.ScenarioType,
+    scenarioType: policy.outputScenarioType || normalizedInput.scenarioType || artifact.header.ScenarioType,
     baselineScenarioId: artifact.baselineScenarioId,
     dataflowId: artifact.baselineDataflowId || artifact.header.DataflowID || '',
     selectedDcs: [...normalizedInput.activeDCs],
@@ -627,6 +633,8 @@ export const buildScenarioArtifacts = (
       suppressedDcs: normalizedPayload.input.suppressedDCs,
       dcCapacityRows: context.dcCapacityRows,
       utilCap: normalizedPayload.input.utilCap,
+      allowRelocationPrepaid: normalizedPayload.input.allowRelocationPrepaid,
+      allowRelocationCollect: normalizedPayload.input.allowRelocationCollect,
     });
     resultsDC = allocation.resultsDC;
     resultsLanes = allocation.resultsLanes;
@@ -744,6 +752,12 @@ const buildLegacyScenarioConfig = (
 ): ScenarioRunConfig => {
   const activeDcs = Array.from(new Set(resultsDC.filter((row) => row.IsSuppressed !== 'Y').map((row) => row.DCName))).filter(Boolean);
   const suppressedDcs = Array.from(new Set(resultsDC.filter((row) => row.IsSuppressed === 'Y').map((row) => row.DCName))).filter(Boolean);
+  const collectTreatment = String(header.CollectTreatment || '').trim().toLowerCase();
+  const allowRelocationCollect = collectTreatment.includes('relocatable')
+    ? 'Y'
+    : collectTreatment === 'na'
+      ? 'Y'
+      : 'N';
 
   return {
     ScenarioRunID: header.ScenarioRunID,
@@ -755,7 +769,7 @@ const buildLegacyScenarioConfig = (
     LeadTimeCapDays: null,
     CostVsServiceWeight: 50,
     AllowRelocationPrepaid: 'Y',
-    AllowRelocationCollect: 'Y',
+    AllowRelocationCollect: allowRelocationCollect,
     BCVRuleSet: 'Default',
     FuelSurchargeMode: 'FromRates',
     FuelSurchargeOverridePct: null,

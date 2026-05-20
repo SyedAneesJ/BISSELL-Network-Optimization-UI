@@ -53,7 +53,7 @@ const emptyDatasetOptions: DatasetOptionSets = {
 };
 
 const templateToDatasetOptions = (template?: ScenarioTemplateOption | null): DatasetOptionSets =>
-  template
+    template
     ? {
         scenarioTypes: [template.scenarioType],
         channelScopes: template.channelScopes,
@@ -82,7 +82,7 @@ const templateToFormData = (
   const policy = resolveScenarioTypePolicy(template?.scenarioType || '');
   return normalizeScenarioTypeSpecificInput({
     region: template?.region || fallbackRegion,
-    baselineScenarioId: template?.scenarioId || '',
+    baselineScenarioId: template?.baselineScenarioId || template?.scenarioId || '',
     baselineDataflowId: template?.dataflowId || '',
     scenarioType: template?.scenarioType || '',
     entityScope: template?.entityScope || 'NA',
@@ -170,7 +170,15 @@ export const NewScenarioWizard: React.FC<NewScenarioWizardProps> = ({
     if (selectedPolicy.allocationMode === 'baseline') {
       return findExactUsBaselineTemplate(templates) || templates[0] || null;
     }
-    return templates.find((template) => template.scenarioId === formData.baselineScenarioId) || templates[0] || null;
+    return (
+      templates.find((template) => String(template.scenarioType || '').trim() === String(formData.scenarioType || '').trim())
+      || templates.find((template) =>
+        template.scenarioId === formData.baselineScenarioId
+        || template.baselineScenarioId === formData.baselineScenarioId
+      )
+      || templates[0]
+      || null
+    );
   }, [formData.baselineScenarioId, formData.scenarioType, initialTemplate?.scenarioType, sortedTemplatesForRegion]);
 
   const effectiveDatasetOptions = useMemo(() => templateToDatasetOptions(selectedTemplate), [selectedTemplate]);

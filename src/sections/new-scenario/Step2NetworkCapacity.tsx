@@ -35,10 +35,15 @@ export const Step2NetworkCapacity: React.FC<Step2NetworkCapacityProps> = ({
   return (
     <div className="space-y-6">
       <div>
-        <div className="flex items-center gap-2 mb-3">
+        <div className="flex items-center gap-2 mb-3 flex-wrap">
           <label className="text-sm font-medium text-slate-700">
             Distribution Centers
           </label>
+          {String(scenarioPolicy.collectTreatmentLabel || '').toLowerCase().includes('relocatable') && (
+            <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+              Collect Relo
+            </span>
+          )}
           <Tooltip content="Select which DCs are active in this scenario. Suppressed DCs will not be considered for lane assignments." />
         </div>
 

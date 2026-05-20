@@ -59,6 +59,7 @@ import {
 import {
   getScenarioTypeAllowedDcs,
   resolveScenarioFamilyKey,
+  normalizeScenarioTypeSpecificInput,
   resolveScenarioTypePolicy,
 } from '@/services/scenario/scenarioTypeRules';
 import {
@@ -857,9 +858,16 @@ function App() {
     const baseUsDcs = ['Elwood', 'Dallas', 'Los Angeles', 'R Virginia'];
     const bcvDcs = [...baseUsDcs, 'Pharr TX'];
     const tacticalConsolidationDcs = [...baseUsDcs, 'Pharr TX', 'Stratford CT'];
+    const collectRelocatableScenarioType = 'Tactical Pro Forma (Collect Relocatable)';
+    const collectRelocatableScenarioName = 'Tactical Pro Forma - Fixed Footprint (Collect Relocatable)';
+    const strategicCollectRelocatableScenarioType = 'Strategic Pro Forma (Collect Relocatable)';
+    const strategicCollectRelocatableScenarioName = 'Strategic Pro Forma - Unconstrained Footprint (Collect Relocatable)';
 
     const getScenarioDcScope = (scenarioType: string): string[] => {
       const normalized = normalizeText(scenarioType);
+      if (normalized.includes('collect relocatable')) {
+        return baseUsDcs;
+      }
       if (normalized.includes('tactical consolidation') || normalized.includes('consolidation tactical')) {
         return tacticalConsolidationDcs;
       }
@@ -942,6 +950,36 @@ function App() {
         if (dataflowDiff !== 0) return dataflowDiff;
         return a.scenarioName.localeCompare(b.scenarioName);
       });
+
+    const tacticalFixedTemplate = grouped.US.find((template) =>
+      resolveScenarioTypePolicy(template.scenarioType).scenarioType === 'Tactical Pro Forma'
+    ) || null;
+    if (tacticalFixedTemplate) {
+      grouped.US.push({
+        ...tacticalFixedTemplate,
+        baselineScenarioId: tacticalFixedTemplate.scenarioId,
+        scenarioId: `${tacticalFixedTemplate.scenarioId}__collect_relo`,
+        scenarioName: collectRelocatableScenarioName,
+        scenarioType: collectRelocatableScenarioType,
+        allowRelocationCollect: true,
+        allowRelocationPrepaid: true,
+      });
+    }
+
+    const strategicFixedTemplate = grouped.US.find((template) =>
+      resolveScenarioTypePolicy(template.scenarioType).scenarioType === 'Strategic Pro Forma'
+    ) || null;
+    if (strategicFixedTemplate) {
+      grouped.US.push({
+        ...strategicFixedTemplate,
+        baselineScenarioId: strategicFixedTemplate.scenarioId,
+        scenarioId: `${strategicFixedTemplate.scenarioId}__collect_relo`,
+        scenarioName: strategicCollectRelocatableScenarioName,
+        scenarioType: strategicCollectRelocatableScenarioType,
+        allowRelocationCollect: true,
+        allowRelocationPrepaid: true,
+      });
+    }
 
     return {
       US: sortTemplates(grouped.US),
@@ -1585,9 +1623,6 @@ function App() {
 
   const handleScenarioComplete = async (payload: NewScenarioSubmit) => {
     setUiBusyMessage('Creating scenario...');
-    const selectedTemplate = scenarioTemplatesByRegion[payload.input.region]?.find(
-      (template) => template.scenarioId === payload.input.baselineScenarioId,
-    ) || null;
     try {
       if (!payload.input.baselineDataflowId) {
         pushToast('Select a baseline scenario with a valid dataflow before creating a new scenario.', 'error');
@@ -1602,6 +1637,9 @@ function App() {
 
       const normalizeText = (value: unknown): string => String(value || '').trim().toLowerCase();
       const familyPolicy = resolveScenarioTypePolicy(payload.input.scenarioType);
+      const selectedTemplate = scenarioTemplatesByRegion[payload.input.region]?.find(
+        (template) => template.scenarioId === payload.input.baselineScenarioId,
+      ) || null;
       const familyKey = familyPolicy.familyKey;
       const familyDcs = getScenarioTypeAllowedDcs(payload.input.scenarioType);
       const familyDcSet = new Set(familyDcs.map(normalizeText));
@@ -1609,6 +1647,17 @@ function App() {
       const normalizedSuppressedDcs = Array.from(
         new Set(payload.input.suppressedDCs.filter((dc) => familyDcSet.has(normalizeText(dc)))),
       );
+      const exactBaselineTemplate = familyPolicy.allocationMode === 'baseline'
+        ? (scenarioTemplatesByRegion[payload.input.region] || []).find((template) =>
+          resolveScenarioTypePolicy(template.scenarioType).scenarioType === 'US Baseline'
+          && String(template.dataflowId || '').trim() === '3267')
+        : null;
+      const normalizedBaselineScenarioId = familyPolicy.allocationMode === 'baseline'
+        ? exactBaselineTemplate?.scenarioId || payload.input.baselineScenarioId
+        : payload.input.baselineScenarioId;
+      const normalizedBaselineDataflowId = familyPolicy.allocationMode === 'baseline'
+        ? String(exactBaselineTemplate?.dataflowId || '3267')
+        : payload.input.baselineDataflowId;
       const scopedDcCapacityRows = dcCapacityRows.filter((row) => familyDcSet.has(normalizeText(row.DCName)));
       const scopedLaneRowsByScenarioId = Object.entries(lanesByScenarioId).reduce<Record<string, ScenarioRunResultsLane[]>>((acc, [scenarioId, rows]) => {
         const filteredRows = rows.filter((row) => resolveScenarioFamilyKey(row.ScenarioType) === familyKey);
@@ -1660,6 +1709,17 @@ function App() {
           : datasetOptions.leadTimeCaps.length > 0,
       };
 
+      const normalizedCreatePayload: NewScenarioSubmit = {
+        ...payload,
+        input: normalizeScenarioTypeSpecificInput({
+          ...payload.input,
+          activeDCs: normalizedActiveDcs,
+          suppressedDCs: normalizedSuppressedDcs,
+          baselineScenarioId: normalizedBaselineScenarioId,
+          baselineDataflowId: normalizedBaselineDataflowId,
+        }),
+      };
+
       if (DEBUG_DOMO_MAPPING) {
         console.groupCollapsed('[Scenario Build] raw lane counts');
         console.table(
@@ -1671,42 +1731,15 @@ function App() {
         console.groupEnd();
       }
 
-      let artifact = buildScenarioArtifactsLegacy(payload, buildContext);
+      let artifact = buildScenarioArtifactsLegacy(normalizedCreatePayload, buildContext);
       try {
-        artifact = await buildScenarioArtifactsWithLogic(
-          {
-            ...payload,
-            input: {
-              ...payload.input,
-              activeDCs: normalizedActiveDcs,
-              suppressedDCs: normalizedSuppressedDcs,
-            },
-          },
-          buildContext,
-        );
+        artifact = await buildScenarioArtifactsWithLogic(normalizedCreatePayload, buildContext);
       } catch (error) {
         console.warn('[Scenario Engine] Falling back to legacy builder for new scenario creation.', error);
-        artifact = buildScenarioArtifactsLegacy(
-          {
-            ...payload,
-            input: {
-              ...payload.input,
-              activeDCs: normalizedActiveDcs,
-              suppressedDCs: normalizedSuppressedDcs,
-            },
-          },
-          buildContext,
-        );
+        artifact = buildScenarioArtifactsLegacy(normalizedCreatePayload, buildContext);
       }
       const repositoryRecord = buildScenarioRepositoryRecord(
-        {
-          ...payload,
-          input: {
-            ...payload.input,
-            activeDCs: normalizedActiveDcs,
-            suppressedDCs: normalizedSuppressedDcs,
-          },
-        },
+        normalizedCreatePayload,
         buildContext,
         artifact,
       );

@@ -19,8 +19,22 @@ export const Step4RelocationBcv: React.FC<Step4RelocationBcvProps> = ({
 }) => {
   const showPrepaid = scenarioPolicy.supports.relocationPrepaid && datasetOptions.allowRelocationPrepaid.length > 0;
   const showCollect = scenarioPolicy.supports.relocationCollect && datasetOptions.allowRelocationCollect.length > 0;
+  const collectTreatmentLabel = scenarioPolicy.collectTreatmentLabel || (formData.allowRelocationCollect ? 'Collect Relocatable' : 'Fixed');
   return (
     <div className="space-y-6">
+      <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+        <div className="flex flex-wrap items-center gap-2 gap-x-6 gap-y-2">
+          <div><span className="text-slate-500">Collect Treatment:</span> <span className="font-medium">{collectTreatmentLabel}</span></div>
+          {String(collectTreatmentLabel || '').toLowerCase().includes('relocatable') && (
+            <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+              Collect Relo
+            </span>
+          )}
+          <div><span className="text-slate-500">Prepaid Relocation:</span> <span className="font-medium">{formData.allowRelocationPrepaid ? 'Y' : 'N'}</span></div>
+          <div><span className="text-slate-500">Collect Relocation:</span> <span className="font-medium">{formData.allowRelocationCollect ? 'Y' : 'N'}</span></div>
+        </div>
+      </div>
+
       <div>
         <label className="text-sm font-medium text-slate-700 mb-3 block">
           Allow Relocation

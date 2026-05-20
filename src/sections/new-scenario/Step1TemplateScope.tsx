@@ -30,7 +30,7 @@ const buildFormDataFromTemplate = (
   const policy = resolveScenarioTypePolicy(template?.scenarioType || '');
   return normalizeScenarioTypeSpecificInput({
     region: template?.region || fallbackRegion,
-    baselineScenarioId: template?.scenarioId || '',
+    baselineScenarioId: template?.baselineScenarioId || template?.scenarioId || '',
     baselineDataflowId: template?.dataflowId || '',
     scenarioType: template?.scenarioType || '',
     entityScope: template?.entityScope || 'NA',
@@ -99,7 +99,8 @@ export const Step1TemplateScope: React.FC<Step1TemplateScopeProps> = ({
   const exactUsBaselineScenario = baselineScenarioOptions[0] || null;
   const selectedBaseScenario =
     (selectedScenarioPolicy.allocationMode === 'baseline' ? exactUsBaselineScenario : null)
-    || baselineOptions.find((item) => item.scenarioId === formData.baselineScenarioId)
+    || baselineOptions.find((item) => String(item.scenarioType || '').trim() === String(selectedScenarioType || '').trim())
+    || baselineOptions.find((item) => item.scenarioId === formData.baselineScenarioId || item.baselineScenarioId === formData.baselineScenarioId)
     || baselineOptions.find((item) => scenarioTypeMatches(item.scenarioType, selectedScenarioType))
     || baselineOptions[0]
     || null;
@@ -128,7 +129,14 @@ export const Step1TemplateScope: React.FC<Step1TemplateScopeProps> = ({
           <div className="h-8 w-px bg-slate-200" />
           <div>
             <div className="text-xs uppercase tracking-wide text-slate-500">Scenario Type</div>
-            <div className="text-sm font-semibold text-slate-900">{formData.scenarioType || 'NA'}</div>
+            <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-900">
+              <span>{formData.scenarioType || 'NA'}</span>
+              {String(selectedScenarioPolicy.collectTreatmentLabel || '').toLowerCase().includes('relocatable') && (
+                <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+                  Collect Relo
+                </span>
+              )}
+            </div>
           </div>
           <div className="h-8 w-px bg-slate-200" />
           <div>
@@ -158,7 +166,8 @@ export const Step1TemplateScope: React.FC<Step1TemplateScopeProps> = ({
                   ? findExactUsBaselineTemplate(nextRegionTemplates)
                     || nextRegionTemplates[0]
                     || null
-                  : nextRegionTemplates.find((item) => scenarioTypeMatches(item.scenarioType, nextType))
+                  : nextRegionTemplates.find((item) => String(item.scenarioType || '').trim() === String(nextType || '').trim())
+                    || nextRegionTemplates.find((item) => scenarioTypeMatches(item.scenarioType, nextType))
                     || nextRegionTemplates[0]
                     || null)
                 : nextRegionTemplates[0] || null;
@@ -205,11 +214,15 @@ export const Step1TemplateScope: React.FC<Step1TemplateScopeProps> = ({
               const matchingOptions = nextType
                 ? (resolveScenarioTypePolicy(nextType).allocationMode === 'baseline'
                   ? baselineScenarioOptions
-                  : regionTemplates.filter((item) => scenarioTypeMatches(item.scenarioType, nextType)))
+                  : regionTemplates.filter((item) => String(item.scenarioType || '').trim() === String(nextType || '').trim()
+                    || scenarioTypeMatches(item.scenarioType, nextType)))
                 : regionTemplates;
               const nextScenario = resolveScenarioTypePolicy(nextType).allocationMode === 'baseline'
                 ? exactUsBaselineScenario
-                : matchingOptions[0] || null;
+                : matchingOptions.find((item) => String(item.scenarioType || '').trim() === String(nextType || '').trim())
+                  || baselineScenarioOptions.find((item) => String(item.scenarioType || '').trim() === String(nextType || '').trim())
+                  || matchingOptions[0]
+                  || null;
               const nextFormData = {
                 ...buildFormDataFromTemplate(nextScenario, formData.region as 'US' | 'Canada', datasetOptions),
                 scenarioType: nextType,
@@ -238,6 +251,24 @@ export const Step1TemplateScope: React.FC<Step1TemplateScopeProps> = ({
               ))}
             </div>
           )}
+          <div className="mt-3 grid grid-cols-2 gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
+            <div>
+              <span className="text-slate-500">Footprint:</span>{' '}
+              <span className="font-medium">{selectedScenarioPolicy.defaults.footprintMode || 'NA'}</span>
+            </div>
+            <div>
+              <span className="text-slate-500">Util Cap:</span>{' '}
+              <span className="font-medium">{selectedScenarioPolicy.defaults.utilCap}%</span>
+            </div>
+            <div>
+              <span className="text-slate-500">Level Load:</span>{' '}
+              <span className="font-medium">{selectedScenarioPolicy.defaults.levelLoad ? 'On' : 'Off'}</span>
+            </div>
+            <div>
+              <span className="text-slate-500">Collect Treatment:</span>{' '}
+              <span className="font-medium">{selectedScenarioPolicy.collectTreatmentLabel || 'NA'}</span>
+            </div>
+          </div>
           {baselineOptions.length === 0 && (
             <p className="text-xs text-slate-500 mt-1">No scenario data available for this region.</p>
           )}

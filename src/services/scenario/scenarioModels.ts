@@ -139,6 +139,7 @@ export interface ScenarioRunHistoryEntry {
 
 export interface ScenarioTemplateOption {
   scenarioId: string;
+  baselineScenarioId?: string;
   region: 'US' | 'Canada';
   scenarioName: string;
   dataflowId: string;
