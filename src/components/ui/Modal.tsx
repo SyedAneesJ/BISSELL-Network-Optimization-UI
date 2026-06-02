@@ -41,14 +41,14 @@ export const Modal: React.FC<ModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
       <div className="flex min-h-screen items-center justify-center p-3 sm:p-4">
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-[2px] transition-opacity" onClick={onClose} />
+        <div className="fixed inset-0 bg-slate-950/35 backdrop-blur-sm transition-opacity" onClick={onClose} />
 
-        <div className={`relative min-w-0 bg-white/90 backdrop-blur-md rounded-2xl shadow-2xl w-full ${sizeClasses[size]} max-h-[90vh] overflow-hidden flex flex-col border border-white/40 fade-in`}>
-          <div className="flex min-w-0 items-center justify-between gap-3 p-4 sm:p-6 border-b border-slate-200">
+        <div className={`relative min-w-0 surface-panel w-full ${sizeClasses[size]} max-h-[90vh] overflow-hidden flex flex-col fade-in`}>
+          <div className="surface-header flex min-w-0 items-center justify-between gap-3 p-4 sm:p-6">
             <h2 className="min-w-0 break-words text-xl font-semibold text-slate-900">{title}</h2>
             <button
               onClick={onClose}
-              className="text-slate-400 hover:text-slate-600 transition-colors"
+              className="rounded-full p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
             >
               <X className="w-5 h-5" />
             </button>
@@ -59,7 +59,7 @@ export const Modal: React.FC<ModalProps> = ({
           </div>
 
           {footer && (
-            <div className="flex flex-wrap items-center justify-end gap-3 p-4 sm:p-6 border-t border-slate-200 bg-slate-50">
+            <div className="surface-header flex flex-wrap items-center justify-end gap-3 p-4 sm:p-6">
               {footer}
             </div>
           )}

@@ -71,6 +71,7 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
             size="small"
             icon={<Download className="w-4 h-4" />}
             onClick={onExportDCDetails}
+            disabled={exportDCDetailsActive}
             className={exportDCDetailsActive ? 'bg-amber-50 text-amber-800' : ''}
           >
             {exportDCDetailsActive ? 'Exporting DC Details…' : 'Export DC Details CSV'}
@@ -78,7 +79,7 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
         )}
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <KPICard label="Total Cost" value={scenario.TotalCost} format="currency" />
         <KPICard label="Cost per Unit" value={formatCurrencyOrNA(scenario.CostPerUnit, 2)} />
         <KPICard label="Avg Delivery Days" value={formatDecimalOrNA(scenario.AvgDeliveryDays, 2)} />
@@ -95,8 +96,8 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
       </div>
 
       {scenarioConfig ? (
-        <div className="bg-white border border-slate-200 rounded-lg p-4">
-          <h3 className="text-lg font-semibold text-slate-900 mb-4">Scenario Configuration</h3>
+        <div className="surface-panel p-5">
+          <h3 className="mb-4 text-lg font-semibold text-slate-900">Scenario Configuration</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
             <div><span className="text-slate-600">Active DCs:</span> {formatTextOrNA(scenarioConfig.ActiveDCs)}</div>
             <div><span className="text-slate-600">Suppressed DCs:</span> {formatTextOrNA(scenarioConfig.SuppressedDCs)}</div>
@@ -111,8 +112,8 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
           </div>
         </div>
       ) : (
-        <div className="bg-white border border-slate-200 rounded-lg p-4">
-          <h3 className="text-lg font-semibold text-slate-900 mb-2">Scenario Configuration</h3>
+        <div className="surface-panel p-5">
+          <h3 className="mb-2 text-lg font-semibold text-slate-900">Scenario Configuration</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
             <div><span className="text-slate-600">Footprint Mode:</span> {formatTextOrNA(scenario.FootprintMode)}</div>
             <div><span className="text-slate-600">Level Load:</span> {formatTextOrNA(scenario.LevelLoad)}</div>
@@ -123,10 +124,10 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
       )}
 
       <div>
-        <h3 className="text-lg font-semibold text-slate-900 mb-4">DC Scorecard</h3>
+        <h3 className="mb-4 text-lg font-semibold text-slate-900">DC Scorecard</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {dcResults.map((dc) => (
-            <div key={dc.DCName} className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">
+            <div key={dc.DCName} className="surface-card p-4 hover-lift">
               <div className="flex items-center justify-between mb-3">
                 <h4 className="font-semibold text-slate-900">{dc.DCName}</h4>
                 {dc.IsSuppressed === 'Y' ? (
@@ -211,8 +212,8 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
         </div>
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-lg p-4">
-        <h3 className="text-lg font-semibold text-slate-900 mb-4">Exceptions Summary</h3>
+      <div className="surface-panel p-5">
+        <h3 className="mb-4 text-lg font-semibold text-slate-900">Exceptions Summary</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="text-center p-4 bg-red-50 rounded-lg">
             <p className="text-3xl font-bold text-red-700">{scenario.ExcludedBySLACount}</p>

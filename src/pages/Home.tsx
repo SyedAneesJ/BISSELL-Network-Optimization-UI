@@ -114,7 +114,7 @@ export const Home: React.FC<HomeProps> = ({
       scenario.Region === 'US'
       && isOriginalScenario(scenario)
       && (
-        String(scenario.DataflowID || '').trim() === '3228'
+        String(scenario.DataflowID || '').trim() === '3267'
         || String(scenario.RunName || '').toLowerCase().includes('baseline')
       );
 
@@ -325,11 +325,13 @@ export const Home: React.FC<HomeProps> = ({
     };
 
     const visibleRegions = workspace === 'All' ? (['US', 'Canada'] as const) : ([workspace] as const);
+    const baselineHeadersSource = scenarioRunHeaders;
+    const baselineResultsSource = scenarioRunResultsDC;
 
     const baselineScenarioIds = visibleRegions.flatMap((region) => {
-      const originalHeaders = visibleScenarioRunHeaders.filter((scenario) => scenario.Region === region && isOriginalScenario(scenario));
+      const originalHeaders = baselineHeadersSource.filter((scenario) => scenario.Region === region && isOriginalScenario(scenario));
       const exactMatches = originalHeaders.filter((scenario) =>
-        scenario.DataflowID === baselineDataflowIdsByRegion[region]
+        String(scenario.DataflowID || '').trim() === baselineDataflowIdsByRegion[region]
       );
       if (exactMatches.length > 0) {
         return exactMatches.map((scenario) => scenario.ScenarioRunID);
@@ -346,8 +348,8 @@ export const Home: React.FC<HomeProps> = ({
       return firstMatch ? [firstMatch.ScenarioRunID] : [];
     });
 
-    const baselineRows = visibleScenarioRunResultsDC.filter((row) => baselineScenarioIds.includes(row.ScenarioRunID));
-    const baselineHeaders = visibleScenarioRunHeaders.filter((scenario) => baselineScenarioIds.includes(scenario.ScenarioRunID));
+    const baselineRows = baselineResultsSource.filter((row) => baselineScenarioIds.includes(row.ScenarioRunID));
+    const baselineHeaders = baselineHeadersSource.filter((scenario) => baselineScenarioIds.includes(scenario.ScenarioRunID));
 
     const sourceRows = baselineRows.length > 0 ? baselineRows : [];
     const sourceHeaders = baselineHeaders.length > 0 ? baselineHeaders : [];

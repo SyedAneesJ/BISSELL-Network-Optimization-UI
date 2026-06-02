@@ -60,7 +60,7 @@ export const ScenarioOverrideModal: React.FC<ScenarioOverrideModalProps> = ({
         </>
       }
     >
-      <div className="space-y-4">
+      <div className="surface-panel space-y-4 p-5">
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-2">
             Lane
@@ -68,7 +68,7 @@ export const ScenarioOverrideModal: React.FC<ScenarioOverrideModalProps> = ({
           <select
             value={overrideLaneKey}
             onChange={(e) => onOverrideLaneKeyChange(e.target.value)}
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full rounded-xl border border-white/70 bg-white/80 px-3 py-2 shadow-sm backdrop-blur-md focus:outline-none focus:ring-2 focus:ring-blue-500/15"
           >
             <option value="">Select lane...</option>
             {laneOptions.map((option) => (
@@ -88,7 +88,7 @@ export const ScenarioOverrideModal: React.FC<ScenarioOverrideModalProps> = ({
             value={overrideNewDC}
             onChange={(e) => onOverrideNewDCChange(e.target.value)}
             placeholder="e.g., DC3"
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full rounded-xl border border-white/70 bg-white/80 px-3 py-2 shadow-sm backdrop-blur-md focus:outline-none focus:ring-2 focus:ring-blue-500/15"
           />
         </div>
 
@@ -99,7 +99,7 @@ export const ScenarioOverrideModal: React.FC<ScenarioOverrideModalProps> = ({
           <select
             value={overrideReason}
             onChange={(e) => onOverrideReasonChange(e.target.value as ScenarioOverride['ReasonCode'])}
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full rounded-xl border border-white/70 bg-white/80 px-3 py-2 shadow-sm backdrop-blur-md focus:outline-none focus:ring-2 focus:ring-blue-500/15"
           >
             <option value="Capacity">Capacity</option>
             <option value="SLA">SLA</option>
@@ -118,7 +118,7 @@ export const ScenarioOverrideModal: React.FC<ScenarioOverrideModalProps> = ({
             value={overrideComment}
             onChange={(e) => onOverrideCommentChange(e.target.value)}
             rows={3}
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full rounded-xl border border-white/70 bg-white/80 px-3 py-2 shadow-sm backdrop-blur-md focus:outline-none focus:ring-2 focus:ring-blue-500/15"
             placeholder="Why this override is needed..."
           />
         </div>

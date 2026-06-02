@@ -85,7 +85,7 @@ export const NewComparisonModal: React.FC<NewComparisonModalProps> = ({
         </>
       }
     >
-      <div className="space-y-6">
+      <div className="surface-panel space-y-6 p-5">
         <div>
           <label className="block text-sm font-medium text-slate-700 mb-2">
             Comparison Name
@@ -95,7 +95,7 @@ export const NewComparisonModal: React.FC<NewComparisonModalProps> = ({
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="e.g., Baseline vs Strategic Pharr Expansion"
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full rounded-xl border border-white/70 bg-white/80 px-3 py-2 shadow-sm backdrop-blur-md focus:outline-none focus:ring-2 focus:ring-blue-500/15"
           />
         </div>
 
@@ -107,7 +107,7 @@ export const NewComparisonModal: React.FC<NewComparisonModalProps> = ({
             <select
               value={runA}
               onChange={(e) => setRunA(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full rounded-xl border border-white/70 bg-white/80 px-3 py-2 shadow-sm backdrop-blur-md focus:outline-none focus:ring-2 focus:ring-blue-500/15"
             >
               <option value="">Select scenario...</option>
               {sortedScenarios.map((scenario) => (
@@ -125,7 +125,7 @@ export const NewComparisonModal: React.FC<NewComparisonModalProps> = ({
             <select
               value={runB}
               onChange={(e) => setRunB(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full rounded-xl border border-white/70 bg-white/80 px-3 py-2 shadow-sm backdrop-blur-md focus:outline-none focus:ring-2 focus:ring-blue-500/15"
             >
               <option value="">Select scenario...</option>
               {sortedScenarios.map((scenario) => (
@@ -138,8 +138,8 @@ export const NewComparisonModal: React.FC<NewComparisonModalProps> = ({
         </div>
 
         {canCompare && scenarioA && scenarioB && (
-          <div className="bg-slate-50 p-4 rounded-lg">
-            <h3 className="text-sm font-semibold text-slate-900 mb-3">Quick Preview</h3>
+          <div className="surface-card p-4">
+            <h3 className="mb-3 text-sm font-semibold text-slate-900">Quick Preview</h3>
 
             <div className="grid grid-cols-3 gap-4 text-sm">
               <div className="font-medium text-slate-600">Metric</div>
@@ -189,7 +189,7 @@ export const NewComparisonModal: React.FC<NewComparisonModalProps> = ({
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             rows={3}
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full rounded-xl border border-white/70 bg-white/80 px-3 py-2 shadow-sm backdrop-blur-md focus:outline-none focus:ring-2 focus:ring-blue-500/15"
             placeholder="Purpose of this comparison..."
           />
         </div>

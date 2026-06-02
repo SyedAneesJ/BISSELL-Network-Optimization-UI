@@ -19,8 +19,8 @@ export const Step5ValidateRun: React.FC<Step5ValidateRunProps> = ({
   availableDcsByRegion,
 }) => {
   return (
-    <div className="space-y-6">
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+    <div className="surface-panel space-y-6 p-5">
+      <div className="surface-card p-4">
         <h3 className="font-semibold text-blue-900 mb-2 flex items-center gap-2">
           <Check className="w-5 h-5" />
           Configuration Summary
@@ -36,10 +36,10 @@ export const Step5ValidateRun: React.FC<Step5ValidateRunProps> = ({
       </div>
 
       <div>
-        <h3 className="font-semibold text-slate-900 mb-3">Data Health Snapshot</h3>
+        <h3 className="mb-3 font-semibold text-slate-900">Data Health Snapshot</h3>
 
         <div className="space-y-3">
-          <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+          <div className="flex items-center justify-between rounded-xl border border-white/70 bg-white/75 p-3 backdrop-blur-md">
             <div>
               <p className="text-sm font-medium text-slate-900">Forecast Freshness</p>
               <p className="text-xs text-slate-600">Last updated: {dataHealthSnapshot.SnapshotTime}</p>
@@ -47,7 +47,7 @@ export const Step5ValidateRun: React.FC<Step5ValidateRunProps> = ({
             <StatusBadge status={dataHealthSnapshot.ForecastFreshness} size="small" />
           </div>
 
-          <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+          <div className="flex items-center justify-between rounded-xl border border-white/70 bg-white/75 p-3 backdrop-blur-md">
             <div>
               <p className="text-sm font-medium text-slate-900">Rates Coverage</p>
               <p className="text-xs text-slate-600">Missing lanes: {dataHealthSnapshot.MissingRatesLaneCount}</p>
@@ -55,7 +55,7 @@ export const Step5ValidateRun: React.FC<Step5ValidateRunProps> = ({
             <span className="text-lg font-bold text-slate-700">{dataHealthSnapshot.RatesCoveragePct}%</span>
           </div>
 
-          <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+          <div className="flex items-center justify-between rounded-xl border border-white/70 bg-white/75 p-3 backdrop-blur-md">
             <div>
               <p className="text-sm font-medium text-slate-900">Capacity Data</p>
               <p className="text-xs text-slate-600">Missing DCs: {dataHealthSnapshot.MissingCapacityDCCount}</p>
@@ -63,7 +63,7 @@ export const Step5ValidateRun: React.FC<Step5ValidateRunProps> = ({
             <StatusBadge status={dataHealthSnapshot.CapacityFreshness} size="small" />
           </div>
 
-          <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+          <div className="flex items-center justify-between rounded-xl border border-white/70 bg-white/75 p-3 backdrop-blur-md">
             <div>
               <p className="text-sm font-medium text-slate-900">BCV Dimensions</p>
               <p className="text-xs text-slate-600">Carton average assumptions used</p>
@@ -73,8 +73,8 @@ export const Step5ValidateRun: React.FC<Step5ValidateRunProps> = ({
         </div>
       </div>
 
-      <div className="bg-slate-50 p-4 rounded-lg">
-        <h4 className="text-sm font-semibold text-slate-900 mb-2">Validation Checklist</h4>
+      <div className="surface-card p-4">
+        <h4 className="mb-2 text-sm font-semibold text-slate-900">Validation Checklist</h4>
         <div className="space-y-2">
           {[
             'All required configuration fields completed',

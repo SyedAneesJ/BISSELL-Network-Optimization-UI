@@ -39,7 +39,7 @@ export const ScenarioRankedOptionsTab: React.FC<ScenarioRankedOptionsTabProps> =
   onExportRoutingCSV,
   exportRoutingActive = false,
 }) => {
-  const showLoading = isLaneDataLoading || isLaneFiltering;
+  const showLoading = isLaneDataLoading;
 
   if (showLoading) {
     return (
@@ -73,6 +73,13 @@ export const ScenarioRankedOptionsTab: React.FC<ScenarioRankedOptionsTabProps> =
 
   return (
     <div className="space-y-4">
+      {isLaneFiltering && (
+        <div className="flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-sm text-blue-800">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span>Updating lane filters...</span>
+        </div>
+      )}
+
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
         <p className="text-sm text-blue-800">
           This view shows the top 3 ranked DC options for each lane based on cost optimization. The chosen rank indicates which option was selected in the final solution.
@@ -94,6 +101,7 @@ export const ScenarioRankedOptionsTab: React.FC<ScenarioRankedOptionsTabProps> =
             size="small"
             icon={<Download className="w-4 h-4" />}
             onClick={onExportRoutingCSV}
+            disabled={exportRoutingActive}
             className={exportRoutingActive ? 'bg-amber-50 text-amber-800' : ''}
           >
             {exportRoutingActive ? 'Exporting Routing CSV…' : 'Export Routing Assignment CSV'}

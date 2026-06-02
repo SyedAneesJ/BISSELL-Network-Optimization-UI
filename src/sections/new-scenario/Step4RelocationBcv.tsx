@@ -19,12 +19,18 @@ export const Step4RelocationBcv: React.FC<Step4RelocationBcvProps> = ({
 }) => {
   const showPrepaid = scenarioPolicy.supports.relocationPrepaid && datasetOptions.allowRelocationPrepaid.length > 0;
   const showCollect = scenarioPolicy.supports.relocationCollect && datasetOptions.allowRelocationCollect.length > 0;
+  const collectPolicyLabel = scenarioPolicy.collectPolicy === 'relocatable' ? 'Collect: Relocatable' : 'Collect: Fixed';
   return (
-    <div className="space-y-6">
+    <div className="surface-panel space-y-6 p-5">
       <div>
-        <label className="text-sm font-medium text-slate-700 mb-3 block">
-          Allow Relocation
-        </label>
+        <div className="mb-3 flex items-center gap-2">
+          <label className="text-sm font-medium text-slate-700">
+            Allow Relocation
+          </label>
+          <span className="inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-slate-700">
+            {collectPolicyLabel}
+          </span>
+        </div>
         {!showPrepaid && !showCollect ? (
           <>
             <div className="space-y-3">
@@ -90,7 +96,7 @@ export const Step4RelocationBcv: React.FC<Step4RelocationBcvProps> = ({
         <select
           value={formData.bcvRuleSet}
           onChange={(e) => onFormDataChange({ ...formData, bcvRuleSet: e.target.value })}
-          className={`w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+          className={`w-full rounded-xl border border-white/70 bg-white/80 px-3 py-2 shadow-sm backdrop-blur-md focus:outline-none focus:ring-2 focus:ring-blue-500/15 ${
             datasetOptions.bcvRuleSets.length === 0 ? 'bg-slate-100' : ''
           }`}
           disabled={datasetOptions.bcvRuleSets.length === 0 || scenarioPolicy.locks.bcvRuleSet}

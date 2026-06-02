@@ -7,6 +7,7 @@ import { ScenarioTemplateOption, ScenarioWizardInput, ScenarioSubmit } from '@/s
 import {
   getScenarioTypeAllowedDcs,
   normalizeScenarioTypeSpecificInput,
+  resolveStep1ScenarioDefaults,
   resolveScenarioTypePolicy,
   scenarioTypeMatches,
 } from '@/services/scenario/scenarioTypeRules';
@@ -52,12 +53,21 @@ const emptyDatasetOptions: DatasetOptionSets = {
   allowManualOverride: [],
 };
 
+const isMeaningfulText = (value: unknown): boolean => {
+  const normalized = String(value || '').trim().toLowerCase();
+  return normalized.length > 0 && normalized !== 'na';
+};
+
 const templateToDatasetOptions = (template?: ScenarioTemplateOption | null): DatasetOptionSets =>
   template
     ? {
         scenarioTypes: [template.scenarioType],
-        channelScopes: template.channelScopes,
-        termsScopes: template.termsScopes,
+        channelScopes: template.channelScopes.filter(isMeaningfulText).length > 0
+          ? template.channelScopes.filter(isMeaningfulText)
+          : resolveStep1ScenarioDefaults(template.scenarioType).channelScope,
+        termsScopes: template.termsScopes.filter(isMeaningfulText).length > 0
+          ? template.termsScopes.filter(isMeaningfulText)
+          : [resolveStep1ScenarioDefaults(template.scenarioType).termsScope],
         tags: template.tags,
         footprintModes: [template.footprintMode],
         utilCaps: [template.utilCap],
@@ -80,14 +90,26 @@ const templateToFormData = (
   fallbackDatasetOptions: DatasetOptionSets,
 ): NewScenarioFormData => {
   const policy = resolveScenarioTypePolicy(template?.scenarioType || '');
+  const step1Defaults = resolveStep1ScenarioDefaults(template?.scenarioType || '');
+  const isMeaningfulValue = isMeaningfulText;
+  const resolvedEntityScope = String(template?.entityScope || '').trim();
+  const resolvedChannelScopes = template?.channelScopes || [];
+  const resolvedTermsScope = String(template?.termsScopes?.[0] || '').trim();
+  const fallbackChannelScopes = fallbackDatasetOptions.channelScopes.filter(isMeaningfulValue);
+  const fallbackTermsScopes = fallbackDatasetOptions.termsScopes.filter(isMeaningfulValue);
   return normalizeScenarioTypeSpecificInput({
-    region: template?.region || fallbackRegion,
+    region: template?.region || step1Defaults.region || fallbackRegion,
     baselineScenarioId: template?.scenarioId || '',
     baselineDataflowId: template?.dataflowId || '',
     scenarioType: template?.scenarioType || '',
-    entityScope: template?.entityScope || 'NA',
-    channelScope: template ? [...template.channelScopes] : [...fallbackDatasetOptions.channelScopes],
-    termsScope: template?.termsScopes[0] || fallbackDatasetOptions.termsScopes[0] || '',
+    entityScope: isMeaningfulValue(resolvedEntityScope) ? resolvedEntityScope : step1Defaults.entityScope || 'NA',
+    channelScope: resolvedChannelScopes.some(isMeaningfulValue)
+      ? [...resolvedChannelScopes.filter(isMeaningfulValue)]
+      : [...step1Defaults.channelScope.filter(isMeaningfulValue)],
+    termsScope:
+      isMeaningfulValue(resolvedTermsScope)
+        ? resolvedTermsScope
+        : step1Defaults.termsScope || fallbackTermsScopes[0] || '',
     runName: '',
     tags: template ? [...template.tags] : [],
     notes: '',
@@ -170,15 +192,62 @@ export const NewScenarioWizard: React.FC<NewScenarioWizardProps> = ({
     if (selectedPolicy.allocationMode === 'baseline') {
       return findExactUsBaselineTemplate(templates) || templates[0] || null;
     }
-    return templates.find((template) => template.scenarioId === formData.baselineScenarioId) || templates[0] || null;
+    const exactTypeTemplate = templates.find(
+      (template) => resolveScenarioTypePolicy(template.scenarioType).scenarioType === selectedPolicy.scenarioType,
+    ) || null;
+    return exactTypeTemplate
+      || templates.find((template) => template.scenarioId === formData.baselineScenarioId)
+      || templates.find((template) => scenarioTypeMatches(template.scenarioType, selectedPolicy.scenarioType))
+      || templates[0]
+      || null;
   }, [formData.baselineScenarioId, formData.scenarioType, initialTemplate?.scenarioType, sortedTemplatesForRegion]);
 
   const effectiveDatasetOptions = useMemo(() => templateToDatasetOptions(selectedTemplate), [selectedTemplate]);
   const regionDcs = getScenarioTypeAllowedDcs(selectedTemplate?.scenarioType || formData.scenarioType || '');
   const regionDcCapacity = selectedTemplate?.availableDcCapacity || {};
-  const entityScopes = selectedTemplate ? [selectedTemplate.entityScope] : ['NA'];
+  const selectedStep1Defaults = resolveStep1ScenarioDefaults(selectedTemplate?.scenarioType || formData.scenarioType || initialTemplate?.scenarioType || '');
+  const entityScopes = [selectedStep1Defaults.entityScope || selectedTemplate?.entityScope || 'NA'];
   const utilCapMin = 0;
   const utilCapMax = 100;
+
+  // useEffect(() => {
+  //   console.groupCollapsed('[NewScenarioWizard] Step 1 scope resolution');
+  //   console.log({
+  //     scenarioType: formData.scenarioType || 'NA',
+  //     selectedTemplate: selectedTemplate
+  //       ? {
+  //           scenarioId: selectedTemplate.scenarioId,
+  //           scenarioName: selectedTemplate.scenarioName,
+  //           scenarioType: selectedTemplate.scenarioType,
+  //           entityScope: selectedTemplate.entityScope || 'NA',
+  //           channelScopes: selectedTemplate.channelScopes,
+  //           termsScopes: selectedTemplate.termsScopes,
+  //         }
+  //       : null,
+  //     selectedStep1Defaults,
+  //     entityScopes,
+  //     datasetOptions: {
+  //       channelScopes: effectiveDatasetOptions.channelScopes,
+  //       termsScopes: effectiveDatasetOptions.termsScopes,
+  //     },
+  //     formDataScopes: {
+  //       entityScope: formData.entityScope || 'NA',
+  //       channelScope: formData.channelScope,
+  //       termsScope: formData.termsScope || 'NA',
+  //     },
+  //   });
+  //   console.groupEnd();
+  // }, [
+  //   entityScopes,
+  //   effectiveDatasetOptions.channelScopes,
+  //   effectiveDatasetOptions.termsScopes,
+  //   formData.channelScope,
+  //   formData.entityScope,
+  //   formData.scenarioType,
+  //   formData.termsScope,
+  //   selectedStep1Defaults,
+  //   selectedTemplate,
+  // ]);
 
   useEffect(() => {
     const wasOpen = prevIsOpenRef.current;

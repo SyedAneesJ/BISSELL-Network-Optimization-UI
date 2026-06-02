@@ -6,15 +6,16 @@
 
 :root {
   --bg-ink: #0f172a;
-  --bg-sky: #e2e8f0;
+  --bg-sky: #dce7f7;
   --bg-mist: #f8fafc;
   --accent: #2563eb;
   --accent-2: #0ea5e9;
   --accent-warm: #f59e0b;
-  --surface: #ffffff;
-  --surface-muted: rgba(255, 255, 255, 0.75);
-  --border: #e2e8f0;
-  --shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+  --surface: rgba(255, 255, 255, 0.82);
+  --surface-strong: rgba(255, 255, 255, 0.92);
+  --border: rgba(226, 232, 240, 0.9);
+  --shadow: 0 10px 32px rgba(15, 23, 42, 0.07);
+  --shadow-strong: 0 22px 64px rgba(15, 23, 42, 0.14);
 }
 
 html, body, #root {
@@ -23,20 +24,34 @@ html, body, #root {
 
 html {
   overflow-x: hidden;
+  scroll-behavior: smooth;
 }
 
 body {
   overflow-x: hidden;
   font-family: "Space Grotesk", "Sora", sans-serif;
   color: var(--bg-ink);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: geometricPrecision;
   background:
-    radial-gradient(1200px 600px at 10% -10%, rgba(37, 99, 235, 0.12), transparent 55%),
-    radial-gradient(900px 500px at 90% 0%, rgba(14, 165, 233, 0.12), transparent 50%),
-    linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
+    radial-gradient(1100px 520px at 12% -6%, rgba(37, 99, 235, 0.10), transparent 52%),
+    radial-gradient(900px 460px at 88% 2%, rgba(14, 165, 233, 0.08), transparent 48%),
+    radial-gradient(750px 340px at 50% 110%, rgba(245, 158, 11, 0.05), transparent 60%),
+    linear-gradient(180deg, #fbfdff 0%, #f4f8fc 45%, #eef3f9 100%);
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: "Sora", "Space Grotesk", sans-serif;
+  letter-spacing: -0.02em;
 }
 
 ::selection {
-  background: rgba(37, 99, 235, 0.2);
+  background: rgba(37, 99, 235, 0.18);
 }
 
 .fade-in {
@@ -51,5 +66,93 @@ body {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@layer components {
+  .surface-panel {
+    @apply rounded-3xl border border-white/70 bg-white/80 backdrop-blur-md;
+    box-shadow: var(--shadow-strong);
+  }
+
+  .surface-card {
+    @apply rounded-2xl border border-white/60 bg-white/80 backdrop-blur-md;
+    box-shadow: var(--shadow);
+  }
+
+  .surface-card-strong {
+    @apply rounded-3xl border border-white/70 bg-white/90 backdrop-blur-md;
+    box-shadow: var(--shadow-strong);
+  }
+
+  .surface-header {
+    @apply border-b border-white/70 bg-white/80 backdrop-blur-md;
+  }
+
+  .surface-input {
+    border-radius: 0.75rem;
+    border: 1px solid rgba(226, 232, 240, 0.8);
+    background: rgba(255, 255, 255, 0.85);
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    color: #334155;
+    outline: none;
+    transition: box-shadow 200ms ease, border-color 200ms ease, transform 200ms ease, background-color 200ms ease;
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.75) inset, 0 4px 18px rgba(15, 23, 42, 0.04);
+  }
+
+  .surface-input:focus {
+    border-color: rgba(59, 130, 246, 0.65);
+    box-shadow:
+      0 0 0 4px rgba(59, 130, 246, 0.12),
+      0 1px 0 rgba(255, 255, 255, 0.75) inset,
+      0 6px 20px rgba(15, 23, 42, 0.06);
+  }
+
+  .surface-input::placeholder {
+    color: #94a3b8;
+  }
+
+  .surface-panel :where(input[type='text'], input[type='search'], input[type='number'], input[type='email'], input[type='password'], select, textarea) {
+    border-radius: 0.75rem;
+    border: 1px solid rgba(226, 232, 240, 0.8);
+    background: rgba(255, 255, 255, 0.85);
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    color: #334155;
+    outline: none;
+    transition: box-shadow 200ms ease, border-color 200ms ease, transform 200ms ease, background-color 200ms ease;
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.75) inset, 0 4px 18px rgba(15, 23, 42, 0.04);
+  }
+
+  .surface-panel :where(input[type='text'], input[type='search'], input[type='number'], input[type='email'], input[type='password'], select, textarea):focus {
+    border-color: rgba(59, 130, 246, 0.65);
+    box-shadow:
+      0 0 0 4px rgba(59, 130, 246, 0.12),
+      0 1px 0 rgba(255, 255, 255, 0.75) inset,
+      0 6px 20px rgba(15, 23, 42, 0.06);
+  }
+
+  .surface-panel :where(input[type='checkbox'], input[type='radio']) {
+    accent-color: var(--accent);
+  }
+
+  .surface-panel :where(select) {
+    padding-right: 2.5rem;
+  }
+
+  .premium-shadow {
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+  }
+
+  .hover-lift {
+    @apply transition duration-200 ease-out;
+  }
+
+  .hover-lift:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 16px 36px rgba(15, 23, 42, 0.10);
   }
 }

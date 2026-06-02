@@ -92,7 +92,7 @@ const getScenarioMode = (
 };
 
 const isBaselineScenarioType = (scenarioType: string): boolean =>
-  String(scenarioType || '').trim().toLowerCase() === 'baseline';
+  resolveScenarioTypePolicy(scenarioType).allocationMode === 'baseline';
 
 const getExactBaselineHeader = (
   scenarioHeaders: ScenarioRunHeader[],
@@ -160,6 +160,7 @@ const buildScenarioHeader = (
 ): ScenarioRunHeader => {
   const now = new Date().toISOString();
   const baseline = getBaselineHeader(context.scenarioHeaders, payload.input.region, payload.input.baselineScenarioId);
+  const scenarioPolicy = resolveScenarioTypePolicy(payload.input.scenarioType || baseline?.ScenarioType || '');
 
   const costShift = context.hasCostVsServiceWeights ? (payload.input.costVsService - 50) / 500 : 0;
   const serviceShift = context.hasCostVsServiceWeights ? (payload.input.costVsService - 50) / 100 : 0;
@@ -222,7 +223,7 @@ const buildScenarioHeader = (
     FootprintMode: payload.input.footprintMode || baseline?.FootprintMode || 'NA',
     LevelLoad: payload.input.levelLoad ? 'On' : (baseline?.LevelLoad || 'NA'),
     UtilizationCap: payload.input.utilCap || baseline?.UtilizationCap || 'NA',
-    CollectTreatment: baseline?.CollectTreatment || 'NA',
+    CollectTreatment: scenarioPolicy.collectTreatmentLabel || baseline?.CollectTreatment || 'NA',
     OverrideCount: 0,
     LaneCount: baseline ? baseline.LaneCount : 0,
     ChangedLaneCountVsBaseline: payload.action === 'draft' ? 0 : baseline ? Math.round(baseline.ChangedLaneCountVsBaseline * (1 + costShift)) : 0,
@@ -744,6 +745,7 @@ const buildLegacyScenarioConfig = (
 ): ScenarioRunConfig => {
   const activeDcs = Array.from(new Set(resultsDC.filter((row) => row.IsSuppressed !== 'Y').map((row) => row.DCName))).filter(Boolean);
   const suppressedDcs = Array.from(new Set(resultsDC.filter((row) => row.IsSuppressed === 'Y').map((row) => row.DCName))).filter(Boolean);
+  const collectPolicy = resolveScenarioTypePolicy(header.ScenarioType).collectPolicy;
 
   return {
     ScenarioRunID: header.ScenarioRunID,
@@ -755,7 +757,7 @@ const buildLegacyScenarioConfig = (
     LeadTimeCapDays: null,
     CostVsServiceWeight: 50,
     AllowRelocationPrepaid: 'Y',
-    AllowRelocationCollect: 'Y',
+    AllowRelocationCollect: collectPolicy === 'relocatable' ? 'Y' : 'N',
     BCVRuleSet: 'Default',
     FuelSurchargeMode: 'FromRates',
     FuelSurchargeOverridePct: null,

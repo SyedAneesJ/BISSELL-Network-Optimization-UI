@@ -74,8 +74,8 @@ export const HomeScenarioRunsSection: React.FC<HomeScenarioRunsSectionProps> = (
   const endItem = Math.min(currentPage * PAGE_SIZE, filteredScenarios.length);
 
   return (
-    <div className="bg-white rounded-lg border border-slate-200 shadow-sm mb-6 p-4">
-      <div className="flex flex-col gap-2 xs:flex-row xs:items-center xs:justify-between mb-4">
+    <div className="surface-panel mb-6 p-5">
+      <div className="mb-4 flex flex-col gap-2 xs:flex-row xs:items-center xs:justify-between">
         <h2 className="text-lg font-semibold text-slate-900">Scenario Runs</h2>
         <div className="flex flex-wrap gap-2">
           {onRunSelected && (
@@ -105,7 +105,7 @@ export const HomeScenarioRunsSection: React.FC<HomeScenarioRunsSectionProps> = (
             <label className="text-sm text-slate-600 whitespace-nowrap">Status:</label>
             <select
               value={statusFilter}
-              className="px-3 py-1.5 border border-slate-300 rounded text-sm bg-white"
+              className="px-3 py-1.5 rounded-xl border border-white/70 bg-white/80 text-sm shadow-sm backdrop-blur-md"
               onChange={(e) => onStatusFilterChange(e.target.value)}
             >
               <option value="All">All</option>
@@ -119,7 +119,7 @@ export const HomeScenarioRunsSection: React.FC<HomeScenarioRunsSectionProps> = (
             </select>
           </div>
 
-          <label className="flex items-center gap-2 px-3 py-1 bg-slate-100 rounded cursor-pointer">
+          <label className="flex items-center gap-2 rounded-xl border border-white/70 bg-white/75 px-3 py-1 backdrop-blur-md cursor-pointer">
             <input
               type="checkbox"
               checked={onlyAlerts}
@@ -131,7 +131,7 @@ export const HomeScenarioRunsSection: React.FC<HomeScenarioRunsSectionProps> = (
             </span>
           </label>
 
-          <label className="flex items-center gap-2 px-3 py-1 bg-slate-100 rounded cursor-pointer">
+          <label className="flex items-center gap-2 rounded-xl border border-white/70 bg-white/75 px-3 py-1 backdrop-blur-md cursor-pointer">
             <input
               type="checkbox"
               checked={onlyPublished}
@@ -161,7 +161,7 @@ export const HomeScenarioRunsSection: React.FC<HomeScenarioRunsSectionProps> = (
             value={searchTerm}
             onChange={(e) => onSearchTermChange(e.target.value)}
             placeholder="Search scenario runs..."
-            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full rounded-xl border border-white/70 bg-white/80 px-3 py-2 text-sm shadow-sm backdrop-blur-md focus:outline-none focus:ring-2 focus:ring-blue-500/15"
           />
         </div>
 

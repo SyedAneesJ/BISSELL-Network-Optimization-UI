@@ -15,6 +15,8 @@ export interface ScenarioTypePolicy {
   aliases: string[];
   allowedDcs: string[];
   allocationMode: ScenarioAllocationPreset;
+  collectPolicy: 'fixed' | 'relocatable';
+  collectTreatmentLabel: string;
   defaults: {
     footprintMode: string;
     utilCap: number;
@@ -78,12 +80,14 @@ const scenarioTypeRules: ScenarioTypePolicy[] = [
     aliases: ['baseline', 'us baseline'],
     allowedDcs: BASE_US_DCS,
     allocationMode: 'baseline',
+    collectPolicy: 'fixed',
+    collectTreatmentLabel: 'NA',
     defaults: {
       footprintMode: 'NA',
       utilCap: 100,
       levelLoad: false,
       allowRelocationPrepaid: true,
-      allowRelocationCollect: true,
+      allowRelocationCollect: false,
       bcvRuleSet: 'NA',
       allowManualOverride: false,
     },
@@ -112,12 +116,14 @@ const scenarioTypeRules: ScenarioTypePolicy[] = [
     helpText: ['Baseline parity: all 4 base DCs stay active and util cap is fixed at 100%.'],
   },
   {
-    scenarioType: 'Tactical Pro Forma',
+    scenarioType: 'Tactical Pro Forma (Collect Relocatable)',
     familyKey: 'base-us',
     familyLabel: 'Base US Family',
-    aliases: ['tactical pro forma'],
+    aliases: ['tactical pro forma collect relocatable', 'tactical collect relo', 'scenario 7 tactical collect relo'],
     allowedDcs: BASE_US_DCS,
     allocationMode: 'constrained',
+    collectPolicy: 'relocatable',
+    collectTreatmentLabel: 'Collect Relocatable',
     defaults: {
       footprintMode: 'Fixed',
       utilCap: 80,
@@ -134,7 +140,49 @@ const scenarioTypeRules: ScenarioTypePolicy[] = [
       utilCap: false,
       levelLoad: false,
       allowRelocationPrepaid: false,
+      allowRelocationCollect: true,
+      bcvRuleSet: true,
+      allowManualOverride: true,
+    },
+    supports: {
+      dcSuppression: true,
+      footprintMode: true,
+      utilCap: true,
+      levelLoad: true,
+      relocationPrepaid: true,
+      relocationCollect: true,
+      bcvMapping: false,
+      overrides: false,
+    },
+    sortOrder: 7,
+    helpText: ['Collect relocatable tactical pro forma allows collect lanes to move across active DCs.'],
+  },
+  {
+    scenarioType: 'Tactical Pro Forma',
+    familyKey: 'base-us',
+    familyLabel: 'Base US Family',
+    aliases: ['tactical pro forma'],
+    allowedDcs: BASE_US_DCS,
+    allocationMode: 'constrained',
+    collectPolicy: 'fixed',
+    collectTreatmentLabel: 'Fixed',
+    defaults: {
+      footprintMode: 'Fixed',
+      utilCap: 80,
+      levelLoad: true,
+    allowRelocationPrepaid: true,
       allowRelocationCollect: false,
+      bcvRuleSet: 'NA',
+      allowManualOverride: false,
+    },
+    locks: {
+      activeDcs: false,
+      suppressedDcs: false,
+      footprintMode: true,
+      utilCap: false,
+      levelLoad: false,
+      allowRelocationPrepaid: false,
+      allowRelocationCollect: true,
       bcvRuleSet: true,
       allowManualOverride: true,
     },
@@ -152,12 +200,14 @@ const scenarioTypeRules: ScenarioTypePolicy[] = [
     helpText: ['Tactical Pro Forma uses fixed footprint, allows DC suppression, and supports util cap editing.'],
   },
   {
-    scenarioType: 'Strategic Pro Forma',
+    scenarioType: 'Strategic Pro Forma (Collect Relocatable)',
     familyKey: 'base-us',
     familyLabel: 'Base US Family',
-    aliases: ['strategic pro forma'],
+    aliases: ['strategic pro forma collect relocatable', 'strategic collect relo', 'scenario 8 strategic collect relo'],
     allowedDcs: BASE_US_DCS,
     allocationMode: 'overload',
+    collectPolicy: 'relocatable',
+    collectTreatmentLabel: 'Collect Relocatable',
     defaults: {
       footprintMode: 'Unconstrained',
       utilCap: 100,
@@ -174,7 +224,49 @@ const scenarioTypeRules: ScenarioTypePolicy[] = [
       utilCap: true,
       levelLoad: true,
       allowRelocationPrepaid: false,
-      allowRelocationCollect: false,
+      allowRelocationCollect: true,
+      bcvRuleSet: true,
+      allowManualOverride: true,
+    },
+    supports: {
+      dcSuppression: true,
+      footprintMode: false,
+      utilCap: false,
+      levelLoad: false,
+      relocationPrepaid: true,
+      relocationCollect: true,
+      bcvMapping: false,
+      overrides: false,
+    },
+    sortOrder: 8,
+    helpText: ['Collect relocatable strategic pro forma keeps the same 4-DC family with unconstrained footprint.'],
+  },
+  {
+    scenarioType: 'Strategic Pro Forma',
+    familyKey: 'base-us',
+    familyLabel: 'Base US Family',
+    aliases: ['strategic pro forma'],
+    allowedDcs: BASE_US_DCS,
+    allocationMode: 'overload',
+    collectPolicy: 'fixed',
+    collectTreatmentLabel: 'Fixed',
+    defaults: {
+      footprintMode: 'Unconstrained',
+      utilCap: 100,
+      levelLoad: false,
+      allowRelocationPrepaid: true,
+    allowRelocationCollect: false,
+      bcvRuleSet: 'NA',
+      allowManualOverride: false,
+    },
+    locks: {
+      activeDcs: false,
+      suppressedDcs: false,
+      footprintMode: true,
+      utilCap: true,
+      levelLoad: true,
+      allowRelocationPrepaid: false,
+      allowRelocationCollect: true,
       bcvRuleSet: true,
       allowManualOverride: true,
     },
@@ -192,12 +284,56 @@ const scenarioTypeRules: ScenarioTypePolicy[] = [
     helpText: ['Strategic Pro Forma keeps util cap locked at 100% and uses unconstrained footprint.'],
   },
   {
-    scenarioType: 'BCV Ingestion Only',
+    scenarioType: 'BCV Ingestion (Collect Relocatable)',
     familyKey: 'bcv-family',
     familyLabel: 'BCV Family',
-    aliases: ['bcv ingestion', 'bcv ingestion only', 'bcv ingestion only collect relo', 'bcv - collect relo', 'bcv collect relo'],
+    aliases: ['bcv ingestion collect relocatable', 'bcv collect relo', 'scenario 9 bcv collect relo'],
     allowedDcs: BCV_DCS,
     allocationMode: 'unconstrained',
+    collectPolicy: 'relocatable',
+    collectTreatmentLabel: 'Collect Relocatable',
+    defaults: {
+      footprintMode: 'Unconstrained',
+      utilCap: 100,
+      levelLoad: false,
+      allowRelocationPrepaid: true,
+      allowRelocationCollect: true,
+      bcvRuleSet: 'Default',
+      allowManualOverride: false,
+    },
+    locks: {
+      activeDcs: false,
+      suppressedDcs: false,
+      footprintMode: true,
+      utilCap: true,
+      levelLoad: true,
+      allowRelocationPrepaid: true,
+      allowRelocationCollect: true,
+      bcvRuleSet: false,
+      allowManualOverride: true,
+    },
+    supports: {
+      dcSuppression: true,
+      footprintMode: false,
+      utilCap: false,
+      levelLoad: false,
+      relocationPrepaid: true,
+      relocationCollect: true,
+      bcvMapping: true,
+      overrides: false,
+    },
+    sortOrder: 9,
+    helpText: ['Collect relocatable BCV adds Pharr TX and allows collect lanes to move across the BCV family.'],
+  },
+    {
+      scenarioType: 'BCV Ingestion Only',
+      familyKey: 'bcv-family',
+      familyLabel: 'BCV Family',
+      aliases: ['bcv ingestion', 'bcv ingestion only'],
+      allowedDcs: BCV_DCS,
+    allocationMode: 'unconstrained',
+    collectPolicy: 'fixed',
+    collectTreatmentLabel: 'Fixed',
     defaults: {
       footprintMode: 'Unconstrained',
       utilCap: 100,
@@ -227,17 +363,57 @@ const scenarioTypeRules: ScenarioTypePolicy[] = [
       relocationCollect: false,
       bcvMapping: true,
       overrides: false,
+      },
+      sortOrder: 4,
+      helpText: ['BCV Ingestion adds Pharr TX to the 5-DC BCV family and keeps util cap at 100%.'],
     },
-    sortOrder: 4,
-    helpText: ['BCV Ingestion adds Pharr TX to the 5-DC BCV family and keeps util cap at 100%.'],
-  },
-  {
-    scenarioType: 'Consolidation Tactical',
-    familyKey: 'consolidation-family',
-    familyLabel: 'Consolidation Family',
-    aliases: ['tactical consolidation', 'consolidation tactical', 'consolidation tactical relo'],
+    {
+      scenarioType: 'Consolidation Tactical (Collect Relocatable)',
+      familyKey: 'consolidation-family',
+      familyLabel: 'Consolidation Family',
+      aliases: ['consolidation tactical collect relocatable', 'consolidation tactical collect relo', 'scenario 10 consolidation tactical relo'],
+      allowedDcs: CONSOLIDATION_DCS,
+      allocationMode: 'tacticalConsolidation',
+      collectPolicy: 'relocatable',
+      collectTreatmentLabel: 'Collect Relocatable',
+      defaults: {
+        footprintMode: 'Fixed',
+        utilCap: 80,
+        levelLoad: true,
+        allowRelocationPrepaid: true,
+        allowRelocationCollect: true,
+        bcvRuleSet: 'Default',
+        bcvMapping: true,
+        overrides: false,
+      },
+      locks: {
+        activeDcs: false,
+        utilCap: false,
+        levelLoad: true,
+        allowRelocationPrepaid: false,
+        allowRelocationCollect: true,
+        bcvRuleSet: false,
+        allowManualOverride: true,
+      },
+      supports: {
+        dcSuppression: true,
+        relocationPrepaid: true,
+        relocationCollect: true,
+        bcvMapping: true,
+        overrides: true,
+      },
+      sortOrder: 10,
+      helpText: ['Collect relocatable consolidation tactical keeps the 6-DC family with fixed footprint and allows collect lanes to move.'],
+    },
+    {
+      scenarioType: 'Consolidation Tactical',
+      familyKey: 'consolidation-family',
+      familyLabel: 'Consolidation Family',
+      aliases: ['tactical consolidation', 'consolidation tactical', 'consolidation tactical relo'],
     allowedDcs: CONSOLIDATION_DCS,
     allocationMode: 'tacticalConsolidation',
+    collectPolicy: 'fixed',
+    collectTreatmentLabel: 'Fixed',
     defaults: {
       footprintMode: 'Fixed',
       utilCap: 80,
@@ -268,16 +444,56 @@ const scenarioTypeRules: ScenarioTypePolicy[] = [
       bcvMapping: true,
       overrides: false,
     },
-    sortOrder: 5,
-    helpText: ['Consolidation Tactical uses the 6-DC family, fixed footprint, and starts at 80% util cap (editable).'],
-  },
-  {
-    scenarioType: 'Consolidation Strategic Unconstrained',
-    familyKey: 'consolidation-family',
-    familyLabel: 'Consolidation Family',
-    aliases: ['consolidation strategic unconstrained', 'strategic consolidation', 'consolidation strategic relo', 'consolidation strategic unconstrained relo'],
+      sortOrder: 5,
+      helpText: ['Consolidation Tactical uses the 6-DC family, fixed footprint, and starts at 80% util cap (editable).'],
+    },
+    {
+      scenarioType: 'Consolidation Strategic (Collect Relocatable)',
+      familyKey: 'consolidation-family',
+      familyLabel: 'Consolidation Family',
+      aliases: ['consolidation strategic collect relocatable', 'consolidation strategic collect relo', 'scenario 11 consolidation strategic relo'],
+      allowedDcs: CONSOLIDATION_DCS,
+      allocationMode: 'overload',
+      collectPolicy: 'relocatable',
+      collectTreatmentLabel: 'Collect Relocatable',
+      defaults: {
+        footprintMode: 'Unconstrained',
+        utilCap: 100,
+        levelLoad: false,
+        allowRelocationPrepaid: true,
+        allowRelocationCollect: true,
+        bcvRuleSet: 'Default',
+        bcvMapping: true,
+        overrides: false,
+      },
+      locks: {
+        activeDcs: false,
+        utilCap: true,
+        levelLoad: true,
+        allowRelocationPrepaid: false,
+        allowRelocationCollect: true,
+        bcvRuleSet: false,
+        allowManualOverride: true,
+      },
+      supports: {
+        dcSuppression: true,
+        relocationPrepaid: true,
+        relocationCollect: true,
+        bcvMapping: true,
+        overrides: true,
+      },
+      sortOrder: 11,
+      helpText: ['Collect relocatable consolidation strategic uses the 6-DC family with unconstrained footprint and allows collect lanes to move.'],
+    },
+    {
+      scenarioType: 'Consolidation Strategic Unconstrained',
+      familyKey: 'consolidation-family',
+      familyLabel: 'Consolidation Family',
+      aliases: ['consolidation strategic unconstrained', 'strategic consolidation', 'consolidation strategic relo', 'consolidation strategic unconstrained relo'],
     allowedDcs: CONSOLIDATION_DCS,
     allocationMode: 'overload',
+    collectPolicy: 'fixed',
+    collectTreatmentLabel: 'Fixed',
     defaults: {
       footprintMode: 'Unconstrained',
       utilCap: 100,
@@ -344,16 +560,16 @@ export const getScenarioTypeAllowedDcs = (scenarioType: unknown): string[] =>
 export const getScenarioTypeSortRank = (scenarioType: unknown): number => {
   const normalized = normalizeScenarioType(scenarioType);
   if (normalized.includes('baseline')) return 1;
+  if (normalized.includes('tactical pro forma') && normalized.includes('collect') && normalized.includes('relo')) return 7;
+  if (normalized.includes('strategic pro forma') && normalized.includes('collect') && normalized.includes('relo')) return 8;
+  if (normalized.includes('bcv ingestion') && normalized.includes('collect') && normalized.includes('relo')) return 9;
+  if (normalized.includes('consolidation tactical') && normalized.includes('relo')) return 10;
+  if (normalized.includes('consolidation strategic') && normalized.includes('relo')) return 11;
   if (normalized.includes('tactical pro forma')) return 2;
   if (normalized.includes('strategic pro forma')) return 3;
-  if (normalized.includes('bcv ingestion') && normalized.includes('collect') && normalized.includes('relo')) return 9;
   if (normalized.includes('bcv ingestion')) return 4;
-  if (normalized.includes('consolidation tactical') && normalized.includes('relo')) return 10;
   if (normalized.includes('consolidation tactical')) return 5;
-  if (normalized.includes('consolidation strategic') && normalized.includes('relo')) return 11;
   if (normalized.includes('consolidation strategic')) return 6;
-  if (normalized.includes('tactical') && normalized.includes('collect') && normalized.includes('relo')) return 7;
-  if (normalized.includes('strategic') && normalized.includes('collect') && normalized.includes('relo')) return 8;
   return resolveScenarioTypePolicy(scenarioType).sortOrder || 100;
 };
 
@@ -446,9 +662,7 @@ export const normalizeScenarioTypeSpecificInput = <T extends {
     allowRelocationPrepaid: policy.supports.relocationPrepaid
       ? normalizeBoolean(input.allowRelocationPrepaid, policy.defaults.allowRelocationPrepaid)
       : false,
-    allowRelocationCollect: policy.supports.relocationCollect
-      ? normalizeBoolean(input.allowRelocationCollect, policy.defaults.allowRelocationCollect)
-      : false,
+    allowRelocationCollect: policy.collectPolicy === 'relocatable',
     bcvRuleSet: policy.supports.bcvMapping
       ? normalizeString(input.bcvRuleSet, policy.defaults.bcvRuleSet)
       : policy.defaults.bcvRuleSet,
@@ -463,3 +677,89 @@ export const getScenarioTypeHelpText = (scenarioType: unknown): string[] =>
 
 export const getScenarioTypeFamilyDcs = (scenarioType: unknown): string[] =>
   normalizeDcList(resolveScenarioTypePolicy(scenarioType).allowedDcs);
+
+export type Step1ScenarioDefaults = {
+  region: 'US' | 'Canada';
+  entityScope: string;
+  channelScope: string[];
+  termsScope: string;
+};
+
+const STEP1_DEFAULTS_BY_SCENARIO_TYPE: Record<string, Step1ScenarioDefaults> = {
+  'US Baseline': {
+    region: 'US',
+    entityScope: 'Core',
+    channelScope: ['B2C Home Delivery + B2B Retailer + D2C/eCom'],
+    termsScope: 'Prepaid',
+  },
+  'Tactical Pro Forma': {
+    region: 'US',
+    entityScope: 'Core',
+    channelScope: ['B2C Home Delivery + B2B Retailer + D2C/eCom'],
+    termsScope: 'Prepaid',
+  },
+  'Tactical Pro Forma (Collect Relocatable)': {
+    region: 'US',
+    entityScope: 'Core',
+    channelScope: ['B2C Home Delivery + B2B Retailer + D2C/eCom'],
+    termsScope: 'Collect+Prepaid',
+  },
+  'Strategic Pro Forma': {
+    region: 'US',
+    entityScope: 'Core',
+    channelScope: ['B2C Home Delivery + B2B Retailer + D2C/eCom'],
+    termsScope: 'Prepaid',
+  },
+  'Strategic Pro Forma (Collect Relocatable)': {
+    region: 'US',
+    entityScope: 'Core',
+    channelScope: ['B2C Home Delivery + B2B Retailer + D2C/eCom'],
+    termsScope: 'Collect+Prepaid',
+  },
+  'BCV Ingestion Only': {
+    region: 'US',
+    entityScope: 'BCV',
+    channelScope: ['B2C Home Delivery + B2B Retailer + D2C/eCom'],
+    termsScope: 'Prepaid',
+  },
+  'BCV Ingestion (Collect Relocatable)': {
+    region: 'US',
+    entityScope: 'BCV',
+    channelScope: ['B2C Home Delivery + B2B Retailer + D2C/eCom'],
+    termsScope: 'Collect+Prepaid',
+  },
+  'Consolidation Tactical': {
+    region: 'US',
+    entityScope: 'Core+BCV',
+    channelScope: ['B2C Home Delivery + B2B Retailer + D2C/eCom'],
+    termsScope: 'Prepaid',
+  },
+  'Consolidation Tactical (Collect Relocatable)': {
+    region: 'US',
+    entityScope: 'Core+BCV',
+    channelScope: ['B2C Home Delivery + B2B Retailer + D2C/eCom'],
+    termsScope: 'Collect+Prepaid',
+  },
+  'Consolidation Strategic Unconstrained': {
+    region: 'US',
+    entityScope: 'Core+BCV',
+    channelScope: ['B2C Home Delivery + B2B Retailer + D2C/eCom'],
+    termsScope: 'Prepaid',
+  },
+  'Consolidation Strategic (Collect Relocatable)': {
+    region: 'US',
+    entityScope: 'Core+BCV',
+    channelScope: ['B2C Home Delivery + B2B Retailer + D2C/eCom'],
+    termsScope: 'Collect+Prepaid',
+  },
+};
+
+export const resolveStep1ScenarioDefaults = (scenarioType: unknown): Step1ScenarioDefaults => {
+  const policy = resolveScenarioTypePolicy(scenarioType);
+  return STEP1_DEFAULTS_BY_SCENARIO_TYPE[policy.scenarioType] || {
+    region: 'US',
+    entityScope: 'Core',
+    channelScope: ['B2C Home Delivery + B2B Retailer + D2C/eCom'],
+    termsScope: 'Prepaid',
+  };
+};

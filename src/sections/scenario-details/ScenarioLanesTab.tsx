@@ -51,7 +51,7 @@ export const ScenarioLanesTab: React.FC<ScenarioLanesTabProps> = ({
   exportLaneActive = false,
   exportExceptionsActive = false,
 }) => {
-  const showLoading = isLaneDataLoading || isLaneFiltering;
+  const showLoading = isLaneDataLoading;
 
   if (showLoading) {
     return (
@@ -85,6 +85,13 @@ export const ScenarioLanesTab: React.FC<ScenarioLanesTabProps> = ({
 
   return (
     <div className="space-y-4">
+      {isLaneFiltering && (
+        <div className="flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-sm text-blue-800">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span>Updating lane filters...</span>
+        </div>
+      )}
+
       <ScenarioLaneFilters
         laneZipSearch={laneZipSearch}
         onLaneZipSearchChange={onLaneZipSearchChange}
@@ -105,6 +112,7 @@ export const ScenarioLanesTab: React.FC<ScenarioLanesTabProps> = ({
                 size="small"
                 icon={<Download className="w-4 h-4" />}
                 onClick={onExportLaneCSV}
+                disabled={exportLaneActive}
                 className={exportLaneActive ? 'bg-amber-50 text-amber-800' : ''}
               >
                 {exportLaneActive ? 'Exporting Lane Table…' : 'Export Lane Table CSV'}

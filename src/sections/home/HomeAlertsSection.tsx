@@ -18,11 +18,11 @@ export const HomeAlertsSection: React.FC<HomeAlertsSectionProps> = ({
   dataHealthSnapshot,
 }) => {
   return (
-    <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-4">
-      <h2 className="text-lg font-semibold text-slate-900 mb-4">Alerts & Data Health</h2>
+    <div className="surface-panel p-5">
+      <h2 className="mb-4 text-lg font-semibold text-slate-900">Alerts & Data Health</h2>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="p-4 bg-red-50 rounded-lg border border-red-200">
+        <div className="surface-card p-4">
           <div className="flex items-center gap-2 mb-2">
             <AlertTriangle className="w-5 h-5 text-red-600" />
             <h3 className="font-semibold text-red-900">Over-Capacity</h3>
@@ -31,7 +31,7 @@ export const HomeAlertsSection: React.FC<HomeAlertsSectionProps> = ({
           <p className="text-sm text-red-600 mt-1">Runs with capacity issues</p>
         </div>
 
-        <div className="p-4 bg-amber-50 rounded-lg border border-amber-200">
+        <div className="surface-card p-4">
           <div className="flex items-center gap-2 mb-2">
             <Clock className="w-5 h-5 text-amber-600" />
             <h3 className="font-semibold text-amber-900">SLA Breaches</h3>
@@ -40,7 +40,7 @@ export const HomeAlertsSection: React.FC<HomeAlertsSectionProps> = ({
           <p className="text-sm text-amber-600 mt-1">Runs with SLA issues</p>
         </div>
 
-        <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
+        <div className="surface-card p-4">
           <div className="flex items-center gap-2 mb-2">
             <FileText className="w-5 h-5 text-slate-600" />
             <h3 className="font-semibold text-slate-900">Missing Rates</h3>
@@ -49,7 +49,7 @@ export const HomeAlertsSection: React.FC<HomeAlertsSectionProps> = ({
           <p className="text-sm text-slate-600 mt-1">Runs with data gaps</p>
         </div>
 
-        <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+        <div className="surface-card p-4">
           <div className="flex items-center gap-2 mb-2">
             <AlertTriangle className="w-5 h-5 text-blue-600" />
             <h3 className="font-semibold text-blue-900">Assumptions Used</h3>
@@ -59,7 +59,7 @@ export const HomeAlertsSection: React.FC<HomeAlertsSectionProps> = ({
         </div>
       </div>
 
-      <div className="mt-4 p-4 bg-slate-50 rounded-lg">
+      <div className="mt-4 surface-card p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex-1 min-w-0">
             <div className="flex flex-wrap items-center gap-2 mb-1">

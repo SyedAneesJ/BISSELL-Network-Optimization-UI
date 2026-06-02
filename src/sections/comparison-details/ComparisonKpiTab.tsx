@@ -37,36 +37,36 @@ export const ComparisonKpiTab: React.FC<ComparisonKpiTabProps> = ({
         />
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-lg overflow-x-auto">
-        <table className="min-w-max w-full">
-          <thead className="bg-slate-50">
+      <div className="surface-panel overflow-auto">
+        <table className="min-w-max w-full table-auto">
+          <thead className="sticky top-0 z-10 bg-white/80 backdrop-blur-md">
             <tr>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase">KPI</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-slate-700 uppercase">Run A</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-slate-700 uppercase">Run B</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-slate-700 uppercase">Delta</th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-slate-700 uppercase">Delta %</th>
+              <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">KPI</th>
+              <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Run A</th>
+              <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Run B</th>
+              <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Delta</th>
+              <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Delta %</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-200">
+          <tbody className="divide-y divide-slate-200/80 bg-white/65">
             {kpiComparisons.map((kpi, idx) => {
               const delta = kpi.valueB - kpi.valueA;
               const deltaPct = kpi.valueA !== 0 ? (delta / kpi.valueA) * 100 : 0;
               const isNegativeBetter = ['SLA Breach %', 'Excluded SLA', 'Max Util %'].includes(kpi.label);
 
               return (
-                <tr key={idx} className="hover:bg-slate-50">
+                <tr key={idx} className="transition-colors hover:bg-blue-50/50">
                   <td className="px-4 py-3 text-sm font-medium text-slate-900">{kpi.label}</td>
-                  <td className="px-4 py-3 text-sm text-slate-700 text-right">{formatValue(kpi.valueA, kpi.format)}</td>
-                  <td className="px-4 py-3 text-sm text-slate-700 text-right">{formatValue(kpi.valueB, kpi.format)}</td>
-                  <td className={`px-4 py-3 text-sm text-right font-medium ${
+                  <td className="px-4 py-3 text-right text-sm text-slate-700">{formatValue(kpi.valueA, kpi.format)}</td>
+                  <td className="px-4 py-3 text-right text-sm text-slate-700">{formatValue(kpi.valueB, kpi.format)}</td>
+                  <td className={`px-4 py-3 text-right text-sm font-medium ${
                     delta > 0 ? (isNegativeBetter ? 'text-red-600' : 'text-red-600') :
                     delta < 0 ? (isNegativeBetter ? 'text-green-600' : 'text-green-600') :
                     'text-slate-700'
                   }`}>
                     {delta > 0 ? '+' : ''}{formatValue(delta, kpi.format)}
                   </td>
-                  <td className={`px-4 py-3 text-sm text-right font-medium ${
+                  <td className={`px-4 py-3 text-right text-sm font-medium ${
                     delta > 0 ? (isNegativeBetter ? 'text-red-600' : 'text-red-600') :
                     delta < 0 ? (isNegativeBetter ? 'text-green-600' : 'text-green-600') :
                     'text-slate-700'
@@ -81,7 +81,7 @@ export const ComparisonKpiTab: React.FC<ComparisonKpiTabProps> = ({
       </div>
 
       {comparison.DecisionVerdict && (
-        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+        <div className="surface-card p-4">
           <div className="flex items-start gap-3">
             <div className="flex-shrink-0">
               <div className="w-10 h-10 bg-green-600 rounded-full flex items-center justify-center">

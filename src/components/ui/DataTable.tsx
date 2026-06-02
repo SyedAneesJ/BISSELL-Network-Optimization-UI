@@ -80,7 +80,7 @@ export function DataTable<T>({
 
   if (data.length === 0) {
     return (
-      <div className="text-center py-12 bg-slate-50 rounded-lg border border-slate-200">
+      <div className="surface-card text-center py-12">
         <p className="text-slate-500">{emptyMessage}</p>
       </div>
     );
@@ -88,9 +88,12 @@ export function DataTable<T>({
 
   return (
     <>
-      <div className="overflow-x-auto border border-slate-200 rounded-xl shadow-sm bg-white/70 min-w-0" style={{ maxHeight }}>
-        <table className="min-w-max w-full">
-          <thead className="bg-white/80 backdrop-blur sticky top-0 z-10 border-b border-slate-200">
+      <div
+        className="table-shell min-w-0 overflow-auto overscroll-contain"
+        style={maxHeight !== 'none' ? { maxHeight } : undefined}
+      >
+        <table className="min-w-max w-full table-auto">
+          <thead className="table-head sticky top-0 z-20 isolate bg-white/95 backdrop-blur-sm">
             <tr>
               {selectedRows && onSelectRow && (
                 <th className="px-4 py-3 text-left w-12">
@@ -100,7 +103,7 @@ export function DataTable<T>({
               {columns.map((column) => (
                 <th
                   key={column.key}
-                  className={`px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider whitespace-nowrap ${column.sortable ? 'cursor-pointer select-none hover:bg-slate-100' : ''}`}
+                  className={`bg-white/95 px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 whitespace-nowrap ${column.sortable ? 'cursor-pointer select-none hover:bg-white/90 transition-colors' : ''}`}
                   style={{ width: column.width }}
                   onClick={() => column.sortable && handleSort(column.key)}
                 >
@@ -116,7 +119,7 @@ export function DataTable<T>({
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-200 bg-white">
+          <tbody className="divide-y divide-slate-200/80 bg-white/65">
             {paginatedData.map((row, idx) => {
               const rowId = getRowId ? getRowId(row) : idx.toString();
               const isSelected = selectedRows?.has(rowId);
@@ -124,7 +127,7 @@ export function DataTable<T>({
               return (
                 <tr
                   key={rowId}
-                  className={`transition-colors ${onRowClick ? 'cursor-pointer' : ''} ${isSelected ? 'bg-blue-50' : idx % 2 === 1 ? 'bg-slate-50/60' : 'bg-white'} hover:bg-slate-50`}
+                  className={`transition-colors duration-200 ${onRowClick ? 'cursor-pointer' : ''} ${isSelected ? 'bg-blue-50/80' : idx % 2 === 1 ? 'bg-white/40' : 'bg-white'} hover:bg-blue-50/50`}
                   onClick={() => onRowClick?.(row)}
                 >
                   {selectedRows && onSelectRow && (
@@ -144,8 +147,16 @@ export function DataTable<T>({
                     </td>
                   )}
                   {columns.map((column) => (
-                    <td key={column.key} className="px-4 py-3 text-sm text-slate-900 whitespace-nowrap">
-                      {column.render ? column.render(row) : String((row as any)[column.key] || '')}
+                    <td key={column.key} className="px-4 py-3 text-sm text-slate-900 align-top">
+                      {column.render ? (
+                        <div className="min-w-0">
+                          {column.render(row)}
+                        </div>
+                      ) : (
+                        <div className="max-w-[28rem] truncate whitespace-nowrap">
+                          {String((row as any)[column.key] || '')}
+                        </div>
+                      )}
                     </td>
                   ))}
                 </tr>
@@ -155,7 +166,7 @@ export function DataTable<T>({
         </table>
       </div>
       {normalizedPageSize > 0 && sortedData.length > 0 && (
-        <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+        <div className="surface-card mt-4 flex items-center justify-between gap-3 px-4 py-3 text-sm text-slate-600">
           <span>
             Showing {(currentPage - 1) * normalizedPageSize + 1}
             {' '}to{' '}
@@ -165,7 +176,7 @@ export function DataTable<T>({
           <div className="flex items-center gap-2">
             <button
               type="button"
-              className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-xl border border-white/70 bg-white/80 px-3 py-1.5 text-sm text-slate-700 shadow-sm transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
               onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
               disabled={currentPage <= 1}
             >
@@ -176,7 +187,7 @@ export function DataTable<T>({
             </span>
             <button
               type="button"
-              className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-xl border border-white/70 bg-white/80 px-3 py-1.5 text-sm text-slate-700 shadow-sm transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
               onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
               disabled={currentPage >= totalPages}
             >

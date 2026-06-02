@@ -5,6 +5,7 @@ import { ScenarioTemplateOption } from '@/services/scenario';
 import {
   getScenarioTypeSortRank,
   normalizeScenarioTypeSpecificInput,
+  resolveStep1ScenarioDefaults,
   resolveScenarioTypePolicy,
   scenarioTypeMatches,
 } from '@/services/scenario/scenarioTypeRules';
@@ -26,16 +27,33 @@ const buildFormDataFromTemplate = (
   template: ScenarioTemplateOption | null,
   fallbackRegion: 'US' | 'Canada',
   fallbackDatasetOptions: DatasetOptionSets,
+  scenarioTypeOverride?: string,
 ): NewScenarioFormData => {
-  const policy = resolveScenarioTypePolicy(template?.scenarioType || '');
+  const resolvedScenarioType = scenarioTypeOverride || template?.scenarioType || '';
+  const policy = resolveScenarioTypePolicy(resolvedScenarioType);
+  const step1Defaults = resolveStep1ScenarioDefaults(resolvedScenarioType);
+  const resolvedEntityScope = String(template?.entityScope || '').trim();
+  const resolvedChannelScopes = template?.channelScopes || [];
+  const resolvedTermsScope = String(template?.termsScopes?.[0] || '').trim();
+  const isMeaningfulValue = (value: string): boolean => {
+    const normalized = value.trim().toLowerCase();
+    return normalized.length > 0 && normalized !== 'na';
+  };
+  const fallbackChannelScopes = fallbackDatasetOptions.channelScopes.filter(isMeaningfulValue);
+  const fallbackTermsScopes = fallbackDatasetOptions.termsScopes.filter(isMeaningfulValue);
   return normalizeScenarioTypeSpecificInput({
-    region: template?.region || fallbackRegion,
-    baselineScenarioId: template?.scenarioId || '',
+    region: template?.region || step1Defaults.region || fallbackRegion,
+    baselineScenarioId: template?.cloneFromScenarioId || template?.scenarioId || '',
     baselineDataflowId: template?.dataflowId || '',
     scenarioType: template?.scenarioType || '',
-    entityScope: template?.entityScope || 'NA',
-    channelScope: template ? [...template.channelScopes] : [...fallbackDatasetOptions.channelScopes],
-    termsScope: template?.termsScopes[0] || fallbackDatasetOptions.termsScopes[0] || '',
+    entityScope: isMeaningfulValue(resolvedEntityScope) ? resolvedEntityScope : step1Defaults.entityScope || 'NA',
+    channelScope: resolvedChannelScopes.some(isMeaningfulValue)
+      ? [...resolvedChannelScopes.filter(isMeaningfulValue)]
+      : [...step1Defaults.channelScope.filter(isMeaningfulValue)],
+    termsScope:
+      isMeaningfulValue(resolvedTermsScope)
+        ? resolvedTermsScope
+        : step1Defaults.termsScope || fallbackTermsScopes[0] || '',
     runName: '',
     tags: template ? [...template.tags] : [],
     notes: '',
@@ -64,6 +82,8 @@ const buildFormDataFromTemplate = (
 const scenarioTypeSortRank = (value: string): number => getScenarioTypeSortRank(value);
 const isExactBaselineScenario = (scenarioType: unknown): boolean =>
   resolveScenarioTypePolicy(scenarioType).scenarioType === 'US Baseline';
+const isExactScenarioType = (scenarioType: string, candidate: ScenarioTemplateOption): boolean =>
+  resolveScenarioTypePolicy(candidate.scenarioType).scenarioType === scenarioType;
 const isExactUsBaselineTemplate = (template: ScenarioTemplateOption | null): boolean =>
   Boolean(template)
   && isExactBaselineScenario(template?.scenarioType)
@@ -86,6 +106,7 @@ export const Step1TemplateScope: React.FC<Step1TemplateScopeProps> = ({
   const regionTemplates = templatesByRegion[formData.region] || baselineOptions;
   const selectedScenarioType = formData.scenarioType || '';
   const selectedScenarioPolicy = resolveScenarioTypePolicy(selectedScenarioType || baselineOptions[0]?.scenarioType || '');
+  const selectedStep1Defaults = resolveStep1ScenarioDefaults(selectedScenarioType || baselineOptions[0]?.scenarioType || '');
   const scenarioTypeOptions = Array.from(
     new Set(regionTemplates.map((option) => option.scenarioType).filter(Boolean))
   ).sort((a, b) => {
@@ -99,10 +120,29 @@ export const Step1TemplateScope: React.FC<Step1TemplateScopeProps> = ({
   const exactUsBaselineScenario = baselineScenarioOptions[0] || null;
   const selectedBaseScenario =
     (selectedScenarioPolicy.allocationMode === 'baseline' ? exactUsBaselineScenario : null)
+    || baselineOptions.find((item) => isExactScenarioType(selectedScenarioType, item))
     || baselineOptions.find((item) => item.scenarioId === formData.baselineScenarioId)
     || baselineOptions.find((item) => scenarioTypeMatches(item.scenarioType, selectedScenarioType))
     || baselineOptions[0]
     || null;
+  const renderedEntityScopes = entityScopes.length > 0
+    ? entityScopes
+    : [selectedStep1Defaults.entityScope || 'NA'];
+  const meaningfulChannelScopes = datasetOptions.channelScopes.filter((channel) => {
+    const normalized = String(channel || '').trim().toLowerCase();
+    return normalized.length > 0 && normalized !== 'na';
+  });
+  const renderedChannelScopes = meaningfulChannelScopes.length > 0
+    ? meaningfulChannelScopes
+    : selectedStep1Defaults.channelScope;
+  const meaningfulTermsScopes = datasetOptions.termsScopes.filter((term) => {
+    const normalized = String(term || '').trim().toLowerCase();
+    return normalized.length > 0 && normalized !== 'na';
+  });
+  const renderedTermsScopes = meaningfulTermsScopes.length > 0
+    ? meaningfulTermsScopes
+    : [selectedStep1Defaults.termsScope];
+  const scopeLocked = true;
 
   useEffect(() => {
     console.groupCollapsed('[Step 1] baseline selection');
@@ -117,8 +157,58 @@ export const Step1TemplateScope: React.FC<Step1TemplateScopeProps> = ({
     console.groupEnd();
   }, [exactUsBaselineScenario?.scenarioId, formData.baselineScenarioId, formData.scenarioType, selectedScenarioPolicy.allocationMode, selectedBaseScenario?.scenarioName]);
 
+  // useEffect(() => {
+  //   console.groupCollapsed('[Step 1] scope resolution');
+  //   console.log({
+  //     scenarioType: selectedScenarioType || 'NA',
+  //     scenarioPolicy: {
+  //       scenarioType: selectedScenarioPolicy.scenarioType,
+  //       familyKey: selectedScenarioPolicy.familyKey,
+  //       allocationMode: selectedScenarioPolicy.allocationMode,
+  //     },
+  //     selectedStep1Defaults,
+  //     renderedEntityScopes,
+  //     renderedChannelScopes,
+  //     renderedTermsScopes,
+  //     formDataScopeValues: {
+  //       entityScope: formData.entityScope || 'NA',
+  //       channelScope: formData.channelScope,
+  //       termsScope: formData.termsScope || 'NA',
+  //     },
+  //     datasetOptions: {
+  //       channelScopes: datasetOptions.channelScopes,
+  //       termsScopes: datasetOptions.termsScopes,
+  //     },
+  //     selectedBaseScenario: selectedBaseScenario
+  //       ? {
+  //           scenarioId: selectedBaseScenario.scenarioId,
+  //           scenarioName: selectedBaseScenario.scenarioName,
+  //           scenarioType: selectedBaseScenario.scenarioType,
+  //           entityScope: selectedBaseScenario.entityScope || 'NA',
+  //         }
+  //       : null,
+  //   });
+  //   console.groupEnd();
+  // }, [
+  //   datasetOptions.channelScopes,
+  //   datasetOptions.termsScopes,
+  //   formData.channelScope,
+  //   formData.entityScope,
+  //   formData.scenarioType,
+  //   formData.termsScope,
+  //   renderedChannelScopes,
+  //   renderedEntityScopes,
+  //   renderedTermsScopes,
+  //   selectedBaseScenario,
+  //   selectedScenarioPolicy.allocationMode,
+  //   selectedScenarioPolicy.familyKey,
+  //   selectedScenarioPolicy.scenarioType,
+  //   selectedStep1Defaults,
+  //   selectedScenarioType,
+  // ]);
+
   return (
-    <div className="space-y-6">
+    <div className="surface-panel space-y-6 p-5">
       <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
         <div className="flex flex-wrap items-center gap-3">
           <div>
@@ -163,7 +253,7 @@ export const Step1TemplateScope: React.FC<Step1TemplateScopeProps> = ({
                     || null)
                 : nextRegionTemplates[0] || null;
                 const nextFormData = {
-                  ...buildFormDataFromTemplate(nextTemplate, 'US', datasetOptions),
+                  ...buildFormDataFromTemplate(nextTemplate, 'US', datasetOptions, nextType),
                   region: 'US',
                   scenarioType: nextType,
                   runName: formData.runName,
@@ -209,9 +299,11 @@ export const Step1TemplateScope: React.FC<Step1TemplateScopeProps> = ({
                 : regionTemplates;
               const nextScenario = resolveScenarioTypePolicy(nextType).allocationMode === 'baseline'
                 ? exactUsBaselineScenario
-                : matchingOptions[0] || null;
+                : matchingOptions.find((item) => isExactScenarioType(nextType, item))
+                  || matchingOptions[0]
+                  || null;
               const nextFormData = {
-                ...buildFormDataFromTemplate(nextScenario, formData.region as 'US' | 'Canada', datasetOptions),
+                ...buildFormDataFromTemplate(nextScenario, formData.region as 'US' | 'Canada', datasetOptions, nextType),
                 scenarioType: nextType,
                 runName: formData.runName,
                 notes: formData.notes,
@@ -245,18 +337,25 @@ export const Step1TemplateScope: React.FC<Step1TemplateScopeProps> = ({
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-slate-700 mb-2">
-          Entity Scope
-        </label>
+        <div className="mb-2 flex items-center gap-2">
+          <label className="block text-sm font-medium text-slate-700">
+            Entity Scope
+          </label>
+          <span className="inline-flex items-center rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500 shadow-sm">
+            <Lock className="mr-1 h-3 w-3" />
+            Locked
+          </span>
+        </div>
         <div className="flex gap-4">
-          {entityScopes.map((scope) => (
-            <label key={scope} className="flex items-center gap-2 cursor-pointer">
+          {renderedEntityScopes.map((scope) => (
+            <label key={scope} className={`flex items-center gap-2 ${scopeLocked ? 'cursor-not-allowed opacity-80' : 'cursor-pointer'}`}>
               <input
                 type="radio"
                 name="entityScope"
                 value={scope}
                 checked={formData.entityScope === scope}
                 onChange={(e) => onFormDataChange({ ...formData, entityScope: e.target.value })}
+                disabled={scopeLocked}
                 className="text-blue-600 focus:ring-blue-500"
               />
               <span className="text-sm text-slate-700">{scope}</span>
@@ -266,10 +365,16 @@ export const Step1TemplateScope: React.FC<Step1TemplateScopeProps> = ({
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-slate-700 mb-2">
-          Channel Scope
-        </label>
-        {datasetOptions.channelScopes.length === 0 ? (
+        <div className="mb-2 flex items-center gap-2">
+          <label className="block text-sm font-medium text-slate-700">
+            Channel Scope
+          </label>
+          <span className="inline-flex items-center rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500 shadow-sm">
+            <Lock className="mr-1 h-3 w-3" />
+            Locked
+          </span>
+        </div>
+        {renderedChannelScopes.length === 0 ? (
           <>
             <div className="flex gap-4">
               <label className="flex items-center gap-2 cursor-not-allowed text-slate-500">
@@ -281,13 +386,14 @@ export const Step1TemplateScope: React.FC<Step1TemplateScopeProps> = ({
           </>
         ) : (
           <div className="flex gap-4 flex-wrap">
-            {datasetOptions.channelScopes.map((channel) => (
-              <label key={channel} className="flex items-center gap-2 cursor-pointer">
+            {renderedChannelScopes.map((channel) => (
+              <label key={channel} className="flex items-center gap-2 cursor-not-allowed opacity-80">
                 <input
                   type="checkbox"
                   className="rounded"
                   checked={formData.channelScope.includes(channel)}
                   onChange={() => onChannelToggle(channel)}
+                  disabled={scopeLocked}
                 />
                 <span className="text-sm text-slate-700">{channel}</span>
               </label>
@@ -297,26 +403,32 @@ export const Step1TemplateScope: React.FC<Step1TemplateScopeProps> = ({
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-slate-700 mb-2">
-          Terms Scope
-        </label>
+        <div className="mb-2 flex items-center gap-2">
+          <label className="block text-sm font-medium text-slate-700">
+            Terms Scope
+          </label>
+          <span className="inline-flex items-center rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500 shadow-sm">
+            <Lock className="mr-1 h-3 w-3" />
+            Locked
+          </span>
+        </div>
         <select
           value={formData.termsScope}
           onChange={(e) => onFormDataChange({ ...formData, termsScope: e.target.value })}
           className={`w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-            datasetOptions.termsScopes.length === 0 ? 'bg-slate-100' : ''
+            renderedTermsScopes.length === 0 ? 'bg-slate-100' : ''
           }`}
-          disabled={datasetOptions.termsScopes.length === 0}
+          disabled={scopeLocked || renderedTermsScopes.length === 0}
         >
-          {datasetOptions.termsScopes.length === 0 ? (
+          {renderedTermsScopes.length === 0 ? (
             <option value="">NA</option>
           ) : (
-            datasetOptions.termsScopes.map((term) => (
+            renderedTermsScopes.map((term) => (
               <option key={term} value={term}>{term}</option>
             ))
           )}
         </select>
-        {datasetOptions.termsScopes.length === 0 && (
+        {renderedTermsScopes.length === 0 && (
           <p className="text-xs text-slate-500 mt-1">No terms scope data available.</p>
         )}
       </div>

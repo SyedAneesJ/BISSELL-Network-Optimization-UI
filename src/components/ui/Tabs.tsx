@@ -25,17 +25,17 @@ export const Tabs: React.FC<TabsProps> = ({ tabs, defaultTab, onChange }) => {
 
   return (
     <div className="w-full">
-      <div className="border-b border-slate-200 bg-white/60 backdrop-blur rounded-xl px-2 sm:px-4">
-        <nav className="flex flex-nowrap gap-3 overflow-x-auto py-2" aria-label="Tabs">
+      <div className="surface-panel px-2 sm:px-4 py-2">
+        <nav className="flex flex-nowrap gap-3 overflow-x-auto" aria-label="Tabs">
           {tabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => handleTabChange(tab.id)}
               className={`
-                flex items-center gap-2 py-2 px-3 rounded-lg font-medium text-xs sm:text-sm transition-colors
+                flex items-center gap-2 rounded-xl px-3 py-2 text-xs sm:text-sm font-medium transition-all duration-200 active:scale-[0.98]
                 ${activeTab === tab.id
-                  ? 'bg-blue-600 text-white shadow'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                  ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-[0_10px_24px_rgba(37,99,235,0.18)]'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/80'
                 }
               `}
             >
@@ -45,7 +45,7 @@ export const Tabs: React.FC<TabsProps> = ({ tabs, defaultTab, onChange }) => {
           ))}
         </nav>
       </div>
-      <div className="py-6">
+      <div className="py-6 fade-in">
         {activeTabContent}
       </div>
     </div>

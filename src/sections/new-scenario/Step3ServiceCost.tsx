@@ -23,7 +23,7 @@ export const Step3ServiceCost: React.FC<Step3ServiceCostProps> = ({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="surface-panel space-y-6 p-5">
       <div>
         <div className="flex items-center gap-2 mb-2">
           <label className="text-sm font-medium text-slate-700">
@@ -83,7 +83,7 @@ export const Step3ServiceCost: React.FC<Step3ServiceCostProps> = ({
           </label>
           <Tooltip content="Toggle between cost focus and service focus. The scenario math still uses the underlying 0-100 value." />
         </div>
-        <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1 shadow-sm">
+        <div className="inline-flex rounded-xl border border-white/70 bg-white/80 p-1 shadow-[0_8px_24px_rgba(15,23,42,0.06)] backdrop-blur-md">
           <button
             type="button"
             className={`rounded-md px-4 py-2 text-sm font-medium transition ${
@@ -121,7 +121,7 @@ export const Step3ServiceCost: React.FC<Step3ServiceCostProps> = ({
         )}
       </div>
 
-      <div className="bg-slate-50 p-4 rounded-lg">
+      <div className="surface-card p-4">
         <h4 className="text-sm font-semibold text-slate-900 mb-3">Advanced: Fuel Surcharge</h4>
 
         <div className="space-y-3">

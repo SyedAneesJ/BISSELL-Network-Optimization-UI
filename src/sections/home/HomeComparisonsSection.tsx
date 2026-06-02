@@ -22,8 +22,8 @@ export const HomeComparisonsSection: React.FC<HomeComparisonsSectionProps> = ({
   refreshActive,
 }) => {
   return (
-    <div className="bg-white rounded-lg border border-slate-200 shadow-sm mb-6 p-4">
-      <div className="flex items-center justify-between mb-4">
+    <div className="surface-panel mb-6 p-5">
+      <div className="mb-4 flex items-center justify-between">
         <h2 className="text-lg font-semibold text-slate-900">Comparisons</h2>
         <Button
           onClick={onRefresh}
@@ -37,7 +37,7 @@ export const HomeComparisonsSection: React.FC<HomeComparisonsSectionProps> = ({
       </div>
 
       {filteredComparisons.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-sm text-slate-600">
+        <div className="surface-card border-dashed px-4 py-6 text-sm text-slate-600">
           {emptyStateMessage}
         </div>
       ) : (

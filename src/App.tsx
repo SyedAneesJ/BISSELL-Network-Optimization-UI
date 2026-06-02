@@ -858,19 +858,31 @@ function App() {
     const bcvDcs = [...baseUsDcs, 'Pharr TX'];
     const tacticalConsolidationDcs = [...baseUsDcs, 'Pharr TX', 'Stratford CT'];
 
-    const getScenarioDcScope = (scenarioType: string): string[] => {
-      const normalized = normalizeText(scenarioType);
-      if (normalized.includes('tactical consolidation') || normalized.includes('consolidation tactical')) {
-        return tacticalConsolidationDcs;
-      }
+      const getScenarioDcScope = (scenarioType: string): string[] => {
+        const normalized = normalizeText(scenarioType);
+        if (normalized.includes('tactical consolidation') || normalized.includes('consolidation tactical')) {
+          return tacticalConsolidationDcs;
+        }
       if (normalized.includes('consolidation strategic unconstrained')) {
         return tacticalConsolidationDcs;
       }
       if (normalized.includes('bcv ingestion')) {
         return bcvDcs;
-      }
-      return baseUsDcs;
-    };
+        }
+        return baseUsDcs;
+      };
+
+      const normalizeScenarioDisplayName = (scenarioName: string, scenarioType: string): string => {
+        const policy = resolveScenarioTypePolicy(scenarioType);
+        if (policy.scenarioType !== 'BCV Ingestion Only') return scenarioName;
+        return String(scenarioName || '')
+          .replace(/\bcollect\s*relo(catable)?\b/gi, '')
+          .replace(/\s*[-–—]{2,}\s*/g, ' - ')
+          .replace(/\s{2,}/g, ' ')
+          .replace(/\s*-\s*/g, ' - ')
+          .replace(/-\s*-\s*/g, ' - ')
+          .trim() || scenarioName;
+      };
 
     const buildTemplate = (header: ScenarioRunHeader): ScenarioTemplateOption | null => {
       if (!isOriginalScenarioHeader(header)) return null;
@@ -898,13 +910,13 @@ function App() {
         availableDcs = Object.keys(availableDcCapacity);
       }
 
-      return {
-        scenarioId: header.ScenarioRunID,
-        region: header.Region,
-        scenarioName: header.RunName,
-        dataflowId: header.DataflowID,
-        entityScope: header.EntityScope || 'NA',
-        scenarioType: header.ScenarioType,
+        return {
+          scenarioId: header.ScenarioRunID,
+          region: header.Region,
+          scenarioName: normalizeScenarioDisplayName(header.RunName, header.ScenarioType),
+          dataflowId: header.DataflowID,
+          entityScope: header.EntityScope || 'NA',
+          scenarioType: resolveScenarioTypePolicy(header.ScenarioType).scenarioType,
         channelScopes: header.ChannelScope ? header.ChannelScope.split(',').map((item) => item.trim()).filter(Boolean) : [],
         termsScopes: header.TermsScope ? header.TermsScope.split(',').map((item) => item.trim()).filter(Boolean) : [],
         tags: header.Tags ? header.Tags.split(',').map((item) => item.trim()).filter(Boolean) : [],
@@ -926,6 +938,20 @@ function App() {
       };
     };
 
+    const cloneTemplateWithOverrides = (
+      base: ScenarioTemplateOption,
+      overrides: Partial<ScenarioTemplateOption> & Pick<ScenarioTemplateOption, 'scenarioId' | 'scenarioName' | 'scenarioType'>,
+    ): ScenarioTemplateOption => ({
+      ...base,
+      ...overrides,
+      channelScopes: [...base.channelScopes],
+      termsScopes: [...base.termsScopes],
+      tags: [...base.tags],
+      accessorialFlags: [...base.accessorialFlags],
+      availableDcs: [...base.availableDcs],
+      availableDcCapacity: { ...base.availableDcCapacity },
+    });
+
     const grouped: Record<'US' | 'Canada', ScenarioTemplateOption[]> = {
       US: [],
       Canada: [],
@@ -935,6 +961,90 @@ function App() {
       const template = buildTemplate(header);
       if (template) grouped[header.Region].push(template);
     });
+
+      const exactTemplateByType = (templates: ScenarioTemplateOption[], scenarioType: string): ScenarioTemplateOption | null =>
+        templates.find((template) => resolveScenarioTypePolicy(template.scenarioType).scenarioType === scenarioType) || null;
+
+      const isCollectRelocatableTemplate = (template: ScenarioTemplateOption): boolean =>
+        resolveScenarioTypePolicy(template.scenarioType).collectPolicy === 'relocatable';
+
+      const tacticalBase = exactTemplateByType(grouped.US, 'Tactical Pro Forma');
+      const strategicBase = exactTemplateByType(grouped.US, 'Strategic Pro Forma');
+      const bcvBase = grouped.US.find((template) => {
+        const policy = resolveScenarioTypePolicy(template.scenarioType);
+        return policy.scenarioType === 'BCV Ingestion Only' && !isCollectRelocatableTemplate(template);
+      }) || exactTemplateByType(grouped.US, 'BCV Ingestion Only');
+      const consolidationTacticalBase = exactTemplateByType(grouped.US, 'Consolidation Tactical');
+      const consolidationStrategicBase = exactTemplateByType(grouped.US, 'Consolidation Strategic Unconstrained');
+      const syntheticUsTemplates = [
+      tacticalBase
+        ? cloneTemplateWithOverrides(tacticalBase, {
+            scenarioId: 'SYNTH_SCENARIO_7_TACTICAL_COLLECT_RELO_US',
+            cloneFromScenarioId: tacticalBase.scenarioId,
+            scenarioName: 'Scenario 7 - Tactical Collect Relo',
+            scenarioType: 'Tactical Pro Forma (Collect Relocatable)',
+            footprintMode: 'Fixed',
+            utilCap: 80,
+            levelLoad: true,
+            allowRelocationPrepaid: true,
+            allowRelocationCollect: true,
+          })
+        : null,
+      strategicBase
+        ? cloneTemplateWithOverrides(strategicBase, {
+            scenarioId: 'SYNTH_SCENARIO_8_STRATEGIC_COLLECT_RELO_US',
+            cloneFromScenarioId: strategicBase.scenarioId,
+            scenarioName: 'Scenario 8 - Strategic Collect Relo',
+            scenarioType: 'Strategic Pro Forma (Collect Relocatable)',
+            footprintMode: 'Unconstrained',
+            utilCap: 100,
+            levelLoad: false,
+            allowRelocationPrepaid: true,
+            allowRelocationCollect: true,
+          })
+        : null,
+        bcvBase
+            ? cloneTemplateWithOverrides(bcvBase, {
+                scenarioId: 'SYNTH_SCENARIO_9_BCV_COLLECT_RELO_US',
+                cloneFromScenarioId: bcvBase.scenarioId,
+                scenarioName: 'Scenario 9 - BCV Collect Relocatable',
+                scenarioType: 'BCV Ingestion (Collect Relocatable)',
+                footprintMode: 'Unconstrained',
+                utilCap: 100,
+              levelLoad: false,
+              allowRelocationPrepaid: true,
+              allowRelocationCollect: true,
+            })
+          : null,
+        consolidationTacticalBase
+          ? cloneTemplateWithOverrides(consolidationTacticalBase, {
+              scenarioId: 'SYNTH_SCENARIO_10_CONSOLIDATION_TACTICAL_COLLECT_RELO_US',
+              cloneFromScenarioId: consolidationTacticalBase.scenarioId,
+              scenarioName: 'Scenario 10 - Consolidation Tactical Collect Relo',
+              scenarioType: 'Consolidation Tactical (Collect Relocatable)',
+              footprintMode: 'Fixed',
+              utilCap: 80,
+              levelLoad: true,
+              allowRelocationPrepaid: true,
+              allowRelocationCollect: true,
+            })
+          : null,
+        consolidationStrategicBase
+          ? cloneTemplateWithOverrides(consolidationStrategicBase, {
+              scenarioId: 'SYNTH_SCENARIO_11_CONSOLIDATION_STRATEGIC_COLLECT_RELO_US',
+              cloneFromScenarioId: consolidationStrategicBase.scenarioId,
+              scenarioName: 'Scenario 11 - Consolidation Strategic Collect Relo',
+              scenarioType: 'Consolidation Strategic (Collect Relocatable)',
+              footprintMode: 'Unconstrained',
+              utilCap: 100,
+              levelLoad: false,
+              allowRelocationPrepaid: true,
+              allowRelocationCollect: true,
+            })
+          : null,
+      ].filter(Boolean) as ScenarioTemplateOption[];
+
+    grouped.US.push(...syntheticUsTemplates);
 
     const sortTemplates = (items: ScenarioTemplateOption[]) =>
       [...items].sort((a, b) => {
@@ -958,18 +1068,30 @@ function App() {
   };
 
   const navigateToScenario = (scenarioId: string) => {
-    setAppState({
-      currentPage: 'scenario',
-      selectedScenarioId: scenarioId,
-      selectedComparisonId: null,
+    setUiBusyMessage('Loading scenario details...');
+    window.requestAnimationFrame(() => {
+      setAppState({
+        currentPage: 'scenario',
+        selectedScenarioId: scenarioId,
+        selectedComparisonId: null,
+      });
+      window.requestAnimationFrame(() => {
+        setUiBusyMessage(null);
+      });
     });
   };
 
   const navigateToComparison = (comparisonId: string) => {
-    setAppState({
-      currentPage: 'comparison',
-      selectedScenarioId: null,
-      selectedComparisonId: comparisonId,
+    setUiBusyMessage('Loading comparison details...');
+    window.requestAnimationFrame(() => {
+      setAppState({
+        currentPage: 'comparison',
+        selectedScenarioId: null,
+        selectedComparisonId: comparisonId,
+      });
+      window.requestAnimationFrame(() => {
+        setUiBusyMessage(null);
+      });
     });
   };
 

@@ -33,7 +33,7 @@ export const Step2NetworkCapacity: React.FC<Step2NetworkCapacityProps> = ({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="surface-panel space-y-6 p-5">
       <div>
         <div className="flex items-center gap-2 mb-3">
           <label className="text-sm font-medium text-slate-700">
@@ -50,10 +50,10 @@ export const Step2NetworkCapacity: React.FC<Step2NetworkCapacityProps> = ({
             return (
               <div
                 key={dc}
-              className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                className={`hover-lift p-4 rounded-2xl border cursor-pointer transition-all backdrop-blur-md ${
                   isActive
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-slate-200 bg-slate-50'
+                    ? 'border-emerald-300/90 bg-emerald-50/70 ring-1 ring-emerald-200/70'
+                    : 'border-rose-300/90 bg-rose-50/60 ring-1 ring-rose-200/60'
                 }`}
                 onClick={() => {
                   if (scenarioPolicy.locks.activeDcs) return;
