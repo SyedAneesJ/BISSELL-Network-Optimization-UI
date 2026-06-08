@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Button, Modal } from '../ui';
+import { Button, Modal, Select } from '../ui';
+import { compactSelectBaseClass } from '../ui/formStyles';
 import { ScenarioRunHeader } from '@/data';
 
 interface NewComparisonModalProps {
@@ -104,36 +105,26 @@ export const NewComparisonModal: React.FC<NewComparisonModalProps> = ({
             <label className="block text-sm font-medium text-slate-700 mb-2">
               Run A (Baseline)
             </label>
-            <select
+            <Select
               value={runA}
-              onChange={(e) => setRunA(e.target.value)}
-              className="w-full rounded-xl border border-white/70 bg-white/80 px-3 py-2 shadow-sm backdrop-blur-md focus:outline-none focus:ring-2 focus:ring-blue-500/15"
-            >
-              <option value="">Select scenario...</option>
-              {sortedScenarios.map((scenario) => (
-                <option key={scenario.ScenarioRunID} value={scenario.ScenarioRunID}>
-                  {scenario.RunName}
-                </option>
-              ))}
-            </select>
+              onChange={(val) => setRunA(val)}
+              className="border-white/70 bg-white/80 backdrop-blur-md focus:border-blue-500"
+              placeholder="Select scenario..."
+              options={sortedScenarios.map((s) => ({ value: s.ScenarioRunID, label: s.RunName }))}
+            />
           </div>
 
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-2">
               Run B (Comparison)
             </label>
-            <select
+            <Select
               value={runB}
-              onChange={(e) => setRunB(e.target.value)}
-              className="w-full rounded-xl border border-white/70 bg-white/80 px-3 py-2 shadow-sm backdrop-blur-md focus:outline-none focus:ring-2 focus:ring-blue-500/15"
-            >
-              <option value="">Select scenario...</option>
-              {sortedScenarios.map((scenario) => (
-                <option key={scenario.ScenarioRunID} value={scenario.ScenarioRunID}>
-                  {scenario.RunName}
-                </option>
-              ))}
-            </select>
+              onChange={(val) => setRunB(val)}
+              className="border-white/70 bg-white/80 backdrop-blur-md focus:border-blue-500"
+              placeholder="Select scenario..."
+              options={sortedScenarios.map((s) => ({ value: s.ScenarioRunID, label: s.RunName }))}
+            />
           </div>
         </div>
 

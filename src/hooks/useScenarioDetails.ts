@@ -161,7 +161,7 @@ export const useScenarioDetails = ({
   );
 
   const visibleLaneResults = useMemo(
-    () => normalizedUniqueLaneResults.filter((lane) => Number(lane.ChosenRank ?? lane.CostRank ?? 0) === 1),
+    () => normalizedUniqueLaneResults,
     [normalizedUniqueLaneResults],
   );
 
@@ -185,7 +185,11 @@ export const useScenarioDetails = ({
   const baselineScenario = useMemo(() => {
     if (!scenario) return null;
     const candidates = scenarioRunHeaders.filter(
-      (s) => s.Region === scenario.Region && s.ScenarioType === 'Baseline'
+      (s) => s.Region === scenario.Region
+        && (
+          String(s.ScenarioType || '').toLowerCase().includes('baseline')
+          || String(s.RunName || '').toLowerCase().includes('baseline')
+        )
     );
     if (candidates.length === 0) return null;
     const sorted = [...candidates].sort(
@@ -217,7 +221,7 @@ export const useScenarioDetails = ({
   }, [baselineLaneResults, laneGroupKey, laneOptionSort]);
 
   const visibleBaselineLaneResults = useMemo(
-    () => uniqueBaselineLaneResults.map(normalizeLaneDisplay).filter((lane) => Number(lane.ChosenRank ?? lane.CostRank ?? 0) === 1),
+    () => uniqueBaselineLaneResults.map(normalizeLaneDisplay),
     [normalizeLaneDisplay, uniqueBaselineLaneResults],
   );
 
@@ -417,7 +421,7 @@ export const useScenarioDetails = ({
         Threshold: lane.Threshold ?? '',
       }));
       const csv = toCSV(rows);
-      downloadBlob(csv, `${scenarioId}_routing_assignments.csv`, 'text/csv;charset=utf-8;');
+      downloadBlob(csv, `${scenarioId}_lane_table.csv`, 'text/csv;charset=utf-8;');
     });
   };
 
@@ -474,7 +478,7 @@ export const useScenarioDetails = ({
         SourceDatasetId: lane.SourceDatasetId || '',
       }));
       const csv = toCSV(rows);
-      downloadBlob(csv, `${scenarioId}_lane_table.csv`, 'text/csv;charset=utf-8;');
+      downloadBlob(csv, `${scenarioId}_routing_assignments.csv`, 'text/csv;charset=utf-8;');
     });
   };
 

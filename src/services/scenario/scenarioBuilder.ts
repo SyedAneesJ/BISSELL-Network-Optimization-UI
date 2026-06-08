@@ -26,6 +26,8 @@ const buildScenarioId = (existingCount: number) => {
   return `SR_${ts}_${suffix}`;
 };
 
+const CANADA_STRATFORD_LANE_DATASET_ID = String(import.meta.env.VITE_SCENARIO_CANADA_STRATFORD_DATASET_ID || '').trim();
+
 const dedupeRowsByKey = <T>(rows: T[], getKey: (row: T) => string): T[] => {
   const seen = new Set<string>();
   const result: T[] = [];
@@ -51,11 +53,83 @@ const canonicalizeBaselineLaneRows = (rows: ScenarioRunResultsLane[]): ScenarioR
 const getBaselineLaneRows = (
   context: ScenarioBuildContext,
   scenarioType: string,
+  region: 'US' | 'Canada',
   baselineScenarioId: string | null,
 ): ScenarioRunResultsLane[] => {
   const rawMap = context.laneRowsByScenarioId || {};
+  if (shouldLogLaneSource) {
+    const canadaStratfordTaggedLaneCount = Object.values(rawMap)
+      .flat()
+      .filter((row) => String(row.SourceDatasetId || '').trim() === CANADA_STRATFORD_LANE_DATASET_ID)
+      .length;
+    const sourceDatasetBreakdown = Object.values(rawMap)
+      .flat()
+      .reduce<Record<string, number>>((acc, row) => {
+        const key = String(row.SourceDatasetId || 'missing');
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+      }, {});
+    console.log('[Scenario Build] baseline lane lookup', {
+      region,
+      scenarioType,
+      baselineScenarioId,
+      rawLaneScenarioIds: Object.keys(rawMap),
+      canadaStratfordDatasetId: CANADA_STRATFORD_LANE_DATASET_ID || 'missing',
+      canadaStratfordTaggedLaneCount,
+      sourceDatasetBreakdown,
+      rawLaneCountsByScenarioId: Object.fromEntries(
+        Object.entries(rawMap).map(([scenarioRunId, rows]) => [scenarioRunId, rows.length]),
+      ),
+    });
+  }
   if (baselineScenarioId && rawMap[baselineScenarioId]?.length) {
+    if (shouldLogLaneSource) {
+      console.log('[Scenario Build] baseline lane selection', {
+        region,
+        scenarioType,
+        baselineScenarioId,
+        sourceLabel: 'exact baselineScenarioId',
+        laneCount: rawMap[baselineScenarioId].length,
+      });
+    }
     return canonicalizeBaselineLaneRows(rawMap[baselineScenarioId]);
+  }
+
+  const normalizedScenarioType = String(scenarioType || '').trim().toLowerCase();
+  const needsCanadaStratfordRows =
+    region === 'Canada' &&
+    (normalizedScenarioType.includes('bcv') || normalizedScenarioType.includes('consolidation'));
+
+  if (needsCanadaStratfordRows && CANADA_STRATFORD_LANE_DATASET_ID) {
+    const canadaStratfordRows = Object.values(rawMap)
+      .flat()
+      .filter((row) => String(row.SourceDatasetId || '').trim() === CANADA_STRATFORD_LANE_DATASET_ID);
+    if (canadaStratfordRows.length > 0) {
+      if (shouldLogLaneSource) {
+        console.log('[Scenario Build] baseline lane selection', {
+          region,
+          scenarioType,
+          baselineScenarioId,
+          sourceLabel: 'canada stratford source dataset',
+          laneCount: canadaStratfordRows.length,
+        });
+      }
+      return canonicalizeBaselineLaneRows(canadaStratfordRows);
+    }
+  }
+
+  if (region === 'Canada' && rawMap.Baseline?.length) {
+    if (shouldLogLaneSource) {
+      console.log('[Scenario Build] baseline lane selection', {
+        region,
+        scenarioType,
+        baselineScenarioId,
+        sourceLabel: 'rawMap.Baseline',
+        laneCount: rawMap.Baseline.length,
+        needsCanadaStratfordRows,
+      });
+    }
+    return canonicalizeBaselineLaneRows(rawMap.Baseline);
   }
 
   const scenarioTypeMatch = Object.entries(rawMap).find(([, rows]) =>
@@ -65,10 +139,29 @@ const getBaselineLaneRows = (
     })
   );
   if (scenarioTypeMatch?.[1]?.length) {
+    if (shouldLogLaneSource) {
+      console.log('[Scenario Build] baseline lane selection', {
+        region,
+        scenarioType,
+        baselineScenarioId,
+        sourceLabel: 'scenarioTypeMatch',
+        matchedScenarioRunId: scenarioTypeMatch[0],
+        laneCount: scenarioTypeMatch[1].length,
+      });
+    }
     return canonicalizeBaselineLaneRows(scenarioTypeMatch[1]);
   }
 
   const firstRawLaneGroup = Object.values(rawMap).find((rows) => rows.length > 0) || [];
+  if (shouldLogLaneSource) {
+    console.log('[Scenario Build] baseline lane selection', {
+      region,
+      scenarioType,
+      baselineScenarioId,
+      sourceLabel: 'firstRawLaneGroup',
+      laneCount: firstRawLaneGroup.length,
+    });
+  }
   return canonicalizeBaselineLaneRows(firstRawLaneGroup);
 };
 
@@ -97,12 +190,19 @@ const isBaselineScenarioType = (scenarioType: string): boolean =>
 const getExactBaselineHeader = (
   scenarioHeaders: ScenarioRunHeader[],
   region: 'US' | 'Canada',
-): ScenarioRunHeader | null =>
-  scenarioHeaders.find((s) =>
+): ScenarioRunHeader | null => {
+  if (region === 'US') {
+    return scenarioHeaders.find((s) =>
+      s.Region === 'US'
+      && scenarioTypeMatches(String(s.ScenarioType || ''), 'US Baseline')
+      && String(s.DataflowID || '').trim() === '3267'
+    ) || null;
+  }
+  return scenarioHeaders.find((s) =>
     s.Region === region
-    && scenarioTypeMatches(String(s.ScenarioType || ''), 'Baseline')
-    && String(s.DataflowID || '').trim() === '3267',
+    && scenarioTypeMatches(String(s.ScenarioType || ''), 'Canada Baseline')
   ) || null;
+};
 
 const buildLaneGroupKey = (lane: ScenarioRunResultsLane): string =>
   [
@@ -159,8 +259,59 @@ const buildScenarioHeader = (
   scenarioId: string,
 ): ScenarioRunHeader => {
   const now = new Date().toISOString();
-  const baseline = getBaselineHeader(context.scenarioHeaders, payload.input.region, payload.input.baselineScenarioId);
+  const exactBaseline = isBaselineScenarioType(payload.input.scenarioType)
+    ? getExactBaselineHeader(context.scenarioHeaders, payload.input.region)
+    : null;
+  const baseline = exactBaseline
+    || getBaselineHeader(context.scenarioHeaders, payload.input.region, payload.input.baselineScenarioId);
   const scenarioPolicy = resolveScenarioTypePolicy(payload.input.scenarioType || baseline?.ScenarioType || '');
+  const isStoredBaselineScenario = isBaselineScenarioType(payload.input.scenarioType) && Boolean(baseline);
+
+  if (isStoredBaselineScenario && baseline) {
+    return {
+      ScenarioRunID: scenarioId,
+      RunName: payload.input.runName || baseline.RunName || `New Scenario ${scenarioId}`,
+      Region: payload.input.region,
+      BaselineScenarioId: baseline.ScenarioRunID,
+      DataflowID: baseline.DataflowID ?? payload.input.baselineDataflowId,
+      ScenarioType: (payload.input.scenarioType || baseline.ScenarioType || 'Baseline') as ScenarioRunHeader['ScenarioType'],
+      EntityScope: payload.input.entityScope,
+      ChannelScope: payload.input.channelScope.length > 0 ? payload.input.channelScope.join(',') : 'NA',
+      TermsScope: (payload.input.termsScope || 'Collect+Prepaid') as ScenarioRunHeader['TermsScope'],
+      CreatedBy: context.currentUserDisplayName,
+      CreatedAt: now,
+      LastUpdatedAt: now,
+      LastRunBy: null,
+      LastRunAt: null,
+      LastRunExecutionId: null,
+      Status: payload.action === 'draft' ? 'Draft' : 'Running',
+      ApprovedBy: null,
+      ApprovedAt: null,
+      LatestComment: payload.input.notes || 'NA',
+      Tags: payload.input.tags.length > 0 ? payload.input.tags.join(',') : 'NA',
+      DataSnapshotVersion: context.dataSnapshotVersion || 'NA',
+      AssumptionsSummary: 'NA',
+      AlertFlags: baseline.AlertFlags || '',
+      TotalCost: Number(baseline.TotalCost ?? 0),
+      CostPerUnit: Number(baseline.CostPerUnit ?? 0),
+      AvgDeliveryDays: Number(baseline.AvgDeliveryDays ?? 0),
+      AvgTransitDays: baseline.AvgTransitDays ?? null,
+      TotalCount: Number(baseline.TotalCount ?? 0),
+      SLABreachPct: Number(baseline.SLABreachPct ?? 0),
+      ExcludedBySLACount: Number(baseline.ExcludedBySLACount ?? 0),
+      MaxUtilPct: Number(baseline.MaxUtilPct ?? 0),
+      TotalSpaceRequired: Number(baseline.TotalSpaceRequired ?? 0),
+      SpaceCore: Number(baseline.SpaceCore ?? 0),
+      SpaceBCV: Number(baseline.SpaceBCV ?? 0),
+      FootprintMode: baseline.FootprintMode || 'NA',
+      LevelLoad: baseline.LevelLoad || 'NA',
+      UtilizationCap: baseline.UtilizationCap || 'NA',
+      CollectTreatment: baseline.CollectTreatment || 'NA',
+      OverrideCount: 0,
+      LaneCount: baseline.LaneCount ?? 0,
+      ChangedLaneCountVsBaseline: Number(baseline.ChangedLaneCountVsBaseline ?? 0),
+    };
+  }
 
   const costShift = context.hasCostVsServiceWeights ? (payload.input.costVsService - 50) / 500 : 0;
   const serviceShift = context.hasCostVsServiceWeights ? (payload.input.costVsService - 50) / 100 : 0;
@@ -533,7 +684,7 @@ export const buildScenarioArtifacts = (
     ? getExactBaselineHeader(context.scenarioHeaders, normalizedPayload.input.region)
     : null;
   const effectiveBaselineScenarioId = scenarioTypeIsBaseline
-    ? exactBaseline?.ScenarioRunID ?? normalizedPayload.input.baselineScenarioId
+    ? exactBaseline?.ScenarioRunID ?? getBaselineHeader(context.scenarioHeaders, normalizedPayload.input.region, null)?.ScenarioRunID ?? null
     : normalizedPayload.input.baselineScenarioId;
   const baseline = getBaselineHeader(context.scenarioHeaders, normalizedPayload.input.region, effectiveBaselineScenarioId);
   const laneSourceBaseline = getLaneSourceBaselineHeader(
@@ -553,11 +704,12 @@ export const buildScenarioArtifacts = (
   const baselineLaneRows = getBaselineLaneRows(
     context,
     normalizedPayload.input.scenarioType,
-    laneSourceBaseline?.ScenarioRunID ?? baseline?.ScenarioRunID ?? normalizedPayload.input.baselineScenarioId ?? null,
+    normalizedPayload.input.region,
+    laneSourceBaseline?.ScenarioRunID ?? baseline?.ScenarioRunID ?? (scenarioTypeIsBaseline ? null : normalizedPayload.input.baselineScenarioId) ?? null,
   );
 
   if (shouldLogLaneSource) {
-    const laneSourceId = laneSourceBaseline?.ScenarioRunID ?? baseline?.ScenarioRunID ?? normalizedPayload.input.baselineScenarioId ?? null;
+    const laneSourceId = laneSourceBaseline?.ScenarioRunID ?? baseline?.ScenarioRunID ?? (scenarioTypeIsBaseline ? null : normalizedPayload.input.baselineScenarioId) ?? null;
     const sourceLabel = laneSourceId && context.laneRowsByScenarioId?.[laneSourceId]?.length
       ? 'laneRowsByScenarioId'
       : 'raw lane map fallback';
@@ -578,6 +730,7 @@ export const buildScenarioArtifacts = (
       scenarioId,
       scenarioType: normalizedPayload.input.scenarioType,
       baselineScenarioId: baseline?.ScenarioRunID ?? normalizedPayload.input.baselineScenarioId ?? null,
+      exactBaselineScenarioId: exactBaseline?.ScenarioRunID ?? null,
       laneSourceScenarioId: laneSourceBaseline?.ScenarioRunID ?? null,
       sourceLabel,
       rawCountBeforeCanon: rawCount,
@@ -593,8 +746,6 @@ export const buildScenarioArtifacts = (
 
   if (mode === 'baseline') {
     const canonicalDcRows = baselineDcRows.map((row) => ({ ...row, ScenarioRunID: scenarioId }));
-    const canonicalLaneRows = canonicalizeBaselineLaneRows(baselineLaneRows).map((row) => ({ ...row, ScenarioRunID: scenarioId }));
-    const capacityMap = buildCapacityMap(context.dcCapacityRows, normalizedPayload.input.utilCap);
     if (shouldLogLaneSource) {
       console.groupCollapsed('[Scenario Builder] baseline header');
       console.table([{
@@ -609,15 +760,8 @@ export const buildScenarioArtifacts = (
       }]);
       console.groupEnd();
     }
-    const annotated = annotateCapacityOutputs(
-      scenarioId,
-      canonicalLaneRows,
-      canonicalDcRows,
-      capacityMap.byName,
-      capacityMap.rawByName,
-    );
-    resultsDC = annotated.dcRows;
-    resultsLanes = annotated.laneRows;
+    resultsDC = canonicalDcRows;
+    resultsLanes = canonicalizeBaselineLaneRows(baselineLaneRows).map((row) => ({ ...row, ScenarioRunID: scenarioId }));
     summary = summarizeBaselineFromHeader(baseline ?? headerBase, resultsDC);
   } else {
     const allocation = allocateScenarioOutputs({

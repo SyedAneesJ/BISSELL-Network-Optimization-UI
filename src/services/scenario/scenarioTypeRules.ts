@@ -1,5 +1,5 @@
 
-export type ScenarioFamilyKey = 'base-us' | 'bcv-family' | 'consolidation-family';
+export type ScenarioFamilyKey = 'base-us' | 'base-canada' | 'bcv-family' | 'consolidation-family';
 export type ScenarioAllocationPreset =
   | 'baseline'
   | 'overload'
@@ -54,12 +54,21 @@ export interface ScenarioTypePolicy {
 const BASE_US_DCS = ['Elwood', 'Dallas', 'Los Angeles', 'R Virginia'];
 const BCV_DCS = [...BASE_US_DCS, 'Pharr TX'];
 const CONSOLIDATION_DCS = [...BASE_US_DCS, 'Pharr TX', 'Stratford CT'];
+const CANADA_CORE_DCS = ['Brampton', 'Richmond'];
+const CANADA_BCV_DCS = [...CANADA_CORE_DCS, 'Stratford'];
 
 const normalizeScenarioType = (value: unknown): string =>
   String(value || '').trim().toLowerCase();
 
 const normalizeDcKey = (value: unknown): string =>
   String(value || '').trim().toLowerCase();
+
+export const canonicalizeDcName = (value: unknown): string => {
+  const text = String(value || '').trim();
+  const normalized = text.toLowerCase().replace(/\s+/g, ' ');
+  if (normalized === 'stratford ct') return 'Stratford';
+  return text;
+};
 
 const normalizeDcList = (rows: string[]): string[] =>
   [...rows]
@@ -116,10 +125,66 @@ const scenarioTypeRules: ScenarioTypePolicy[] = [
     helpText: ['Baseline parity: all 4 base DCs stay active and util cap is fixed at 100%.'],
   },
   {
+    scenarioType: 'Canada Baseline',
+    familyKey: 'base-canada',
+    familyLabel: 'Canada Baseline Family',
+    aliases: ['canada baseline', 'ca baseline'],
+    allowedDcs: CANADA_CORE_DCS,
+    allocationMode: 'baseline',
+    collectPolicy: 'fixed',
+    collectTreatmentLabel: 'NA',
+    defaults: {
+      region: 'Canada',
+      entityScope: 'Core',
+      channelScope: ['B2C Home Delivery + B2B Retailer + D2C/eCom'],
+      utilCap: 100,
+      leadTimeCap: 0,
+      excludeBeyondCap: false,
+      costVsService: 50,
+      fuelSurchargeMode: 'NA',
+      fuelSurchargeOverride: null,
+      accessorialFlags: [],
+      allowRelocationPrepaid: true,
+      allowRelocationCollect: false,
+      bcvRuleSet: 'NA',
+      allowManualOverride: false,
+    },
+    locks: {
+      activeDcs: true,
+      suppressedDcs: false,
+      utilCap: true,
+      leadTimeCap: true,
+      excludeBeyondCap: true,
+      costVsService: true,
+      fuelSurchargeMode: true,
+      fuelSurchargeOverride: true,
+      accessorialFlags: true,
+      allowRelocationPrepaid: true,
+      allowRelocationCollect: true,
+      bcvRuleSet: true,
+      allowManualOverride: true,
+    },
+    supports: {
+      dcSuppression: false,
+      relocationPrepaid: false,
+      relocationCollect: false,
+      bcvMapping: false,
+      overrides: false,
+    },
+    sortOrder: 1,
+    helpText: ['Canada baseline parity keeps the Canada base DCs fixed and util cap locked at 100%.'],
+  },
+  {
     scenarioType: 'Tactical Pro Forma (Collect Relocatable)',
     familyKey: 'base-us',
     familyLabel: 'Base US Family',
-    aliases: ['tactical pro forma collect relocatable', 'tactical collect relo', 'scenario 7 tactical collect relo'],
+    aliases: [
+      'tactical pro forma collect relocatable',
+      'tactical collect relo',
+      'scenario 7 tactical collect relo',
+      'tactical fixed footprint collect relocatable',
+      'canada tactical relo',
+    ],
     allowedDcs: BASE_US_DCS,
     allocationMode: 'constrained',
     collectPolicy: 'relocatable',
@@ -161,7 +226,7 @@ const scenarioTypeRules: ScenarioTypePolicy[] = [
     scenarioType: 'Tactical Pro Forma',
     familyKey: 'base-us',
     familyLabel: 'Base US Family',
-    aliases: ['tactical pro forma'],
+    aliases: ['tactical pro forma', 'tactical fixed footprint', 'canada tactical'],
     allowedDcs: BASE_US_DCS,
     allocationMode: 'constrained',
     collectPolicy: 'fixed',
@@ -203,7 +268,13 @@ const scenarioTypeRules: ScenarioTypePolicy[] = [
     scenarioType: 'Strategic Pro Forma (Collect Relocatable)',
     familyKey: 'base-us',
     familyLabel: 'Base US Family',
-    aliases: ['strategic pro forma collect relocatable', 'strategic collect relo', 'scenario 8 strategic collect relo'],
+    aliases: [
+      'strategic pro forma collect relocatable',
+      'strategic collect relo',
+      'scenario 8 strategic collect relo',
+      'strategic unconstrained footprint collect relocatable',
+      'canada strategic relo',
+    ],
     allowedDcs: BASE_US_DCS,
     allocationMode: 'overload',
     collectPolicy: 'relocatable',
@@ -245,7 +316,7 @@ const scenarioTypeRules: ScenarioTypePolicy[] = [
     scenarioType: 'Strategic Pro Forma',
     familyKey: 'base-us',
     familyLabel: 'Base US Family',
-    aliases: ['strategic pro forma'],
+    aliases: ['strategic pro forma', 'strategic unconstrained footprint', 'canada strategic'],
     allowedDcs: BASE_US_DCS,
     allocationMode: 'overload',
     collectPolicy: 'fixed',
@@ -287,7 +358,12 @@ const scenarioTypeRules: ScenarioTypePolicy[] = [
     scenarioType: 'BCV Ingestion (Collect Relocatable)',
     familyKey: 'bcv-family',
     familyLabel: 'BCV Family',
-    aliases: ['bcv ingestion collect relocatable', 'bcv collect relo', 'scenario 9 bcv collect relo'],
+    aliases: [
+      'bcv ingestion collect relocatable',
+      'bcv collect relo',
+      'scenario 9 bcv collect relo',
+      'canada bcv relo',
+    ],
     allowedDcs: BCV_DCS,
     allocationMode: 'unconstrained',
     collectPolicy: 'relocatable',
@@ -325,11 +401,11 @@ const scenarioTypeRules: ScenarioTypePolicy[] = [
     sortOrder: 9,
     helpText: ['Collect relocatable BCV adds Pharr TX and allows collect lanes to move across the BCV family.'],
   },
-    {
+  {
       scenarioType: 'BCV Ingestion Only',
       familyKey: 'bcv-family',
       familyLabel: 'BCV Family',
-      aliases: ['bcv ingestion', 'bcv ingestion only'],
+      aliases: ['bcv ingestion', 'bcv ingestion only', 'canada bcv'],
       allowedDcs: BCV_DCS,
     allocationMode: 'unconstrained',
     collectPolicy: 'fixed',
@@ -371,7 +447,13 @@ const scenarioTypeRules: ScenarioTypePolicy[] = [
       scenarioType: 'Consolidation Tactical (Collect Relocatable)',
       familyKey: 'consolidation-family',
       familyLabel: 'Consolidation Family',
-      aliases: ['consolidation tactical collect relocatable', 'consolidation tactical collect relo', 'scenario 10 consolidation tactical relo'],
+      aliases: [
+        'consolidation tactical collect relocatable',
+        'consolidation tactical collect relo',
+        'scenario 10 consolidation tactical relo',
+        'consolidation tactical fixed footprint collect relocatable',
+        'canada consolidation tactical relo',
+      ],
       allowedDcs: CONSOLIDATION_DCS,
       allocationMode: 'tacticalConsolidation',
       collectPolicy: 'relocatable',
@@ -409,7 +491,7 @@ const scenarioTypeRules: ScenarioTypePolicy[] = [
       scenarioType: 'Consolidation Tactical',
       familyKey: 'consolidation-family',
       familyLabel: 'Consolidation Family',
-      aliases: ['tactical consolidation', 'consolidation tactical', 'consolidation tactical relo'],
+      aliases: ['tactical consolidation', 'consolidation tactical', 'consolidation tactical relo', 'canada consolidation tactical'],
     allowedDcs: CONSOLIDATION_DCS,
     allocationMode: 'tacticalConsolidation',
     collectPolicy: 'fixed',
@@ -451,7 +533,13 @@ const scenarioTypeRules: ScenarioTypePolicy[] = [
       scenarioType: 'Consolidation Strategic (Collect Relocatable)',
       familyKey: 'consolidation-family',
       familyLabel: 'Consolidation Family',
-      aliases: ['consolidation strategic collect relocatable', 'consolidation strategic collect relo', 'scenario 11 consolidation strategic relo'],
+      aliases: [
+        'consolidation strategic collect relocatable',
+        'consolidation strategic collect relo',
+        'scenario 11 consolidation strategic relo',
+        'consolidation strategic unconstrained collect relocatable',
+        'canada consolidation strategic relo',
+      ],
       allowedDcs: CONSOLIDATION_DCS,
       allocationMode: 'overload',
       collectPolicy: 'relocatable',
@@ -489,7 +577,13 @@ const scenarioTypeRules: ScenarioTypePolicy[] = [
       scenarioType: 'Consolidation Strategic Unconstrained',
       familyKey: 'consolidation-family',
       familyLabel: 'Consolidation Family',
-      aliases: ['consolidation strategic unconstrained', 'strategic consolidation', 'consolidation strategic relo', 'consolidation strategic unconstrained relo'],
+      aliases: [
+        'consolidation strategic unconstrained',
+        'strategic consolidation',
+        'consolidation strategic relo',
+        'consolidation strategic unconstrained relo',
+        'canada consolidation strategic',
+      ],
     allowedDcs: CONSOLIDATION_DCS,
     allocationMode: 'overload',
     collectPolicy: 'fixed',
@@ -533,6 +627,9 @@ const defaultPolicy = scenarioTypeRules[0];
 
 export const resolveScenarioFamilyKey = (scenarioType: unknown): ScenarioFamilyKey => {
   const normalized = normalizeScenarioType(scenarioType);
+  if (scenarioTypeRules.find((rule) => rule.familyKey === 'base-canada' && scenarioTypeMatchesAlias(normalized, rule.aliases))) {
+    return 'base-canada';
+  }
   if (scenarioTypeRules.find((rule) => rule.familyKey === 'bcv-family' && scenarioTypeMatchesAlias(normalized, rule.aliases))) {
     return 'bcv-family';
   }
@@ -556,6 +653,17 @@ export const resolveScenarioTypePolicy = (scenarioType: unknown): ScenarioTypePo
 
 export const getScenarioTypeAllowedDcs = (scenarioType: unknown): string[] =>
   normalizeDcList(resolveScenarioTypePolicy(scenarioType).allowedDcs);
+
+export const getScenarioTypeAllowedDcsForRegion = (scenarioType: unknown, region: 'US' | 'Canada'): string[] => {
+  const policy = resolveScenarioTypePolicy(scenarioType);
+  if (region === 'Canada') {
+    if (policy.familyKey === 'bcv-family' || policy.familyKey === 'consolidation-family') {
+      return normalizeDcList(CANADA_BCV_DCS);
+    }
+    return normalizeDcList(CANADA_CORE_DCS);
+  }
+  return normalizeDcList(policy.allowedDcs);
+};
 
 export const getScenarioTypeSortRank = (scenarioType: unknown): number => {
   const normalized = normalizeScenarioType(scenarioType);
@@ -612,6 +720,7 @@ const normalizeString = (value: unknown, fallback: string): string => {
 };
 
 export const normalizeScenarioTypeSpecificInput = <T extends {
+  region?: 'US' | 'Canada';
   scenarioType: string;
   activeDCs: Set<string> | string[];
   suppressedDCs: Set<string> | string[];
@@ -624,9 +733,10 @@ export const normalizeScenarioTypeSpecificInput = <T extends {
   allowManualOverride: boolean;
 }>(input: T): T => {
   const policy = resolveScenarioTypePolicy(input.scenarioType);
+  const regionAllowedDcs = input.region ? getScenarioTypeAllowedDcsForRegion(input.scenarioType, input.region) : policy.allowedDcs;
   const preserveSet = input.activeDCs instanceof Set ? 'set' : 'array';
   const preserveSuppressedSet = input.suppressedDCs instanceof Set ? 'set' : 'array';
-  const allowedDcs = policy.allowedDcs;
+  const allowedDcs = regionAllowedDcs;
 
   const active = policy.supports.dcSuppression
     ? normalizeDcCollection(input.activeDCs, allowedDcs, preserveSet)
@@ -672,8 +782,19 @@ export const normalizeScenarioTypeSpecificInput = <T extends {
   } as T;
 };
 
-export const getScenarioTypeHelpText = (scenarioType: unknown): string[] =>
-  resolveScenarioTypePolicy(scenarioType).helpText;
+export const getScenarioTypeHelpText = (scenarioType: unknown, region: 'US' | 'Canada' = 'US'): string[] => {
+  const policy = resolveScenarioTypePolicy(scenarioType);
+  if (region === 'US') return policy.helpText;
+  
+  return policy.helpText.map((text) =>
+    text
+      .replace('all 4 base DCs', 'the Canada base DCs')
+      .replace('4-DC family', 'Canada base DCs')
+      .replace('Pharr TX to the 5-DC BCV family', 'Stratford to the 3-DC Canada BCV family')
+      .replace('adds Pharr TX', 'adds Stratford')
+      .replace('6-DC family', '3-DC Canada family')
+  );
+};
 
 export const getScenarioTypeFamilyDcs = (scenarioType: unknown): string[] =>
   normalizeDcList(resolveScenarioTypePolicy(scenarioType).allowedDcs);
@@ -688,6 +809,12 @@ export type Step1ScenarioDefaults = {
 const STEP1_DEFAULTS_BY_SCENARIO_TYPE: Record<string, Step1ScenarioDefaults> = {
   'US Baseline': {
     region: 'US',
+    entityScope: 'Core',
+    channelScope: ['B2C Home Delivery + B2B Retailer + D2C/eCom'],
+    termsScope: 'Prepaid',
+  },
+  'Canada Baseline': {
+    region: 'Canada',
     entityScope: 'Core',
     channelScope: ['B2C Home Delivery + B2B Retailer + D2C/eCom'],
     termsScope: 'Prepaid',

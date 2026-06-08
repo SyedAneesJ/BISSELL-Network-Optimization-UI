@@ -1,6 +1,7 @@
 import React, { useMemo, useRef, useEffect, useState } from 'react';
 import { Download, Plus, X, ChevronDown, Lock } from 'lucide-react';
 import { Button, NotificationBell } from '@/components';
+import { compactSelectBaseClass } from '@/components/ui/formStyles';
 
 interface WorkspaceOption {
   value: 'All' | 'US' | 'Canada';
@@ -9,9 +10,9 @@ interface WorkspaceOption {
 }
 
 const workspaceOptions: WorkspaceOption[] = [
-  { value: 'All', label: 'All Workspaces', disabled: true },
+  { value: 'All', label: 'All Workspaces' },
   { value: 'US', label: 'US' },
-  { value: 'Canada', label: 'Canada', disabled: true },
+  { value: 'Canada', label: 'Canada' },
 ];
 
 interface HomeHeaderProps {
@@ -76,14 +77,14 @@ export const HomeHeader: React.FC<HomeHeaderProps> = ({
       <div className="mx-auto max-w-[1920px] px-4 sm:px-6 lg:px-8 py-3">
         <div className="flex items-center gap-3 sm:gap-4">
           <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
-            <img src="/Bissell.png" alt="Bissell Logo" className="h-6 sm:h-8 object-contain" />
+            <img src="/Bissell.png" alt="Bissell Logo" className="h-10 sm:h-12 object-contain" />
             <div className="hidden sm:block h-6 w-px bg-slate-300" />
             <span className="text-sm font-semibold text-slate-900">Workspace</span>
             <div className="relative group">
               <select
                 value={workspace}
                 onChange={(e) => onWorkspaceChange(e.target.value as 'All' | 'US' | 'Canada')}
-                className="appearance-none rounded-xl border border-white/70 bg-white/80 px-3 py-2 pr-9 text-sm font-medium text-slate-700 shadow-[0_6px_18px_rgba(15,23,42,0.05)] outline-none backdrop-blur-md transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/15 disabled:cursor-not-allowed disabled:bg-slate-100"
+                className={`${compactSelectBaseClass} appearance-none pr-9 border-white/70 bg-white/80 text-slate-700 font-medium shadow-[0_6px_18px_rgba(15,23,42,0.05)] backdrop-blur-md transition focus:border-blue-400`}
               >
                 {workspaceOptions.map((option) => (
                   <option key={option.value} value={option.value} disabled={option.disabled}>

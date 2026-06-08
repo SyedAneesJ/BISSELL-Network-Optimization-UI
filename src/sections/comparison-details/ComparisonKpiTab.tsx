@@ -1,18 +1,24 @@
 import React from 'react';
-import { TrendingUp } from 'lucide-react';
-import { KPICard } from '@/components/ui';
+import { Download, TrendingUp } from 'lucide-react';
+import { Button, KPICard } from '@/components/ui';
 import { ComparisonHeader } from '@/data';
 
 interface ComparisonKpiTabProps {
   comparison: ComparisonHeader;
   kpiComparisons: Array<{ label: string; valueA: number; valueB: number; format: 'currency' | 'decimal' | 'number' }>;
   formatValue: (val: number, format: 'currency' | 'decimal' | 'number') => string;
+  onExportKpiComparison: () => void;
+  exportKpiActive: boolean;
+  changedLaneCount: number;
 }
 
 export const ComparisonKpiTab: React.FC<ComparisonKpiTabProps> = ({
   comparison,
   kpiComparisons,
   formatValue,
+  onExportKpiComparison,
+  exportKpiActive,
+  changedLaneCount,
 }) => {
   return (
     <div className="space-y-6">
@@ -31,10 +37,21 @@ export const ComparisonKpiTab: React.FC<ComparisonKpiTabProps> = ({
         />
         <KPICard
           label="Changed Lanes"
-          value={comparison.ChangedLaneDelta}
+          value={changedLaneCount}
           format="number"
           size="medium"
         />
+      </div>
+
+      <div className="flex justify-end">
+        <Button
+          variant="secondary"
+          icon={<Download className="w-4 h-4" />}
+          onClick={onExportKpiComparison}
+          className={exportKpiActive ? 'bg-amber-100 text-amber-800' : ''}
+        >
+          {exportKpiActive ? 'Exporting...' : 'Export KPI Compare CSV'}
+        </Button>
       </div>
 
       <div className="surface-panel overflow-auto">

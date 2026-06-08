@@ -5,7 +5,7 @@ import { DataHealthSnapshot } from '@/data';
 import { DatasetOptionSets } from '@/services';
 import { ScenarioTemplateOption, ScenarioWizardInput, ScenarioSubmit } from '@/services/scenario';
 import {
-  getScenarioTypeAllowedDcs,
+  getScenarioTypeAllowedDcsForRegion,
   normalizeScenarioTypeSpecificInput,
   resolveStep1ScenarioDefaults,
   resolveScenarioTypePolicy,
@@ -89,13 +89,11 @@ const templateToFormData = (
   fallbackRegion: 'US' | 'Canada',
   fallbackDatasetOptions: DatasetOptionSets,
 ): NewScenarioFormData => {
-  const policy = resolveScenarioTypePolicy(template?.scenarioType || '');
   const step1Defaults = resolveStep1ScenarioDefaults(template?.scenarioType || '');
   const isMeaningfulValue = isMeaningfulText;
   const resolvedEntityScope = String(template?.entityScope || '').trim();
   const resolvedChannelScopes = template?.channelScopes || [];
   const resolvedTermsScope = String(template?.termsScopes?.[0] || '').trim();
-  const fallbackChannelScopes = fallbackDatasetOptions.channelScopes.filter(isMeaningfulValue);
   const fallbackTermsScopes = fallbackDatasetOptions.termsScopes.filter(isMeaningfulValue);
   return normalizeScenarioTypeSpecificInput({
     region: template?.region || step1Defaults.region || fallbackRegion,
@@ -113,7 +111,11 @@ const templateToFormData = (
     runName: '',
     tags: template ? [...template.tags] : [],
     notes: '',
-    activeDCs: new Set(policy.allowedDcs.length > 0 ? policy.allowedDcs : template?.availableDcs || []),
+    activeDCs: new Set(
+      getScenarioTypeAllowedDcsForRegion(template?.scenarioType || '', template?.region || fallbackRegion).length > 0
+        ? getScenarioTypeAllowedDcsForRegion(template?.scenarioType || '', template?.region || fallbackRegion)
+        : template?.availableDcs || [],
+    ),
     suppressedDCs: new Set<string>(),
     footprintMode: template?.footprintMode || fallbackDatasetOptions.footprintModes[0] || 'NA',
     utilCap: template?.utilCap ?? fallbackDatasetOptions.utilCaps[0] ?? 0,
@@ -136,15 +138,15 @@ const templateToFormData = (
 };
 
 const isExactBaselineScenario = (scenarioType: unknown): boolean =>
-  resolveScenarioTypePolicy(scenarioType).scenarioType === 'US Baseline';
+  resolveScenarioTypePolicy(scenarioType).allocationMode === 'baseline';
 
-const isExactUsBaselineTemplate = (template: ScenarioTemplateOption | null): boolean =>
-  Boolean(template)
-  && isExactBaselineScenario(template?.scenarioType)
-  && String(template?.dataflowId || '').trim() === '3267';
-
-const findExactUsBaselineTemplate = (templates: ScenarioTemplateOption[]): ScenarioTemplateOption | null =>
-  templates.find((template) => isExactUsBaselineTemplate(template)) || null;
+const findExactBaselineTemplate = (
+  templates: ScenarioTemplateOption[],
+  region?: 'US' | 'Canada',
+): ScenarioTemplateOption | null =>
+  templates.find((template) =>
+    isExactBaselineScenario(template.scenarioType) && (!region || template.region === region)
+  ) || null;
 
 export const NewScenarioWizard: React.FC<NewScenarioWizardProps> = ({
   isOpen,
@@ -161,7 +163,7 @@ export const NewScenarioWizard: React.FC<NewScenarioWizardProps> = ({
   const getTemplatesForRegion = (region: 'US' | 'Canada') => scenarioTemplatesByRegion[region] || [];
   const initialRegionTemplates = getTemplatesForRegion(initialRegion);
   const initialTemplate =
-    findExactUsBaselineTemplate(initialRegionTemplates)
+    findExactBaselineTemplate(initialRegionTemplates, initialRegion)
     || initialRegionTemplates[0]
     || null;
   const [formData, setFormData] = useState<NewScenarioFormData>(() => templateToFormData(initialTemplate, initialRegion, datasetOptions));
@@ -190,7 +192,7 @@ export const NewScenarioWizard: React.FC<NewScenarioWizardProps> = ({
     const templates = sortedTemplatesForRegion;
     const selectedPolicy = resolveScenarioTypePolicy(formData.scenarioType || initialTemplate?.scenarioType || '');
     if (selectedPolicy.allocationMode === 'baseline') {
-      return findExactUsBaselineTemplate(templates) || templates[0] || null;
+      return findExactBaselineTemplate(templates, formData.region as 'US' | 'Canada') || templates[0] || null;
     }
     const exactTypeTemplate = templates.find(
       (template) => resolveScenarioTypePolicy(template.scenarioType).scenarioType === selectedPolicy.scenarioType,
@@ -203,7 +205,10 @@ export const NewScenarioWizard: React.FC<NewScenarioWizardProps> = ({
   }, [formData.baselineScenarioId, formData.scenarioType, initialTemplate?.scenarioType, sortedTemplatesForRegion]);
 
   const effectiveDatasetOptions = useMemo(() => templateToDatasetOptions(selectedTemplate), [selectedTemplate]);
-  const regionDcs = getScenarioTypeAllowedDcs(selectedTemplate?.scenarioType || formData.scenarioType || '');
+  const regionDcs = getScenarioTypeAllowedDcsForRegion(
+    selectedTemplate?.scenarioType || formData.scenarioType || '',
+    formData.region as 'US' | 'Canada',
+  );
   const regionDcCapacity = selectedTemplate?.availableDcCapacity || {};
   const selectedStep1Defaults = resolveStep1ScenarioDefaults(selectedTemplate?.scenarioType || formData.scenarioType || initialTemplate?.scenarioType || '');
   const entityScopes = [selectedStep1Defaults.entityScope || selectedTemplate?.entityScope || 'NA'];
@@ -332,10 +337,10 @@ export const NewScenarioWizard: React.FC<NewScenarioWizardProps> = ({
     bcvRuleSet: formData.bcvRuleSet,
     allowManualOverride: false,
     baselineScenarioId: resolveScenarioTypePolicy(formData.scenarioType || selectedTemplate?.scenarioType || '').allocationMode === 'baseline'
-      ? (findExactUsBaselineTemplate(sortedTemplatesForRegion)?.scenarioId || initialTemplate?.scenarioId || formData.baselineScenarioId)
+      ? (findExactBaselineTemplate(sortedTemplatesForRegion, formData.region as 'US' | 'Canada')?.scenarioId || initialTemplate?.scenarioId || formData.baselineScenarioId)
       : formData.baselineScenarioId,
     baselineDataflowId: resolveScenarioTypePolicy(formData.scenarioType || selectedTemplate?.scenarioType || '').allocationMode === 'baseline'
-      ? (findExactUsBaselineTemplate(sortedTemplatesForRegion)?.dataflowId || initialTemplate?.dataflowId || '3267')
+      ? (findExactBaselineTemplate(sortedTemplatesForRegion, formData.region as 'US' | 'Canada')?.dataflowId || initialTemplate?.dataflowId || '')
       : formData.baselineDataflowId,
   }) as NewScenarioInput;
 

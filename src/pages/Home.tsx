@@ -22,7 +22,7 @@ interface HomeProps {
   onOpenScenario: (scenarioId: string) => void;
   onOpenComparison: (comparisonId: string) => void;
   onNewScenario: () => void;
-  onNewComparison: (preselectedA?: string, preselectedB?: string) => void;
+  onNewComparison: (preselectedA?: string, preselectedB?: string, scenarioIds?: string[]) => void;
   onDataHealth: () => void;
   workspace: 'All' | 'US' | 'Canada';
   onWorkspaceChange: (workspace: 'All' | 'US' | 'Canada') => void;
@@ -110,15 +110,12 @@ export const Home: React.FC<HomeProps> = ({
     const isOriginalScenario = (scenario: ScenarioRunHeader) =>
       !String(scenario.CreatedBy || '').trim() || String(scenario.CreatedBy || '').trim() === 'NA';
 
-    const isUsBaselineScenario = (scenario: ScenarioRunHeader) =>
-      scenario.Region === 'US'
-      && isOriginalScenario(scenario)
-      && (
-        String(scenario.DataflowID || '').trim() === '3267'
-        || String(scenario.RunName || '').toLowerCase().includes('baseline')
-      );
+    const isVisibleOriginalScenario = (scenario: ScenarioRunHeader) =>
+      scenario.Region === 'Canada'
+      || String(scenario.RunName || '').toLowerCase().includes('baseline')
+      || String(scenario.ScenarioType || '').toLowerCase().includes('baseline');
 
-    return scenarioRunHeaders.filter((scenario) => isUsBaselineScenario(scenario) || !isOriginalScenario(scenario));
+    return scenarioRunHeaders.filter((scenario) => !isOriginalScenario(scenario) || isVisibleOriginalScenario(scenario));
   }, [scenarioRunHeaders]);
 
   const visibleScenarioRunIds = useMemo(
@@ -177,6 +174,10 @@ export const Home: React.FC<HomeProps> = ({
       return true;
     });
   }, [comparisonHeaders, scenarioRunHeaders, workspace]);
+  const visibleComparisonScenarioIds = useMemo(
+    () => filteredScenarios.map((scenario) => scenario.ScenarioRunID),
+    [filteredScenarios],
+  );
 
   const requestDeleteScenario = (scenarioId: string) => {
     const target = visibleScenarioRunHeaders.find((scenario) => scenario.ScenarioRunID === scenarioId) || null;
@@ -238,7 +239,7 @@ export const Home: React.FC<HomeProps> = ({
   const handleCompareSelected = () => {
     const selected = Array.from(selectedScenarios);
     if (selected.length === 2) {
-      onNewComparison(selected[0], selected[1]);
+      onNewComparison(selected[0], selected[1], visibleComparisonScenarioIds);
     }
   };
 
@@ -314,10 +315,6 @@ export const Home: React.FC<HomeProps> = ({
   const aggregateKPIs = useMemo(() => {
     const isOriginalScenario = (scenario: ScenarioRunHeader) =>
       !String(scenario.CreatedBy || '').trim() || String(scenario.CreatedBy || '').trim() === 'NA';
-    const baselineDataflowIdsByRegion: Record<'US' | 'Canada', string> = {
-      US: '3267',
-      Canada: '3211',
-    };
 
     const toNumber = (value: unknown) => {
       const n = typeof value === 'number' ? value : Number(String(value ?? '').replace(/[$,%\s,]/g, ''));
@@ -331,7 +328,8 @@ export const Home: React.FC<HomeProps> = ({
     const baselineScenarioIds = visibleRegions.flatMap((region) => {
       const originalHeaders = baselineHeadersSource.filter((scenario) => scenario.Region === region && isOriginalScenario(scenario));
       const exactMatches = originalHeaders.filter((scenario) =>
-        String(scenario.DataflowID || '').trim() === baselineDataflowIdsByRegion[region]
+        String(scenario.RunName || '').toLowerCase().includes('baseline')
+        || String(scenario.ScenarioType || '').toLowerCase().includes('baseline')
       );
       if (exactMatches.length > 0) {
         return exactMatches.map((scenario) => scenario.ScenarioRunID);
@@ -354,35 +352,16 @@ export const Home: React.FC<HomeProps> = ({
     const sourceRows = baselineRows.length > 0 ? baselineRows : [];
     const sourceHeaders = baselineHeaders.length > 0 ? baselineHeaders : [];
 
-    const totalCost =
-      sourceRows.length > 0
-        ? sourceRows.reduce((sum, r) => sum + toNumber(r.TotalCost), 0)
-        : sourceHeaders.reduce((sum, s) => sum + toNumber(s.TotalCost), 0);
+    const totalCost = sourceHeaders.reduce((sum, s) => sum + toNumber(s.TotalCost), 0);
 
-    const totalSpaceRequired =
-      sourceRows.length > 0
-        ? sourceRows.reduce((sum, r) => sum + toNumber(r.SpaceRequired), 0)
-        : sourceHeaders.reduce((sum, s) => sum + toNumber(s.TotalSpaceRequired), 0);
+    const totalSpaceRequired = sourceHeaders.reduce((sum, s) => sum + toNumber(s.TotalSpaceRequired), 0);
 
-    const maxUtilPct =
-      sourceRows.length > 0
-        ? Math.max(...sourceRows.map((r) => toNumber(r.UtilPct)))
-        : Math.max(...sourceHeaders.map((s) => toNumber(s.MaxUtilPct)), 0);
+    const maxUtilPct = sourceHeaders.length > 0
+      ? Math.max(...sourceHeaders.map((s) => toNumber(s.MaxUtilPct)))
+      : 0;
 
     const avgDeliveryDays = (() => {
-      if (sourceRows.length > 0) {
-        let avgDaysNumerator = 0;
-        let avgDaysWeight = 0;
-        sourceRows.forEach((r) => {
-          const days = toNumber(r.AvgDays);
-          if (days <= 0) return;
-          const weight = toNumber(r.VolumeUnits) > 0 ? toNumber(r.VolumeUnits) : 1;
-          avgDaysNumerator += days * weight;
-          avgDaysWeight += weight;
-        });
-        return avgDaysWeight > 0 ? avgDaysNumerator / avgDaysWeight : 0;
-      }
-
+      if (sourceHeaders.length === 0) return 0;
       const numerator = sourceHeaders.reduce((sum, s) => {
         const days = toNumber(s.AvgDeliveryDays);
         const weight = toNumber(s.TotalCount) > 0 ? toNumber(s.TotalCount) : 1;
@@ -396,24 +375,9 @@ export const Home: React.FC<HomeProps> = ({
       return weight > 0 ? numerator / weight : 0;
     })();
 
-    const slaBreachPct =
-      sourceRows.length > 0
-        ? (() => {
-            let slaNumerator = 0;
-            let slaWeight = 0;
-            baselineScenarioIds.forEach((scenarioId) => {
-              const matchingRows = sourceRows.filter((r) => r.ScenarioRunID === scenarioId);
-              const count = matchingRows.length;
-              if (count === 0) return;
-              const scenario = visibleScenarioRunHeaders.find((item) => item.ScenarioRunID === scenarioId);
-              slaNumerator += toNumber(scenario?.SLABreachPct) * count;
-              slaWeight += count;
-            });
-            return slaWeight > 0 ? slaNumerator / slaWeight : 0;
-          })()
-        : (sourceHeaders.length > 0
-            ? sourceHeaders.reduce((sum, s) => sum + toNumber(s.SLABreachPct), 0) / sourceHeaders.length
-            : 0);
+    const slaBreachPct = sourceHeaders.length > 0
+      ? sourceHeaders.reduce((sum, s) => sum + toNumber(s.SLABreachPct), 0) / sourceHeaders.length
+      : 0;
 
     return {
       totalCost,
@@ -563,7 +527,7 @@ export const Home: React.FC<HomeProps> = ({
           onExportScenarioList={handleExportScenarioList}
           onExportComparisonList={handleExportComparisonList}
           onNewScenario={onNewScenario}
-          onNewComparison={() => onNewComparison()}
+          onNewComparison={() => onNewComparison(undefined, undefined, visibleComparisonScenarioIds)}
           hasComparisons={hasComparisons}
           exportScenarioActive={isActionActive('export_scenario_list')}
           exportComparisonActive={isActionActive('export_comparison_list')}

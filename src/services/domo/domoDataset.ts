@@ -56,6 +56,8 @@ const RAW_LANE_DATASET_ENV_ID = String(
 ).trim();
 const BCV_LANE_DATASET_ENV_ID = String(import.meta.env.VITE_SCENARIO_LANE_BCV_DATASET_ID || '').trim();
 const TACTICAL_CONSOLIDATION_LANE_DATASET_ENV_ID = String(import.meta.env.VITE_SCENARIO_LANE_TACTICAL_CONSOLIDATION_DATASET_ID || '').trim();
+const CANADA_BASELINE_LANE_DATASET_ENV_ID = String(import.meta.env.VITE_SCENARIO_LANE_CANADA_BASELINE_DATASET_ID || '').trim();
+const CANADA_STRATFORD_LANE_DATASET_ENV_ID = String(import.meta.env.VITE_SCENARIO_CANADA_STRATFORD_DATASET_ID || '').trim();
 const NORMALIZED_LANE_DATASET_ENV_ID = String(import.meta.env.VITE_SCENARIO_LANE_NORMALIZED_DATASET_ID || '').trim();
 const DC_CAPACITY_DATASET_ENV_ID = String(import.meta.env.VITE_DC_CAPACITY_DATASET_ID || '').trim();
 const REGISTRY_BOOTSTRAP_DATASET_NAME = 'Network Optimization Scenario Registry';
@@ -308,6 +310,7 @@ const resolveRawLaneScenarioRunId = (
 const normalizeRawLaneRow = (
   row: DomoLaneRow,
   scenarioRunIdLookup: Record<string, string> = {},
+  sourceDatasetId?: string,
 ): ScenarioRunResultsLane | null => {
   const scenarioRunId = resolveRawLaneScenarioRunId(row, scenarioRunIdLookup);
 
@@ -393,7 +396,11 @@ const normalizeRawLaneRow = (
     PartyName: partyName || undefined,
     Threshold: threshold || undefined,
     SquareFootage: squareFootage || undefined,
-    SourceDatasetId: RAW_LANE_DATASET_ENV_ID || undefined,
+    SourceDatasetId:
+      String((row as any).SourceDatasetId || '').trim() ||
+      String(sourceDatasetId || '').trim() ||
+      RAW_LANE_DATASET_ENV_ID ||
+      undefined,
   } as ScenarioRunResultsLane;
 };
 
@@ -698,7 +705,7 @@ const loadScenarioLaneDatasetFrom = async (
     const rawRowsWithScenarioRunId = rawRows.filter((row) => Boolean(resolveRawLaneScenarioRunId(row, scenarioRunIdLookup)));
     const normalizedFromRaw = rankLaneRows(
       rawRows
-        .map((row) => normalizeRawLaneRow(row, scenarioRunIdLookup))
+        .map((row) => normalizeRawLaneRow(row, scenarioRunIdLookup, datasetId))
         .filter((item): item is ScenarioRunResultsLane => Boolean(item)),
     );
     const debugZip = label === 'Raw' ? '427' : '';
@@ -717,6 +724,13 @@ const loadScenarioLaneDatasetFrom = async (
       missingScenarioRunIdRows: Math.max(0, rawRows.length - rawRowsWithScenarioRunId.length),
       normalizedRows: normalizedFromRaw.length,
     });
+    if (datasetId === CANADA_STRATFORD_LANE_DATASET_ENV_ID) {
+      console.log(`[Domo Lanes ${label}] source=canada-stratford`, {
+        datasetId,
+        firstRowSourceDatasetId: normalizedFromRaw[0]?.SourceDatasetId || 'missing',
+        sampleScenarioRunIds: Array.from(new Set(normalizedFromRaw.slice(0, 5).map((row) => row.ScenarioRunID || ''))),
+      });
+    }
     if (rawZipRows.length > 0 || normalizedZipRows.length > 0) {
       console.groupCollapsed(`[Domo Lanes Debug] zip=${debugZip}`);
       console.log('raw', rawZipRows);
@@ -754,6 +768,16 @@ export const loadTacticalConsolidationScenarioLaneDataset = async (
   scenarioRunIdLookup: Record<string, string> = {},
 ): Promise<ScenarioRunResultsLane[]> =>
   loadScenarioLaneDatasetFrom(TACTICAL_CONSOLIDATION_LANE_DATASET_ENV_ID, 'Tactical Consolidation', scenarioRunIdLookup);
+
+export const loadCanadaScenarioLaneDataset = async (
+  scenarioRunIdLookup: Record<string, string> = {},
+): Promise<ScenarioRunResultsLane[]> =>
+  loadScenarioLaneDatasetFrom(CANADA_BASELINE_LANE_DATASET_ENV_ID, 'Canada Baseline Lanes', scenarioRunIdLookup);
+
+export const loadCanadaStratfordScenarioLaneDataset = async (
+  scenarioRunIdLookup: Record<string, string> = {},
+): Promise<ScenarioRunResultsLane[]> =>
+  loadScenarioLaneDatasetFrom(CANADA_STRATFORD_LANE_DATASET_ENV_ID, 'Canada Stratford Lanes', scenarioRunIdLookup);
 
 export const loadDcCapacityDataset = async (): Promise<DomoDcCapacityRow[]> => {
   if (!DC_CAPACITY_DATASET_ENV_ID) {

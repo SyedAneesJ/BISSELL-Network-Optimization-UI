@@ -119,6 +119,12 @@ export const useComparisonDetails = ({
     });
   }, [comparison, comparisonId, scenarioRunResultsLanes, laneComparisonStored]);
 
+  const changedLaneCount = useMemo(() => (
+    laneComparison.filter((lane) =>
+      lane.DC_A !== lane.DC_B || lane.Cost_Delta !== 0 || lane.Days_Delta !== 0
+    ).length
+  ), [laneComparison]);
+
   const filteredLaneComparison = useMemo(() => {
     let rows = laneComparison;
     if (laneDiffFilter === 'Only Changed Lanes') {
@@ -159,7 +165,7 @@ export const useComparisonDetails = ({
       SLABreachDelta: comparison.SLABreachDelta,
       MaxUtilDelta: comparison.MaxUtilDelta,
       SpaceDelta: comparison.SpaceDelta,
-      ChangedLaneDelta: comparison.ChangedLaneDelta,
+      ChangedLaneDelta: changedLaneCount,
       Status: comparison.Status,
       CreatedAt: comparison.CreatedAt,
       CreatedBy: comparison.CreatedBy,
@@ -169,6 +175,21 @@ export const useComparisonDetails = ({
     const csv = [toCSV(rows), '', 'KPI Comparison', toCSV(kpiRows)].join('\n');
     downloadBlob(csv, `${comparison.ComparisonID}_comparison_pack.csv`, 'text/csv;charset=utf-8;');
     triggerAction('comparison_export_pack');
+  };
+
+  const handleExportKpiComparison = () => {
+    if (!comparison) return;
+    const rows = kpiComparisons.map((kpi) => ({
+      ComparisonID: comparison.ComparisonID,
+      KPI: kpi.label,
+      Value_A: kpi.valueA,
+      Value_B: kpi.valueB,
+      Delta: (kpi.valueB || 0) - (kpi.valueA || 0),
+      DeltaPct: kpi.valueA ? (((kpi.valueB || 0) - (kpi.valueA || 0)) / kpi.valueA) * 100 : 0,
+    }));
+    const csv = toCSV(rows);
+    downloadBlob(csv, `${comparison.ComparisonID}_kpi_compare.csv`, 'text/csv;charset=utf-8;');
+    triggerAction('comparison_export_kpi');
   };
 
   const handleExportLaneDiff = () => {
@@ -275,6 +296,7 @@ export const useComparisonDetails = ({
     laneComparison,
     filteredLaneComparison,
     handleExportComparisonPack,
+    handleExportKpiComparison,
     handleExportLaneDiff,
     handleExportDCDiff,
     handleSaveDecision,
@@ -284,5 +306,6 @@ export const useComparisonDetails = ({
     formatValue,
     dcComparisonColumns,
     laneComparisonColumns,
+    changedLaneCount,
   };
 };

@@ -8,8 +8,10 @@ import { loadScenarioLogicDocument } from './scenarioLogicLoader';
 import { parseScenarioLogicDocument } from './scenarioPlanParser';
 import type { ScenarioRunResultsDC, ScenarioRunResultsLane } from '@/data';
 import {
-  getScenarioTypeAllowedDcs,
+  getScenarioTypeAllowedDcsForRegion,
+  canonicalizeDcName,
   normalizeScenarioTypeSpecificInput,
+  resolveScenarioTypePolicy,
   scenarioTypeMatches,
 } from './scenarioTypeRules';
 
@@ -19,7 +21,7 @@ const getEngineMode = (): 'sample' | 'dataflow' => {
 };
 
 const normalizeKey = (value: string): string =>
-  String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  String(canonicalizeDcName(value) || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
 
 const buildScenarioId = (existingCount: number) => `SR${(existingCount + 1).toString().padStart(3, '0')}`;
 
@@ -59,33 +61,45 @@ const getBaselineHeader = (
 const getExactBaselineHeader = (
   context: ScenarioBuildContext,
   region: 'US' | 'Canada',
-): ReturnType<typeof getBaselineHeader> =>
-  context.scenarioHeaders.find((s) =>
+): ReturnType<typeof getBaselineHeader> => {
+  if (region === 'US') {
+    return context.scenarioHeaders.find((s) =>
+      s.Region === 'US'
+      && scenarioTypeMatches(String(s.ScenarioType || ''), 'US Baseline')
+      && String(s.DataflowID || '').trim() === '3267'
+    ) || null;
+  }
+  return context.scenarioHeaders.find((s) =>
     s.Region === region
-    && scenarioTypeMatches(String(s.ScenarioType || ''), 'Baseline')
-    && String(s.DataflowID || '').trim() === '3267',
+    && scenarioTypeMatches(String(s.ScenarioType || ''), 'Canada Baseline')
   ) || null;
+};
 
 const getActiveCapacityDcs = (context: ScenarioBuildContext): string[] => {
   const rows = context.dcCapacityRows || [];
   return rows
     .filter((row) => row.IsActive)
-    .map((row) => row.DCName)
+    .map((row) => canonicalizeDcName(row.DCName))
     .filter(Boolean);
 };
 
-const getScenarioFamilyAllowedDcs = (scenarioType: unknown, context: ScenarioBuildContext): string[] => {
+const getScenarioFamilyAllowedDcs = (
+  scenarioType: unknown,
+  region: 'US' | 'Canada',
+  context: ScenarioBuildContext,
+): string[] => {
   const allActive = getActiveCapacityDcs(context);
-  const familyScope = getScenarioTypeAllowedDcs(scenarioType);
+  const familyScope = getScenarioTypeAllowedDcsForRegion(scenarioType, region);
   const allowedKeys = new Set(familyScope.map((dc) => normalizeKey(dc)));
   return allActive.filter((dc) => allowedKeys.has(normalizeKey(dc)));
 };
 
 const getScenarioFamilyCapacityRows = (
   scenarioType: unknown,
+  region: 'US' | 'Canada',
   context: ScenarioBuildContext,
 ): NonNullable<ScenarioBuildContext['dcCapacityRows']> => {
-  const familyScope = getScenarioTypeAllowedDcs(scenarioType);
+  const familyScope = getScenarioTypeAllowedDcsForRegion(scenarioType, region);
   const allowedKeys = new Set(familyScope.map((dc) => normalizeKey(dc)));
   return (context.dcCapacityRows || []).filter((row) => allowedKeys.has(normalizeKey(row.DCName)));
 };
@@ -96,7 +110,7 @@ const resolveActiveDcs = (
   allowedDcs: string[],
 ): string[] => {
   const capacityActive = getActiveCapacityDcs(context);
-  const familyAllowed = getScenarioFamilyAllowedDcs(payload.input.scenarioType, context);
+  const familyAllowed = getScenarioFamilyAllowedDcs(payload.input.scenarioType, payload.input.region, context);
   const baseAllowed = allowedDcs.length > 0 ? allowedDcs : capacityActive;
   const familyAllowedSet = new Set(familyAllowed.map((dc) => normalizeKey(dc)));
   const allowedSet = new Set(
@@ -128,14 +142,15 @@ const resolveSuppressedDcs = (
   const explicit = payload.input.suppressedDcs.map((dc) => String(dc || '').trim()).filter(Boolean);
   const activeSet = new Set(activeDcs.map((dc) => String(dc || '').trim()).filter(Boolean));
   const activeCapacity = new Set(getActiveCapacityDcs(context));
-  const familyCapacity = new Set(getScenarioFamilyAllowedDcs(payload.input.scenarioType, context));
+  const familyCapacity = new Set(getScenarioFamilyAllowedDcs(payload.input.scenarioType, payload.input.region, context));
   const suppressed = new Set<string>();
   explicit.forEach((dc) => suppressed.add(dc));
   planSuppressed.forEach((dc) => suppressed.add(dc));
   (context.dcCapacityRows || []).forEach((row) => {
-    if (familyCapacity.size > 0 && !familyCapacity.has(row.DCName)) return;
-    if (!row.IsActive || !activeCapacity.has(row.DCName) || (!activeSet.has(row.DCName) && row.IsActive)) {
-      suppressed.add(row.DCName);
+    const dcName = canonicalizeDcName(row.DCName);
+    if (familyCapacity.size > 0 && !familyCapacity.has(dcName)) return;
+    if (!row.IsActive || !activeCapacity.has(dcName) || (!activeSet.has(dcName) && row.IsActive)) {
+      suppressed.add(dcName);
     }
   });
   return Array.from(suppressed).filter(Boolean).sort((a, b) => a.localeCompare(b));
@@ -347,12 +362,14 @@ export const buildScenarioArtifactsWithLogic = async (
     ...payload,
     input: normalizeScenarioTypeSpecificInput(payload.input),
   };
-  const exactBaseline = normalizedPayload.input.scenarioType.trim().toLowerCase() === 'baseline'
+  const exactBaseline = resolveScenarioTypePolicy(normalizedPayload.input.scenarioType).allocationMode === 'baseline'
     ? getExactBaselineHeader(context, normalizedPayload.input.region)
     : null;
   const resolvedBaselineScenarioId =
     exactBaseline?.ScenarioRunID
-    ?? normalizedPayload.input.baselineScenarioId
+    ?? (resolveScenarioTypePolicy(normalizedPayload.input.scenarioType).allocationMode === 'baseline'
+      ? getBaselineHeader(context, normalizedPayload.input.region, null)?.ScenarioRunID ?? null
+      : normalizedPayload.input.baselineScenarioId)
     ?? null;
   const resolvedBaselineDataflowId =
     exactBaseline?.DataflowID
@@ -368,7 +385,11 @@ export const buildScenarioArtifactsWithLogic = async (
   const allowedDcs = plan.allowedDcs.length > 0 ? plan.allowedDcs : normalizedPayload.input.activeDCs;
   const activeDcs = resolveActiveDcs(normalizedPayload, context, allowedDcs);
   const suppressedDcs = resolveSuppressedDcs(normalizedPayload, context, activeDcs, plan.suppressedDcs);
-  const familyCapacityRows = getScenarioFamilyCapacityRows(normalizedPayload.input.scenarioType, context);
+  const familyCapacityRows = getScenarioFamilyCapacityRows(
+    normalizedPayload.input.scenarioType,
+    normalizedPayload.input.region,
+    context,
+  );
 
   const adjustedPayload: ScenarioSubmit = {
     ...payload,

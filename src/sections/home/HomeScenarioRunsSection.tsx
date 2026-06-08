@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Play, RefreshCw } from 'lucide-react';
 import { Button, DataTable, Column } from '@/components/ui';
+import { compactSelectBaseClass } from '@/components/ui/formStyles';
 import { ScenarioRunHeader } from '@/data';
 
 interface HomeScenarioRunsSectionProps {
@@ -105,7 +106,7 @@ export const HomeScenarioRunsSection: React.FC<HomeScenarioRunsSectionProps> = (
             <label className="text-sm text-slate-600 whitespace-nowrap">Status:</label>
             <select
               value={statusFilter}
-              className="px-3 py-1.5 rounded-xl border border-white/70 bg-white/80 text-sm shadow-sm backdrop-blur-md"
+              className={`${compactSelectBaseClass} border-white/70 bg-white/80 backdrop-blur-md text-slate-700 focus:border-blue-500`}
               onChange={(e) => onStatusFilterChange(e.target.value)}
             >
               <option value="All">All</option>

@@ -40,7 +40,7 @@ export const ComparisonHeader: React.FC<ComparisonHeaderProps> = ({
     <div className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8 py-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4 mb-4">
         <div className="flex items-center gap-3">
-          <img src="/Bissell.png" alt="Bissell Logo" className="h-6 sm:h-8 object-contain" />
+          <img src="/Bissell.png" alt="Bissell Logo" className="h-8 sm:h-10 object-contain" />
           <div className="hidden sm:block h-6 w-px bg-slate-300" />
           <button
             onClick={onBack}

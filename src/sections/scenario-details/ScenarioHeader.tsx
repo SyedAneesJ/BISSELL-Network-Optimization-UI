@@ -34,7 +34,7 @@ export const ScenarioHeader: React.FC<ScenarioHeaderProps> = ({
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4">
             <div className="flex items-center gap-3">
-              <img src="/Bissell.png" alt="Bissell Logo" className="h-6 sm:h-8 object-contain" />
+              <img src="/Bissell.png" alt="Bissell Logo" className="h-8 sm:h-10 object-contain" />
               <div className="hidden sm:block h-6 w-px bg-slate-300" />
               <button
                 onClick={onBack}
@@ -73,7 +73,7 @@ export const ScenarioHeader: React.FC<ScenarioHeaderProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2 border-t border-white/70 pt-4">
-            {scenario.Status !== 'Published' && (
+            {/* {scenario.Status !== 'Published' && (
               <Button
                 variant="primary"
                 size="small"
@@ -83,7 +83,7 @@ export const ScenarioHeader: React.FC<ScenarioHeaderProps> = ({
               >
                 {publishActive ? 'Publishing...' : 'Publish'}
               </Button>
-            )}
+            )} */}
 
             {scenario.Status === 'Completed' && !scenario.ApprovedBy && (
               <Button

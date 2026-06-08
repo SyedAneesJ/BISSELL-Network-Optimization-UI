@@ -1,15 +1,21 @@
 import React from 'react';
+import { Download } from 'lucide-react';
 import { DataTable, Column } from '@/components/ui';
+import { Button } from '@/components/ui';
 import { ComparisonDetailDC } from '@/data';
 
 interface ComparisonDcTabProps {
   dcComparison: ComparisonDetailDC[];
   dcComparisonColumns: Column<ComparisonDetailDC>[];
+  onExportDcDiff: () => void;
+  exportDcActive: boolean;
 }
 
 export const ComparisonDcTab: React.FC<ComparisonDcTabProps> = ({
   dcComparison,
   dcComparisonColumns,
+  onExportDcDiff,
+  exportDcActive,
 }) => {
   return (
     <div className="space-y-6">
@@ -74,6 +80,17 @@ export const ComparisonDcTab: React.FC<ComparisonDcTabProps> = ({
           columns={dcComparisonColumns}
           data={dcComparison}
         />
+      </div>
+
+      <div className="flex justify-end">
+        <Button
+          variant="secondary"
+          icon={<Download className="w-4 h-4" />}
+          onClick={onExportDcDiff}
+          className={exportDcActive ? 'bg-amber-100 text-amber-800' : ''}
+        >
+          {exportDcActive ? 'Exporting...' : 'Export DC Diff CSV'}
+        </Button>
       </div>
     </div>
   );

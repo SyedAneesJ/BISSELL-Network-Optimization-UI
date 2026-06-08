@@ -1,6 +1,7 @@
 import React from 'react';
 import { Tooltip } from '@/components/ui';
 import { DatasetOptionSets } from '@/services';
+import { canonicalizeDcName } from '@/services/scenario/scenarioTypeRules';
 import type { ScenarioTypePolicy } from '@/services/scenario/scenarioTypeRules';
 import { NewScenarioFormData } from './types';
 
@@ -45,7 +46,8 @@ export const Step2NetworkCapacity: React.FC<Step2NetworkCapacityProps> = ({
         <div className="grid grid-cols-1 sm:grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {(availableDcsByRegion[formData.region] || []).map((dc) => {
             const isActive = formData.activeDCs.has(dc);
-            const capacity = availableDcCapacity[dc];
+            const canonicalDc = canonicalizeDcName(dc);
+            const capacity = availableDcCapacity[dc] ?? availableDcCapacity[canonicalDc];
 
             return (
               <div
@@ -82,6 +84,11 @@ export const Step2NetworkCapacity: React.FC<Step2NetworkCapacityProps> = ({
                 </div>
                 {capacity === undefined && (
                   <div className="text-xs text-slate-500 mt-1">No capacity data</div>
+                )}
+                {capacity !== undefined && canonicalDc !== dc && (
+                  <div className="text-[10px] text-slate-400 mt-1">
+                    Capacity key: {canonicalDc}
+                  </div>
                 )}
               </div>
             );

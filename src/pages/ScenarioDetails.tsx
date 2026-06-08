@@ -230,8 +230,8 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = (props) => {
           hasLaneData={laneResults.length > 0}
           isLaneDataLoading={isLaneDataLoading}
           isLaneFiltering={isLaneFiltering}
-          onExportRoutingCSV={handleExportRoutingCSV}
-          exportRoutingActive={isActionActive('scenario_export_routing')}
+          onExportRoutingCSV={handleExportLaneCSV}
+          exportRoutingActive={isActionActive('scenario_export_lane')}
         />
       ),
     },
@@ -258,9 +258,9 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = (props) => {
           hasLaneData={laneResults.length > 0}
           isLaneDataLoading={isLaneDataLoading}
           isLaneFiltering={isLaneFiltering}
-          onExportLaneCSV={handleExportLaneCSV}
+          onExportLaneCSV={handleExportRoutingCSV}
           onExportExceptionsCSV={handleExportExceptionsCSV}
-          exportLaneActive={isActionActive('scenario_export_lane')}
+          exportLaneActive={isActionActive('scenario_export_routing')}
           exportExceptionsActive={isActionActive('scenario_export_exceptions')}
         />
       ),

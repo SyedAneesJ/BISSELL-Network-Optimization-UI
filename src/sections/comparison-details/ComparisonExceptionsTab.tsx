@@ -1,6 +1,4 @@
 import React from 'react';
-import { Download } from 'lucide-react';
-import { Button } from '@/components/ui';
 import { ComparisonDetailLane, ComparisonHeader, ScenarioRunHeader } from '@/data';
 
 interface ComparisonExceptionsTabProps {
@@ -8,8 +6,6 @@ interface ComparisonExceptionsTabProps {
   comparison: ComparisonHeader;
   scenarioA?: ScenarioRunHeader;
   scenarioB?: ScenarioRunHeader;
-  onExportLaneDiff: () => void;
-  exportLaneActive: boolean;
 }
 
 export const ComparisonExceptionsTab: React.FC<ComparisonExceptionsTabProps> = ({
@@ -17,8 +13,6 @@ export const ComparisonExceptionsTab: React.FC<ComparisonExceptionsTabProps> = (
   comparison,
   scenarioA,
   scenarioB,
-  onExportLaneDiff,
-  exportLaneActive,
 }) => {
   return (
     <div className="space-y-6">
@@ -90,16 +84,6 @@ export const ComparisonExceptionsTab: React.FC<ComparisonExceptionsTabProps> = (
         </div>
       </div>
 
-      <div className="flex justify-end">
-        <Button
-          variant="secondary"
-          icon={<Download className="w-4 h-4" />}
-          onClick={onExportLaneDiff}
-          className={exportLaneActive ? 'bg-amber-100 text-amber-800' : ''}
-        >
-          {exportLaneActive ? 'Exporting...' : 'Export Exceptions Diff CSV'}
-        </Button>
-      </div>
     </div>
   );
 };

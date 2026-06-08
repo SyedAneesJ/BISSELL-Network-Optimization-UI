@@ -8,6 +8,9 @@ export type ScenarioDatasetRegistryItem = {
   sortOrder?: number;
 };
 
+const CANADA_BASELINE_DATASET_ID = String(import.meta.env.VITE_SCENARIO_CANADA_BASELINE_DATASET_ID || 'a75c6d8a-259d-4482-9bde-31763f981d75').trim();
+const CANADA_STRATFORD_DATASET_ID = String(import.meta.env.VITE_SCENARIO_CANADA_STRATFORD_DATASET_ID || '4bc21e29-3d3d-432b-a488-823cd280d579').trim();
+
 export const scenarioDatasetRegistry: ScenarioDatasetRegistryItem[] = [
   { datasetId: '0c09f231-4e4e-4516-a64f-c9ec01a772d1', dataflowId: '3246', scenarioKey: 'etl_01', scenarioLabel: 'Dataset 01', regionDefault: 'Auto', enabled: true },
   { datasetId: '93cec818-6244-4b25-b189-3a9856fa02d8', dataflowId: '3237', scenarioKey: 'etl_02', scenarioLabel: 'Dataset 02', regionDefault: 'Auto', enabled: true },
@@ -28,6 +31,8 @@ export const scenarioDatasetRegistry: ScenarioDatasetRegistryItem[] = [
   { datasetId: 'ca512476-35cd-4889-92a2-d78494ca7be7', dataflowId: '3234', scenarioKey: 'etl_17', scenarioLabel: 'Dataset 17', regionDefault: 'Auto', enabled: true },
   { datasetId: 'f4cddd13-0419-4552-9487-b30580822651', dataflowId: '3235', scenarioKey: 'etl_18', scenarioLabel: 'Dataset 18', regionDefault: 'Auto', enabled: true },
   { datasetId: 'bb807051-1b40-4484-97ae-aebf56604cb2', dataflowId: '3267', scenarioKey: 'etl_19', scenarioLabel: 'Dataset 19', regionDefault: 'Auto', enabled: true },
+  { datasetId: CANADA_BASELINE_DATASET_ID, scenarioKey: 'etl_ca_01', scenarioLabel: 'Canada Baseline', regionDefault: 'Canada', enabled: true },
+  { datasetId: CANADA_STRATFORD_DATASET_ID, scenarioKey: 'etl_ca_03', scenarioLabel: 'Canada Stratford', regionDefault: 'Canada', enabled: true },
 ];
 
 export const DEFAULT_SCENARIO_DATASET_REGISTRY = scenarioDatasetRegistry;

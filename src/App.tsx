@@ -24,6 +24,8 @@ import {
   buildDataHealthSnapshotFromRows,
   buildDatasetOptionSets,
   DatasetOptionSets,
+  loadCanadaScenarioLaneDataset,
+  loadCanadaStratfordScenarioLaneDataset as loadCanadaStratfordScenarioLaneDatasetRaw,
   loadBcvScenarioLaneDataset,
   fetchAllScenarioDatasets,
   loadDcCapacityDataset,
@@ -57,7 +59,8 @@ import {
   type ScenarioRepositoryRecord,
 } from '@/services/scenario';
 import {
-  getScenarioTypeAllowedDcs,
+  getScenarioTypeAllowedDcsForRegion,
+  canonicalizeDcName,
   resolveScenarioFamilyKey,
   resolveScenarioTypePolicy,
 } from '@/services/scenario/scenarioTypeRules';
@@ -115,6 +118,27 @@ const DEBUG_DOMO_MAPPING = import.meta.env.VITE_ENABLE_DATA_TRACE !== 'false';
 const SCENARIO_RUN_MODE = String(import.meta.env.VITE_SCENARIO_RUN_MODE || 'live').trim().toLowerCase();
 const IS_READONLY_SCENARIO_RUN_MODE = SCENARIO_RUN_MODE === 'readonly' || SCENARIO_RUN_MODE === 'paused';
 const READONLY_SCENARIO_RUN_DELAY_MS = 3500;
+const CANADA_STRATFORD_LANE_DATASET_ID = String(import.meta.env.VITE_SCENARIO_CANADA_STRATFORD_DATASET_ID || '').trim();
+if (DEBUG_DOMO_MAPPING) {
+  console.log('[Scenario Lanes] startup env', {
+    canadaStratfordDatasetId: CANADA_STRATFORD_LANE_DATASET_ID || 'missing',
+  });
+}
+const loadCanadaStratfordScenarioLaneDataset = async (
+  scenarioRunIdLookup?: Record<string, string>,
+): Promise<ScenarioRunResultsLane[]> => {
+  const rows = await loadCanadaStratfordScenarioLaneDatasetRaw(scenarioRunIdLookup);
+  if (DEBUG_DOMO_MAPPING) {
+    console.log('[Scenario Lanes] Canada Stratford load', {
+      canadaStratfordDatasetId: CANADA_STRATFORD_LANE_DATASET_ID || 'missing',
+      rowCount: rows.length,
+    });
+  }
+  return rows.map((row) => ({
+    ...row,
+    SourceDatasetId: CANADA_STRATFORD_LANE_DATASET_ID || row.SourceDatasetId,
+  }));
+};
 const isActiveDcCapacity = (row: DomoDcCapacityRow) => row.IsActive && Boolean(String(row.DCName || '').trim());
 const normalizeScenarioLookupKey = (value: string): string =>
   String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
@@ -142,6 +166,7 @@ const scenarioLaneIdentityKey = (lane: ScenarioRunResultsLane): string =>
     lane.DestState || '',
     lane.PartyName || lane.CustomerGroup || '',
     lane.ScenarioType || '',
+    lane.SourceDatasetId || '',
   ].join('|');
 
 const laneQualityScore = (lane: ScenarioRunResultsLane): number => {
@@ -681,7 +706,7 @@ const persistAppDbComparisonState = async (
 };
 
 function App() {
-  const [workspace, setWorkspace] = useState<'All' | 'US' | 'Canada'>('US');
+  const [workspace, setWorkspace] = useState<'All' | 'US' | 'Canada'>('All');
   const [scenarioState, setScenarioState] = useState<ScenarioState>(EMPTY_SCENARIO_STATE);
   const [scenarioHistoryState, setScenarioHistoryState] = useState<ScenarioHistoryState>(EMPTY_SCENARIO_HISTORY);
   const [comparisonState, setComparisonState] = useState<ComparisonState>(EMPTY_COMPARISON_STATE);
@@ -689,6 +714,7 @@ function App() {
   const [dataHealthSnapshot, setDataHealthSnapshot] = useState(() => buildDataHealthSnapshotFromRows([]));
   const [rawScenarioLaneRows, setRawScenarioLaneRows] = useState<ScenarioRunResultsLane[]>([]);
   const [preselectedRuns, setPreselectedRuns] = useState<{ a?: string; b?: string }>({});
+  const [comparisonScenarioIds, setComparisonScenarioIds] = useState<string[] | null>(null);
   const [archivedScenarioPrevStatus, setArchivedScenarioPrevStatus] = useState<Record<string, ScenarioRunHeader['Status']>>({});
   const [archivedComparisonPrevStatus, setArchivedComparisonPrevStatus] = useState<Record<string, ComparisonHeader['Status']>>({});
   const [appState, setAppState] = useState<AppState>({
@@ -721,6 +747,11 @@ function App() {
   const scenarioPersistenceSourceRef = useRef<'AppDB' | 'localStorage' | 'unknown'>('unknown');
   const lastPersistedComparisonStateRef = useRef<ComparisonState>(EMPTY_COMPARISON_STATE);
   const lastPersistedNotificationsRef = useRef<AppNotification[]>([]);
+  const comparisonModalScenarioHeaders = useMemo(() => {
+    if (!comparisonScenarioIds || comparisonScenarioIds.length === 0) return scenarioState.headers;
+    const allowed = new Set(comparisonScenarioIds);
+    return scenarioState.headers.filter((scenario) => allowed.has(scenario.ScenarioRunID));
+  }, [comparisonScenarioIds, scenarioState.headers]);
 
   const setScenarioRepositoryCache = useCallback(
     (records: ScenarioRepositoryRecord[], source: 'AppDB' | 'localStorage' | 'unknown') => {
@@ -858,31 +889,40 @@ function App() {
     const bcvDcs = [...baseUsDcs, 'Pharr TX'];
     const tacticalConsolidationDcs = [...baseUsDcs, 'Pharr TX', 'Stratford CT'];
 
-      const getScenarioDcScope = (scenarioType: string): string[] => {
+      const getScenarioDcScope = (region: 'US' | 'Canada', scenarioType: string): string[] => {
         const normalized = normalizeText(scenarioType);
+        if (region === 'Canada') {
+          if (normalized.includes('bcv') || normalized.includes('consolidation')) {
+            return ['Brampton', 'Richmond', 'Stratford'];
+          }
+          return ['Brampton', 'Richmond'];
+        }
         if (normalized.includes('tactical consolidation') || normalized.includes('consolidation tactical')) {
           return tacticalConsolidationDcs;
         }
-      if (normalized.includes('consolidation strategic unconstrained')) {
-        return tacticalConsolidationDcs;
-      }
-      if (normalized.includes('bcv ingestion')) {
-        return bcvDcs;
+        if (normalized.includes('consolidation strategic unconstrained')) {
+          return tacticalConsolidationDcs;
+        }
+        if (normalized.includes('bcv ingestion')) {
+          return bcvDcs;
         }
         return baseUsDcs;
       };
 
-      const normalizeScenarioDisplayName = (scenarioName: string, scenarioType: string): string => {
-        const policy = resolveScenarioTypePolicy(scenarioType);
-        if (policy.scenarioType !== 'BCV Ingestion Only') return scenarioName;
-        return String(scenarioName || '')
+    const normalizeScenarioDisplayName = (scenarioName: string, scenarioType: string): string => {
+      const policy = resolveScenarioTypePolicy(scenarioType);
+      if (policy.scenarioType !== 'BCV Ingestion Only') return scenarioName;
+      return String(scenarioName || '')
           .replace(/\bcollect\s*relo(catable)?\b/gi, '')
           .replace(/\s*[-–—]{2,}\s*/g, ' - ')
           .replace(/\s{2,}/g, ' ')
           .replace(/\s*-\s*/g, ' - ')
           .replace(/-\s*-\s*/g, ' - ')
           .trim() || scenarioName;
-      };
+    };
+
+    const getRegionBaselineScenarioType = (region: 'US' | 'Canada'): string =>
+      region === 'Canada' ? 'Canada Baseline' : 'US Baseline';
 
     const buildTemplate = (header: ScenarioRunHeader): ScenarioTemplateOption | null => {
       if (!isOriginalScenarioHeader(header)) return null;
@@ -894,29 +934,34 @@ function App() {
         ? config.AccessorialFlags.split(',').map((flag) => flag.trim()).filter(Boolean)
         : header.Tags.split(',').map((tag) => tag.trim()).filter(Boolean);
 
-      const allowedDcScope = new Set(getScenarioDcScope(header.ScenarioType).map(normalizeText));
+      const allowedDcScope = new Set(
+        getScenarioDcScope(header.Region, header.ScenarioType).map((dc) => normalizeText(canonicalizeDcName(dc))),
+      );
       const activeCapacityRows = dcCapacityRows.filter((row) =>
-        isActiveDcCapacity(row) && allowedDcScope.has(normalizeText(row.DCName))
+        isActiveDcCapacity(row) && allowedDcScope.has(normalizeText(canonicalizeDcName(row.DCName)))
       );
       const availableDcCapacity = activeCapacityRows.reduce<Record<string, number>>((acc, row) => {
-        acc[row.DCName] = row.Sqft;
+        acc[canonicalizeDcName(row.DCName)] = row.Sqft;
         return acc;
       }, {});
       let availableDcs = Object.keys(availableDcCapacity);
       if (availableDcs.length === 0) {
-        Array.from(new Set(dcRows.map((row) => row.DCName).filter(Boolean))).forEach((dcName) => {
-          availableDcCapacity[dcName] = dcRows.find((row) => row.DCName === dcName)?.SpaceRequired || 0;
+        Array.from(new Set(dcRows.map((row) => canonicalizeDcName(row.DCName)).filter(Boolean))).forEach((dcName) => {
+          availableDcCapacity[dcName] = dcRows.find((row) => canonicalizeDcName(row.DCName) === dcName)?.SpaceRequired || 0;
         });
         availableDcs = Object.keys(availableDcCapacity);
       }
 
-        return {
-          scenarioId: header.ScenarioRunID,
-          region: header.Region,
-          scenarioName: normalizeScenarioDisplayName(header.RunName, header.ScenarioType),
-          dataflowId: header.DataflowID,
-          entityScope: header.EntityScope || 'NA',
-          scenarioType: resolveScenarioTypePolicy(header.ScenarioType).scenarioType,
+      return {
+        scenarioId: header.ScenarioRunID,
+        region: header.Region,
+        scenarioName: normalizeScenarioDisplayName(header.RunName, header.ScenarioType),
+        dataflowId: header.DataflowID,
+        entityScope: header.EntityScope || 'NA',
+        scenarioType:
+          resolveScenarioTypePolicy(header.ScenarioType).allocationMode === 'baseline'
+            ? getRegionBaselineScenarioType(header.Region)
+            : resolveScenarioTypePolicy(header.ScenarioType).scenarioType,
         channelScopes: header.ChannelScope ? header.ChannelScope.split(',').map((item) => item.trim()).filter(Boolean) : [],
         termsScopes: header.TermsScope ? header.TermsScope.split(',').map((item) => item.trim()).filter(Boolean) : [],
         tags: header.Tags ? header.Tags.split(',').map((item) => item.trim()).filter(Boolean) : [],
@@ -968,19 +1013,29 @@ function App() {
       const isCollectRelocatableTemplate = (template: ScenarioTemplateOption): boolean =>
         resolveScenarioTypePolicy(template.scenarioType).collectPolicy === 'relocatable';
 
-      const tacticalBase = exactTemplateByType(grouped.US, 'Tactical Pro Forma');
-      const strategicBase = exactTemplateByType(grouped.US, 'Strategic Pro Forma');
-      const bcvBase = grouped.US.find((template) => {
-        const policy = resolveScenarioTypePolicy(template.scenarioType);
-        return policy.scenarioType === 'BCV Ingestion Only' && !isCollectRelocatableTemplate(template);
-      }) || exactTemplateByType(grouped.US, 'BCV Ingestion Only');
-      const consolidationTacticalBase = exactTemplateByType(grouped.US, 'Consolidation Tactical');
-      const consolidationStrategicBase = exactTemplateByType(grouped.US, 'Consolidation Strategic Unconstrained');
-      const syntheticUsTemplates = [
+    const tacticalBase = exactTemplateByType(grouped.US, 'Tactical Pro Forma');
+    const strategicBase = exactTemplateByType(grouped.US, 'Strategic Pro Forma');
+    const bcvBase = grouped.US.find((template) => {
+      const policy = resolveScenarioTypePolicy(template.scenarioType);
+      return policy.scenarioType === 'BCV Ingestion Only' && !isCollectRelocatableTemplate(template);
+    }) || exactTemplateByType(grouped.US, 'BCV Ingestion Only');
+    const consolidationTacticalBase = exactTemplateByType(grouped.US, 'Consolidation Tactical');
+    const consolidationStrategicBase = exactTemplateByType(grouped.US, 'Consolidation Strategic Unconstrained');
+    const canadaTacticalBase = exactTemplateByType(grouped.Canada, 'Tactical Pro Forma') || tacticalBase;
+    const canadaStrategicBase = exactTemplateByType(grouped.Canada, 'Strategic Pro Forma') || strategicBase;
+    const canadaBcvBase = grouped.Canada.find((template) => {
+      const policy = resolveScenarioTypePolicy(template.scenarioType);
+      return policy.scenarioType === 'BCV Ingestion Only' && !isCollectRelocatableTemplate(template);
+    }) || exactTemplateByType(grouped.Canada, 'BCV Ingestion Only') || bcvBase;
+    const canadaConsolidationTacticalBase = exactTemplateByType(grouped.Canada, 'Consolidation Tactical') || consolidationTacticalBase;
+    const canadaConsolidationStrategicBase =
+      exactTemplateByType(grouped.Canada, 'Consolidation Strategic Unconstrained') || consolidationStrategicBase;
+    const syntheticUsTemplates = [
       tacticalBase
         ? cloneTemplateWithOverrides(tacticalBase, {
             scenarioId: 'SYNTH_SCENARIO_7_TACTICAL_COLLECT_RELO_US',
             cloneFromScenarioId: tacticalBase.scenarioId,
+            region: 'US',
             scenarioName: 'Scenario 7 - Tactical Collect Relo',
             scenarioType: 'Tactical Pro Forma (Collect Relocatable)',
             footprintMode: 'Fixed',
@@ -994,6 +1049,7 @@ function App() {
         ? cloneTemplateWithOverrides(strategicBase, {
             scenarioId: 'SYNTH_SCENARIO_8_STRATEGIC_COLLECT_RELO_US',
             cloneFromScenarioId: strategicBase.scenarioId,
+            region: 'US',
             scenarioName: 'Scenario 8 - Strategic Collect Relo',
             scenarioType: 'Strategic Pro Forma (Collect Relocatable)',
             footprintMode: 'Unconstrained',
@@ -1004,39 +1060,42 @@ function App() {
           })
         : null,
         bcvBase
-            ? cloneTemplateWithOverrides(bcvBase, {
-                scenarioId: 'SYNTH_SCENARIO_9_BCV_COLLECT_RELO_US',
-                cloneFromScenarioId: bcvBase.scenarioId,
-                scenarioName: 'Scenario 9 - BCV Collect Relocatable',
-                scenarioType: 'BCV Ingestion (Collect Relocatable)',
-                footprintMode: 'Unconstrained',
-                utilCap: 100,
+        ? cloneTemplateWithOverrides(bcvBase, {
+            scenarioId: 'SYNTH_SCENARIO_9_BCV_COLLECT_RELO_US',
+            cloneFromScenarioId: bcvBase.scenarioId,
+            region: 'US',
+            scenarioName: 'Scenario 9 - BCV Collect Relocatable',
+            scenarioType: 'BCV Ingestion (Collect Relocatable)',
+            footprintMode: 'Unconstrained',
+            utilCap: 100,
               levelLoad: false,
               allowRelocationPrepaid: true,
               allowRelocationCollect: true,
             })
           : null,
         consolidationTacticalBase
-          ? cloneTemplateWithOverrides(consolidationTacticalBase, {
-              scenarioId: 'SYNTH_SCENARIO_10_CONSOLIDATION_TACTICAL_COLLECT_RELO_US',
-              cloneFromScenarioId: consolidationTacticalBase.scenarioId,
-              scenarioName: 'Scenario 10 - Consolidation Tactical Collect Relo',
-              scenarioType: 'Consolidation Tactical (Collect Relocatable)',
-              footprintMode: 'Fixed',
-              utilCap: 80,
+        ? cloneTemplateWithOverrides(consolidationTacticalBase, {
+            scenarioId: 'SYNTH_SCENARIO_10_CONSOLIDATION_TACTICAL_COLLECT_RELO_US',
+            cloneFromScenarioId: consolidationTacticalBase.scenarioId,
+            region: 'US',
+            scenarioName: 'Scenario 10 - Consolidation Tactical Collect Relo',
+            scenarioType: 'Consolidation Tactical (Collect Relocatable)',
+            footprintMode: 'Fixed',
+            utilCap: 80,
               levelLoad: true,
               allowRelocationPrepaid: true,
               allowRelocationCollect: true,
             })
           : null,
         consolidationStrategicBase
-          ? cloneTemplateWithOverrides(consolidationStrategicBase, {
-              scenarioId: 'SYNTH_SCENARIO_11_CONSOLIDATION_STRATEGIC_COLLECT_RELO_US',
-              cloneFromScenarioId: consolidationStrategicBase.scenarioId,
-              scenarioName: 'Scenario 11 - Consolidation Strategic Collect Relo',
-              scenarioType: 'Consolidation Strategic (Collect Relocatable)',
-              footprintMode: 'Unconstrained',
-              utilCap: 100,
+        ? cloneTemplateWithOverrides(consolidationStrategicBase, {
+            scenarioId: 'SYNTH_SCENARIO_11_CONSOLIDATION_STRATEGIC_COLLECT_RELO_US',
+            cloneFromScenarioId: consolidationStrategicBase.scenarioId,
+            region: 'US',
+            scenarioName: 'Scenario 11 - Consolidation Strategic Collect Relo',
+            scenarioType: 'Consolidation Strategic (Collect Relocatable)',
+            footprintMode: 'Unconstrained',
+            utilCap: 100,
               levelLoad: false,
               allowRelocationPrepaid: true,
               allowRelocationCollect: true,
@@ -1045,6 +1104,81 @@ function App() {
       ].filter(Boolean) as ScenarioTemplateOption[];
 
     grouped.US.push(...syntheticUsTemplates);
+
+    const syntheticCanadaTemplates = [
+      canadaTacticalBase
+        ? cloneTemplateWithOverrides(canadaTacticalBase, {
+            scenarioId: 'SYNTH_SCENARIO_7_TACTICAL_COLLECT_RELO_CA',
+            cloneFromScenarioId: canadaTacticalBase.scenarioId,
+            region: 'Canada',
+            scenarioName: 'Canada Tactical Relo',
+            scenarioType: 'Tactical Pro Forma (Collect Relocatable)',
+            footprintMode: 'Fixed',
+            utilCap: 80,
+            levelLoad: true,
+            allowRelocationPrepaid: true,
+            allowRelocationCollect: true,
+          })
+        : null,
+      canadaStrategicBase
+        ? cloneTemplateWithOverrides(canadaStrategicBase, {
+            scenarioId: 'SYNTH_SCENARIO_8_STRATEGIC_COLLECT_RELO_CA',
+            cloneFromScenarioId: canadaStrategicBase.scenarioId,
+            region: 'Canada',
+            scenarioName: 'Canada Strategic Relo',
+            scenarioType: 'Strategic Pro Forma (Collect Relocatable)',
+            footprintMode: 'Unconstrained',
+            utilCap: 100,
+            levelLoad: false,
+            allowRelocationPrepaid: true,
+            allowRelocationCollect: true,
+          })
+        : null,
+      canadaBcvBase
+        ? cloneTemplateWithOverrides(canadaBcvBase, {
+            scenarioId: 'SYNTH_SCENARIO_9_BCV_COLLECT_RELO_CA',
+            cloneFromScenarioId: canadaBcvBase.scenarioId,
+            region: 'Canada',
+            scenarioName: 'Canada BCV Relo',
+            scenarioType: 'BCV Ingestion (Collect Relocatable)',
+            footprintMode: 'Unconstrained',
+            utilCap: 100,
+            levelLoad: false,
+            allowRelocationPrepaid: true,
+            allowRelocationCollect: true,
+          })
+        : null,
+      canadaConsolidationTacticalBase
+        ? cloneTemplateWithOverrides(canadaConsolidationTacticalBase, {
+            scenarioId: 'SYNTH_SCENARIO_10_CONSOLIDATION_TACTICAL_COLLECT_RELO_CA',
+            cloneFromScenarioId: canadaConsolidationTacticalBase.scenarioId,
+            region: 'Canada',
+            scenarioName: 'Canada Consolidation Tactical Relo',
+            scenarioType: 'Consolidation Tactical (Collect Relocatable)',
+            footprintMode: 'Fixed',
+            utilCap: 80,
+            levelLoad: true,
+            allowRelocationPrepaid: true,
+            allowRelocationCollect: true,
+          })
+        : null,
+      canadaConsolidationStrategicBase
+        ? cloneTemplateWithOverrides(canadaConsolidationStrategicBase, {
+            scenarioId: 'SYNTH_SCENARIO_11_CONSOLIDATION_STRATEGIC_COLLECT_RELO_CA',
+            cloneFromScenarioId: canadaConsolidationStrategicBase.scenarioId,
+            region: 'Canada',
+            scenarioName: 'Canada Consolidation Strategic Relo',
+            scenarioType: 'Consolidation Strategic (Collect Relocatable)',
+            footprintMode: 'Unconstrained',
+            utilCap: 100,
+            levelLoad: false,
+            allowRelocationPrepaid: true,
+            allowRelocationCollect: true,
+          })
+        : null,
+    ].filter(Boolean) as ScenarioTemplateOption[];
+
+    grouped.Canada.push(...syntheticCanadaTemplates);
 
     const sortTemplates = (items: ScenarioTemplateOption[]) =>
       [...items].sort((a, b) => {
@@ -1058,6 +1192,34 @@ function App() {
       Canada: sortTemplates(grouped.Canada),
     };
   }, [scenarioState.headers, scenarioState.configs, scenarioState.resultsDC, dcCapacityRows]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const stratfordRows = await loadCanadaStratfordScenarioLaneDataset();
+        if (cancelled || stratfordRows.length === 0) return;
+        setRawScenarioLaneRows((prev) => {
+          const seen = new Set(prev.map((row) => scenarioLaneIdentityKey(row)));
+          const next = [...prev];
+          stratfordRows.forEach((row) => {
+            const key = scenarioLaneIdentityKey(row);
+            if (seen.has(key)) return;
+            seen.add(key);
+            next.push(row);
+          });
+          return next;
+        });
+      } catch (error) {
+        console.warn('[App] Failed to load Canada Stratford lane dataset.', error);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const navigateToHome = () => {
     setAppState({
@@ -1099,8 +1261,9 @@ function App() {
     setShowNewScenario(true);
   };
 
-  const handleNewComparison = (preselectedA?: string, preselectedB?: string) => {
+  const handleNewComparison = (preselectedA?: string, preselectedB?: string, scenarioIds?: string[]) => {
     setPreselectedRuns({ a: preselectedA, b: preselectedB });
+    setComparisonScenarioIds(scenarioIds && scenarioIds.length > 0 ? scenarioIds : null);
     setShowNewComparison(true);
   };
 
@@ -1298,33 +1461,82 @@ function App() {
         });
       }) : [];
 
-      const laneScenarioRunIdLookup = scenarioPayloads.reduce<Record<string, string>>((acc, payload) => {
-        const header = payload.header;
-        const scenarioTypeKey = normalizeScenarioLookupKey(header.ScenarioType);
-        const runNameKey = normalizeScenarioLookupKey(header.RunName);
-        const compositeKey = normalizeScenarioLookupKey([header.ScenarioType, header.RunName, header.Region, header.EntityScope].filter(Boolean).join('|'));
-        if (scenarioTypeKey) acc[scenarioTypeKey] = header.ScenarioRunID;
-        if (runNameKey) acc[runNameKey] = header.ScenarioRunID;
-        if (compositeKey) acc[compositeKey] = header.ScenarioRunID;
-        return acc;
-      }, {});
+      const buildLaneScenarioRunIdLookup = (region: 'US' | 'Canada') =>
+        scenarioPayloads.reduce<Record<string, string>>((acc, payload) => {
+          const header = payload.header;
+          if (header.Region !== region) return acc;
+          const scenarioTypeKey = normalizeScenarioLookupKey(header.ScenarioType);
+          const runNameKey = normalizeScenarioLookupKey(header.RunName);
+          const compositeKey = normalizeScenarioLookupKey([header.ScenarioType, header.RunName, header.Region, header.EntityScope].filter(Boolean).join('|'));
+          if (scenarioTypeKey) acc[scenarioTypeKey] = header.ScenarioRunID;
+          if (runNameKey) acc[runNameKey] = header.ScenarioRunID;
+          if (compositeKey) acc[compositeKey] = header.ScenarioRunID;
+          return acc;
+        }, {});
+      const usLaneScenarioRunIdLookup = buildLaneScenarioRunIdLookup('US');
+      const canadaLaneScenarioRunIdLookup = buildLaneScenarioRunIdLookup('Canada');
 
-      const [laneDatasetRows, bcvLaneDatasetRows, tacticalConsolidationLaneDatasetRows] = await Promise.all([
-        loadScenarioLaneDataset(laneScenarioRunIdLookup),
-        loadBcvScenarioLaneDataset(laneScenarioRunIdLookup),
-        loadTacticalConsolidationScenarioLaneDataset(laneScenarioRunIdLookup),
+      const [
+        laneDatasetRows,
+        bcvLaneDatasetRows,
+        tacticalConsolidationLaneDatasetRows,
+        canadaBaselineLaneDatasetRows,
+        canadaStratfordLaneDatasetRows,
+      ] = await Promise.all([
+        loadScenarioLaneDataset(usLaneScenarioRunIdLookup),
+        loadBcvScenarioLaneDataset(usLaneScenarioRunIdLookup),
+        loadTacticalConsolidationScenarioLaneDataset(usLaneScenarioRunIdLookup),
+        loadCanadaScenarioLaneDataset(canadaLaneScenarioRunIdLookup),
+        loadCanadaStratfordScenarioLaneDataset(buildLaneScenarioRunIdLookup('Canada')),
       ]);
       const combinedLaneDatasetRows = [
         ...laneDatasetRows,
         ...bcvLaneDatasetRows,
         ...tacticalConsolidationLaneDatasetRows,
+        ...canadaBaselineLaneDatasetRows,
+        ...canadaStratfordLaneDatasetRows,
       ];
+      const rawLaneCountsBySourceDatasetId = combinedLaneDatasetRows.reduce<Record<string, number>>((acc, lane) => {
+        const key = String(lane.SourceDatasetId || 'missing');
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+      }, {});
       console.log('[Domo Lanes] loaded for scenarios', {
         baselineLaneRows: laneDatasetRows.length,
         bcvLaneRows: bcvLaneDatasetRows.length,
         tacticalConsolidationLaneRows: tacticalConsolidationLaneDatasetRows.length,
+        canadaBaselineLaneRows: canadaBaselineLaneDatasetRows.length,
+        canadaStratfordLaneRows: canadaStratfordLaneDatasetRows.length,
         combinedLaneRows: combinedLaneDatasetRows.length,
       });
+      if (DEBUG_DOMO_MAPPING) {
+        console.log('[Domo Lanes] counts by source dataset id', rawLaneCountsBySourceDatasetId);
+        const rawLaneCountsBySourceDatasetAndScenario = combinedLaneDatasetRows.reduce<Record<string, { count: number; scenarioRunIds: Set<string> }>>((acc, lane) => {
+          const sourceKey = String(lane.SourceDatasetId || 'missing');
+          if (!acc[sourceKey]) {
+            acc[sourceKey] = { count: 0, scenarioRunIds: new Set<string>() };
+          }
+          acc[sourceKey].count += 1;
+          acc[sourceKey].scenarioRunIds.add(String(lane.ScenarioRunID || 'missing'));
+          return acc;
+        }, {});
+        console.table(
+          Object.entries(rawLaneCountsBySourceDatasetAndScenario).map(([sourceDatasetId, value]) => ({
+            SourceDatasetId: sourceDatasetId,
+            RawLaneCount: value.count,
+            ScenarioRunIDs: Array.from(value.scenarioRunIds).join(', '),
+          })),
+        );
+      }
+      if (DEBUG_DOMO_MAPPING) {
+        console.log('[Domo Lanes] canada stratford raw lane ids', {
+          canadaStratfordDatasetId: CANADA_STRATFORD_LANE_DATASET_ID || 'missing',
+          canadaStratfordLaneRows: canadaStratfordLaneDatasetRows.map((row) => ({
+            scenarioRunId: row.ScenarioRunID,
+            sourceDatasetId: row.SourceDatasetId || 'missing',
+          })).slice(0, 8),
+        });
+      }
 
       const dataflowSortValue = (value?: string) => {
         const parsed = Number(value);
@@ -1725,15 +1937,30 @@ function App() {
       const normalizeText = (value: unknown): string => String(value || '').trim().toLowerCase();
       const familyPolicy = resolveScenarioTypePolicy(payload.input.scenarioType);
       const familyKey = familyPolicy.familyKey;
-      const familyDcs = getScenarioTypeAllowedDcs(payload.input.scenarioType);
+      const familyDcs = getScenarioTypeAllowedDcsForRegion(payload.input.scenarioType, payload.input.region);
       const familyDcSet = new Set(familyDcs.map(normalizeText));
       const normalizedActiveDcs = familyDcs;
       const normalizedSuppressedDcs = Array.from(
         new Set(payload.input.suppressedDCs.filter((dc) => familyDcSet.has(normalizeText(dc)))),
       );
       const scopedDcCapacityRows = dcCapacityRows.filter((row) => familyDcSet.has(normalizeText(row.DCName)));
+      const scenarioRegionById = new Map(
+        scenarioState.headers.map((header) => [header.ScenarioRunID, header.Region] as const),
+      );
       const scopedLaneRowsByScenarioId = Object.entries(lanesByScenarioId).reduce<Record<string, ScenarioRunResultsLane[]>>((acc, [scenarioId, rows]) => {
-        const filteredRows = rows.filter((row) => resolveScenarioFamilyKey(row.ScenarioType) === familyKey);
+        const scenarioRegion = scenarioRegionById.get(scenarioId) || payload.input.region;
+        const filteredRows = rows.filter((row) =>
+          scenarioRegion === payload.input.region &&
+          (
+            resolveScenarioFamilyKey(row.ScenarioType) === familyKey ||
+            (
+              payload.input.region === 'Canada' &&
+              CANADA_STRATFORD_LANE_DATASET_ID &&
+              String(row.SourceDatasetId || '').trim() === CANADA_STRATFORD_LANE_DATASET_ID &&
+              (familyKey === 'bcv-family' || familyKey === 'consolidation-family')
+            )
+          )
+        );
         if (filteredRows.length > 0) {
           acc[scenarioId] = filteredRows;
         }
@@ -1757,6 +1984,7 @@ function App() {
           Object.entries(scopedLaneRowsByScenarioId).map(([scenarioId, rows]) => ({
             ScenarioRunID: scenarioId,
             LaneCount: rows.length,
+            SourceDatasetIds: Array.from(new Set(rows.map((row) => String(row.SourceDatasetId || 'missing')))).join(', '),
           }))
         );
         console.groupEnd();
@@ -1789,6 +2017,22 @@ function App() {
             ScenarioRunID: scenarioId,
             RawLaneCount: rows.length,
           }))
+        );
+        console.table(
+          Object.entries(lanesByScenarioId).map(([scenarioId, rows]) => {
+            const sourceBuckets = rows.reduce<Record<string, number>>((acc, lane) => {
+              const sourceKey = String(lane.SourceDatasetId || 'missing');
+              acc[sourceKey] = (acc[sourceKey] || 0) + 1;
+              return acc;
+            }, {});
+            return {
+              ScenarioRunID: scenarioId,
+              RawLaneCount: rows.length,
+              SourceDatasetIds: Object.entries(sourceBuckets)
+                .map(([sourceDatasetId, count]) => `${sourceDatasetId} (${count})`)
+                .join(', '),
+            };
+          }),
         );
         console.groupEnd();
       }
@@ -2494,7 +2738,20 @@ function App() {
     const spaceDelta = (scenarioB?.TotalSpaceRequired || 0) - (scenarioA?.TotalSpaceRequired || 0);
     const spaceCoreDelta = (scenarioB?.SpaceCore || 0) - (scenarioA?.SpaceCore || 0);
     const spaceBCVDelta = (scenarioB?.SpaceBCV || 0) - (scenarioA?.SpaceBCV || 0);
-    const changedLaneDelta = (scenarioB?.ChangedLaneCountVsBaseline || 0) - (scenarioA?.ChangedLaneCountVsBaseline || 0);
+    const compareLaneKeys = (lane: ScenarioRunResultsLane) =>
+      `${lane.Dest3Zip || ''}|${lane.Channel || ''}`;
+    const runALanes = scenarioState.resultsLanes.filter((lane) => lane.ScenarioRunID === payload.runA);
+    const runBLanes = scenarioState.resultsLanes.filter((lane) => lane.ScenarioRunID === payload.runB);
+    const laneMapA = new Map(runALanes.map((lane) => [compareLaneKeys(lane), lane]));
+    const laneMapB = new Map(runBLanes.map((lane) => [compareLaneKeys(lane), lane]));
+    const changedLaneDelta = Array.from(new Set([...laneMapA.keys(), ...laneMapB.keys()])).reduce((count, key) => {
+      const laneA = laneMapA.get(key);
+      const laneB = laneMapB.get(key);
+      if (!laneA || !laneB) return count + 1;
+      return laneA.AssignedDC !== laneB.AssignedDC || laneA.LaneCost !== laneB.LaneCost || laneA.DeliveryDays !== laneB.DeliveryDays
+        ? count + 1
+        : count;
+    }, 0);
 
     return {
       ComparisonID: comparisonId,
@@ -3202,9 +3459,12 @@ function App() {
 
       <NewComparisonModal
         isOpen={showNewComparison}
-        onClose={() => setShowNewComparison(false)}
+        onClose={() => {
+          setShowNewComparison(false);
+          setComparisonScenarioIds(null);
+        }}
         onComplete={handleComparisonComplete}
-        scenarioRunHeaders={scenarioState.headers}
+        scenarioRunHeaders={comparisonModalScenarioHeaders}
         preselectedA={preselectedRuns.a}
         preselectedB={preselectedRuns.b}
       />

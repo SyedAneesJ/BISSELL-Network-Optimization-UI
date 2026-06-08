@@ -1,9 +1,13 @@
 import React, { useEffect } from 'react';
 import { ChevronDown, Lock } from 'lucide-react';
+import { compactSelectBaseClass } from '@/components/ui/formStyles';
+import { Select } from '@/components/ui';
 import { DatasetOptionSets } from '@/services';
 import { ScenarioTemplateOption } from '@/services/scenario';
 import {
   getScenarioTypeSortRank,
+  getScenarioTypeAllowedDcsForRegion,
+  getScenarioTypeHelpText,
   normalizeScenarioTypeSpecificInput,
   resolveStep1ScenarioDefaults,
   resolveScenarioTypePolicy,
@@ -30,7 +34,6 @@ const buildFormDataFromTemplate = (
   scenarioTypeOverride?: string,
 ): NewScenarioFormData => {
   const resolvedScenarioType = scenarioTypeOverride || template?.scenarioType || '';
-  const policy = resolveScenarioTypePolicy(resolvedScenarioType);
   const step1Defaults = resolveStep1ScenarioDefaults(resolvedScenarioType);
   const resolvedEntityScope = String(template?.entityScope || '').trim();
   const resolvedChannelScopes = template?.channelScopes || [];
@@ -39,7 +42,6 @@ const buildFormDataFromTemplate = (
     const normalized = value.trim().toLowerCase();
     return normalized.length > 0 && normalized !== 'na';
   };
-  const fallbackChannelScopes = fallbackDatasetOptions.channelScopes.filter(isMeaningfulValue);
   const fallbackTermsScopes = fallbackDatasetOptions.termsScopes.filter(isMeaningfulValue);
   return normalizeScenarioTypeSpecificInput({
     region: template?.region || step1Defaults.region || fallbackRegion,
@@ -57,7 +59,11 @@ const buildFormDataFromTemplate = (
     runName: '',
     tags: template ? [...template.tags] : [],
     notes: '',
-    activeDCs: new Set(policy.allowedDcs.length > 0 ? policy.allowedDcs : template?.availableDcs || []),
+    activeDCs: new Set(
+      getScenarioTypeAllowedDcsForRegion(template?.scenarioType || '', template?.region || fallbackRegion).length > 0
+        ? getScenarioTypeAllowedDcsForRegion(template?.scenarioType || '', template?.region || fallbackRegion)
+        : template?.availableDcs || [],
+    ),
     suppressedDCs: new Set<string>(),
     footprintMode: template?.footprintMode || fallbackDatasetOptions.footprintModes[0] || 'NA',
     utilCap: template?.utilCap ?? fallbackDatasetOptions.utilCaps[0] ?? 0,
@@ -81,16 +87,17 @@ const buildFormDataFromTemplate = (
 
 const scenarioTypeSortRank = (value: string): number => getScenarioTypeSortRank(value);
 const isExactBaselineScenario = (scenarioType: unknown): boolean =>
-  resolveScenarioTypePolicy(scenarioType).scenarioType === 'US Baseline';
+  resolveScenarioTypePolicy(scenarioType).allocationMode === 'baseline';
 const isExactScenarioType = (scenarioType: string, candidate: ScenarioTemplateOption): boolean =>
   resolveScenarioTypePolicy(candidate.scenarioType).scenarioType === scenarioType;
-const isExactUsBaselineTemplate = (template: ScenarioTemplateOption | null): boolean =>
-  Boolean(template)
-  && isExactBaselineScenario(template?.scenarioType)
-  && String(template?.dataflowId || '').trim() === '3267';
 
-const findExactUsBaselineTemplate = (templates: ScenarioTemplateOption[]): ScenarioTemplateOption | null =>
-  templates.find((template) => isExactUsBaselineTemplate(template)) || null;
+const findExactBaselineTemplate = (
+  templates: ScenarioTemplateOption[],
+  region?: 'US' | 'Canada',
+): ScenarioTemplateOption | null =>
+  templates.find((template) =>
+    isExactBaselineScenario(template.scenarioType) && (!region || template.region === region)
+  ) || null;
 
 export const Step1TemplateScope: React.FC<Step1TemplateScopeProps> = ({
   formData,
@@ -115,11 +122,13 @@ export const Step1TemplateScope: React.FC<Step1TemplateScopeProps> = ({
     return String(a || '').trim().toLowerCase().localeCompare(String(b || '').trim().toLowerCase());
   });
   const baselineScenarioOptions = baselineOptions.filter((item) =>
-    isExactUsBaselineTemplate(item)
+    isExactBaselineScenario(item.scenarioType)
   );
-  const exactUsBaselineScenario = baselineScenarioOptions[0] || null;
+  const exactBaselineScenario = findExactBaselineTemplate(baselineScenarioOptions, formData.region as 'US' | 'Canada')
+    || baselineScenarioOptions[0]
+    || null;
   const selectedBaseScenario =
-    (selectedScenarioPolicy.allocationMode === 'baseline' ? exactUsBaselineScenario : null)
+    (selectedScenarioPolicy.allocationMode === 'baseline' ? exactBaselineScenario : null)
     || baselineOptions.find((item) => isExactScenarioType(selectedScenarioType, item))
     || baselineOptions.find((item) => item.scenarioId === formData.baselineScenarioId)
     || baselineOptions.find((item) => scenarioTypeMatches(item.scenarioType, selectedScenarioType))
@@ -150,12 +159,12 @@ export const Step1TemplateScope: React.FC<Step1TemplateScopeProps> = ({
       scenarioType: formData.scenarioType || 'NA',
       selectedBaselineScenarioId:
         (selectedScenarioPolicy.allocationMode === 'baseline'
-          ? exactUsBaselineScenario?.scenarioId
+          ? exactBaselineScenario?.scenarioId
           : formData.baselineScenarioId) || 'NA',
       selectedBaselineScenarioName: selectedBaseScenario?.scenarioName || 'NA',
     });
     console.groupEnd();
-  }, [exactUsBaselineScenario?.scenarioId, formData.baselineScenarioId, formData.scenarioType, selectedScenarioPolicy.allocationMode, selectedBaseScenario?.scenarioName]);
+  }, [exactBaselineScenario?.scenarioId, formData.baselineScenarioId, formData.scenarioType, selectedScenarioPolicy.allocationMode, selectedBaseScenario?.scenarioName]);
 
   // useEffect(() => {
   //   console.groupCollapsed('[Step 1] scope resolution');
@@ -235,52 +244,47 @@ export const Step1TemplateScope: React.FC<Step1TemplateScopeProps> = ({
           <label className="block text-sm font-medium text-slate-700 mb-2">
             Region
           </label>
-          <div className="relative group max-w-sm">
-            <select
-              value="US"
-              onChange={(e) => {
-              const nextRegion = e.target.value as 'All' | 'US' | 'Canada';
-              if (nextRegion !== 'US') return;
-              const nextRegionTemplates = templatesByRegion.US || baselineOptions;
-              const nextType = nextRegionTemplates[0]?.scenarioType || '';
-              const nextTemplate = nextType
-                ? (resolveScenarioTypePolicy(nextType).allocationMode === 'baseline'
-                  ? findExactUsBaselineTemplate(nextRegionTemplates)
-                    || nextRegionTemplates[0]
-                    || null
-                  : nextRegionTemplates.find((item) => scenarioTypeMatches(item.scenarioType, nextType))
-                    || nextRegionTemplates[0]
-                    || null)
-                : nextRegionTemplates[0] || null;
+          <div className="relative max-w-sm">
+            <Select
+              value={formData.region}
+              onChange={(val) => {
+                const nextRegion = val as 'All' | 'US' | 'Canada';
+                if (nextRegion === 'All') return;
+                const nextRegionTemplates = templatesByRegion[nextRegion] || baselineOptions;
+                const nextType = nextRegionTemplates[0]?.scenarioType || '';
+                const nextTemplate = nextType
+                  ? (resolveScenarioTypePolicy(nextType).allocationMode === 'baseline'
+                    ? findExactBaselineTemplate(nextRegionTemplates, nextRegion)
+                      || nextRegionTemplates[0]
+                      || null
+                    : nextRegionTemplates.find((item) => scenarioTypeMatches(item.scenarioType, nextType))
+                      || nextRegionTemplates[0]
+                      || null)
+                  : nextRegionTemplates[0] || null;
                 const nextFormData = {
-                  ...buildFormDataFromTemplate(nextTemplate, 'US', datasetOptions, nextType),
-                  region: 'US',
+                  ...buildFormDataFromTemplate(nextTemplate, nextRegion, datasetOptions, nextType),
+                  region: nextRegion,
                   scenarioType: nextType,
                   runName: formData.runName,
                   notes: formData.notes,
                 } as NewScenarioFormData;
-                if (resolveScenarioTypePolicy(nextType).allocationMode === 'baseline' && exactUsBaselineScenario) {
-                  nextFormData.baselineScenarioId = exactUsBaselineScenario.scenarioId;
-                  nextFormData.baselineDataflowId = String(exactUsBaselineScenario.dataflowId || '3267');
-                  nextFormData.scenarioType = exactUsBaselineScenario.scenarioType;
+                if (resolveScenarioTypePolicy(nextType).allocationMode === 'baseline') {
+                  const regionBaseline = findExactBaselineTemplate(nextRegionTemplates, nextRegion) || nextTemplate;
+                  if (regionBaseline) {
+                    nextFormData.baselineScenarioId = regionBaseline.scenarioId;
+                    nextFormData.baselineDataflowId = String(regionBaseline.dataflowId || '');
+                    nextFormData.scenarioType = regionBaseline.scenarioType;
+                  }
                 }
                 onFormDataChange(nextFormData);
               }}
-              className="w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 py-2 pr-10 text-sm font-medium text-slate-700 shadow-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:bg-slate-100"
-              title="Only US is selectable for now"
-            >
-              {availableRegions.map((region) => (
-                <option key={region} value={region} disabled={region !== 'US'}>
-                  {region === 'All' ? 'All Workspaces' : region}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <span className="pointer-events-none absolute right-9 top-1/2 hidden -translate-y-1/2 items-center gap-1 rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-500 shadow-sm transition group-hover:flex">
-              <Lock className="h-3 w-3" />
-              Disabled
-            </span>
-            <p className="mt-1 text-xs text-slate-500">All Workspaces and Canada are visible but disabled.</p>
+              options={availableRegions.map(r => ({
+                value: r,
+                label: r === 'All' ? 'All Workspaces' : r,
+                disabled: r === 'All'
+              }))}
+            />
+            <p className="mt-1 text-xs text-slate-500">Choose US or Canada to switch the template family.</p>
           </div>
         </div>
 
@@ -288,17 +292,17 @@ export const Step1TemplateScope: React.FC<Step1TemplateScopeProps> = ({
           <label className="block text-sm font-medium text-slate-700 mb-2">
             Scenario Type
           </label>
-          <select
+          <Select
             value={selectedScenarioType}
-            onChange={(e) => {
-              const nextType = e.target.value;
+            onChange={(val) => {
+              const nextType = val;
               const matchingOptions = nextType
                 ? (resolveScenarioTypePolicy(nextType).allocationMode === 'baseline'
                   ? baselineScenarioOptions
                   : regionTemplates.filter((item) => scenarioTypeMatches(item.scenarioType, nextType)))
                 : regionTemplates;
               const nextScenario = resolveScenarioTypePolicy(nextType).allocationMode === 'baseline'
-                ? exactUsBaselineScenario
+                ? exactBaselineScenario
                 : matchingOptions.find((item) => isExactScenarioType(nextType, item))
                   || matchingOptions[0]
                   || null;
@@ -308,24 +312,20 @@ export const Step1TemplateScope: React.FC<Step1TemplateScopeProps> = ({
                 runName: formData.runName,
                 notes: formData.notes,
               } as NewScenarioFormData;
-              if (resolveScenarioTypePolicy(nextType).allocationMode === 'baseline' && exactUsBaselineScenario) {
-                nextFormData.baselineScenarioId = exactUsBaselineScenario.scenarioId;
-                nextFormData.baselineDataflowId = String(exactUsBaselineScenario.dataflowId || '3267');
-                nextFormData.scenarioType = exactUsBaselineScenario.scenarioType;
+              if (resolveScenarioTypePolicy(nextType).allocationMode === 'baseline' && exactBaselineScenario) {
+                nextFormData.baselineScenarioId = exactBaselineScenario.scenarioId;
+                nextFormData.baselineDataflowId = String(exactBaselineScenario.dataflowId || '');
+                nextFormData.scenarioType = exactBaselineScenario.scenarioType;
               }
               onFormDataChange(nextFormData);
             }}
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">Select a scenario type</option>
-            {scenarioTypeOptions.map((type) => (
-              <option key={type} value={type}>{type}</option>
-            ))}
-          </select>
+            options={scenarioTypeOptions.map(t => ({ value: t, label: t }))}
+            placeholder="Select a scenario type"
+          />
           <p className="text-xs text-slate-500 mt-1">Choose one scenario type. The base scenario will be picked automatically from the original scenarios in that type.</p>
-          {selectedScenarioPolicy.helpText.length > 0 && (
+          {getScenarioTypeHelpText(selectedScenarioType || baselineOptions[0]?.scenarioType, formData.region).length > 0 && (
             <div className="mt-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-800">
-              {selectedScenarioPolicy.helpText.map((line) => (
+              {getScenarioTypeHelpText(selectedScenarioType || baselineOptions[0]?.scenarioType, formData.region).map((line) => (
                 <div key={line}>{line}</div>
               ))}
             </div>
@@ -412,22 +412,13 @@ export const Step1TemplateScope: React.FC<Step1TemplateScopeProps> = ({
             Locked
           </span>
         </div>
-        <select
+        <Select
           value={formData.termsScope}
-          onChange={(e) => onFormDataChange({ ...formData, termsScope: e.target.value })}
-          className={`w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-            renderedTermsScopes.length === 0 ? 'bg-slate-100' : ''
-          }`}
+          onChange={(val) => onFormDataChange({ ...formData, termsScope: val })}
           disabled={scopeLocked || renderedTermsScopes.length === 0}
-        >
-          {renderedTermsScopes.length === 0 ? (
-            <option value="">NA</option>
-          ) : (
-            renderedTermsScopes.map((term) => (
-              <option key={term} value={term}>{term}</option>
-            ))
-          )}
-        </select>
+          options={renderedTermsScopes.length === 0 ? [] : renderedTermsScopes.map(t => ({ value: t, label: t }))}
+          placeholder="NA"
+        />
         {renderedTermsScopes.length === 0 && (
           <p className="text-xs text-slate-500 mt-1">No terms scope data available.</p>
         )}
@@ -449,7 +440,7 @@ export const Step1TemplateScope: React.FC<Step1TemplateScopeProps> = ({
         )}
       </div>
 
-      <div>
+      {/* <div>
         <label className="block text-sm font-medium text-slate-700 mb-2">
           Tags
         </label>
@@ -479,7 +470,7 @@ export const Step1TemplateScope: React.FC<Step1TemplateScopeProps> = ({
             })}
           </div>
         )}
-      </div>
+      </div> */}
 
       <div>
         <label className="block text-sm font-medium text-slate-700 mb-2">

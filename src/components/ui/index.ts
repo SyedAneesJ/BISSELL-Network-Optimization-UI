@@ -8,3 +8,4 @@ export { Tooltip } from './Tooltip';
 export { Toast } from './Toast';
 export type { Column } from './DataTable';
 export type { Tab } from './Tabs';
+export { Select } from './Select';

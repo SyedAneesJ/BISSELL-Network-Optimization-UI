@@ -1,7 +1,7 @@
 import type { ScenarioRunResultsDC, ScenarioRunResultsLane } from '@/data';
 import type { DomoDcCapacityRow } from '@/services';
 import type { ScenarioBuildSummary } from './scenarioModels';
-import { resolveScenarioTypePolicy } from './scenarioTypeRules';
+import { canonicalizeDcName, resolveScenarioTypePolicy } from './scenarioTypeRules';
 import { summarizeDcResults } from './scenarioMetrics';
 
 type AllocationMode = 'baseline' | 'overload' | 'constrained' | 'unconstrained' | 'tacticalConsolidation';
@@ -59,15 +59,15 @@ const shouldLogAllocation = String(import.meta.env.VITE_SCENARIO_ALLOCATION_LOGS
 
 const normalizeText = (value: unknown): string => String(value || '').trim();
 
-const normalizeDcKey = (value: unknown): string => normalizeText(value).toLowerCase();
+const normalizeDcKey = (value: unknown): string => normalizeText(canonicalizeDcName(value)).toLowerCase();
 
 const laneTerms = (lane: ScenarioRunResultsLane): string => normalizeText(lane.Terms).toLowerCase();
 
 const laneSourceDc = (lane: ScenarioRunResultsLane): string =>
-  normalizeText(lane.AssignedDC || lane.CostingWarehouse || lane.DefaultShipFrom);
+  normalizeText(canonicalizeDcName(lane.AssignedDC || lane.CostingWarehouse || lane.DefaultShipFrom));
 
 const formatDcDisplayName = (value: unknown): string => {
-  const text = normalizeText(value);
+  const text = normalizeText(canonicalizeDcName(value));
   if (!text) return '';
   return text
     .split(/\s+/)
@@ -235,7 +235,7 @@ export const buildCapacityMap = (rows: DomoDcCapacityRow[] | undefined, utilCap:
   const rawByName = new Map<string, number>();
   const meta = new Map<string, DomoDcCapacityRow>();
   (rows || []).forEach((row) => {
-    const dcName = normalizeText(row.DCName);
+    const dcName = normalizeText(canonicalizeDcName(row.DCName));
     const dcKey = normalizeDcKey(dcName);
     if (!dcName) return;
     const rawCapacity = capacityValue(row);
@@ -256,7 +256,7 @@ const isCandidateActive = (
   activeSet: Set<string>,
   suppressedSet: Set<string>,
 ): boolean => {
-  const dcKey = normalizeDcKey(dc);
+  const dcKey = normalizeDcKey(canonicalizeDcName(dc));
   if (!dcKey) return false;
   if (suppressedSet.has(dcKey)) return false;
   if (activeSet.size === 0) return true;
@@ -330,13 +330,10 @@ const restrictCandidatesForLane = (
 };
 
 const selectedCandidateRank = (sourceRow: ScenarioRunResultsLane, selectedDc: string): number => {
+  const rawCandidates = buildRawCandidates(sourceRow);
   const normalized = normalizeDcKey(selectedDc);
-  const candidates = [
-    normalizeDcKey(sourceRow.RankedOption1DC) === normalized ? 1 : 0,
-    normalizeDcKey(sourceRow.RankedOption2DC) === normalized ? 2 : 0,
-    normalizeDcKey(sourceRow.RankedOption3DC) === normalized ? 3 : 0,
-  ].filter(Boolean);
-  return candidates[0] || 1;
+  const index = rawCandidates.findIndex(c => normalizeDcKey(c.dc) === normalized);
+  return index >= 0 ? index + 1 : rawCandidates.length + 1;
 };
 
 const buildSelectedLaneRow = (
@@ -839,7 +836,14 @@ export const allocateScenarioOutputs = (input: AllocationInput): AllocationResul
   const activeSet = new Set(input.activeDcs.map(normalizeDcKey).filter(Boolean));
   const suppressedSet = new Set(input.suppressedDcs.map(normalizeDcKey).filter(Boolean));
   const capacityMap = buildCapacityMap(input.dcCapacityRows, input.utilCap);
-  const laneGroups = buildLaneGroups(input.lanes);
+
+  const validDcs = new Set(capacityMap.rawByName.keys());
+  const regionLanes = input.lanes.filter(lane => {
+    const rawCandidates = buildRawCandidates(lane);
+    return rawCandidates.some(c => validDcs.has(normalizeDcKey(c.dc)));
+  });
+
+  const laneGroups = buildLaneGroups(regionLanes);
   const mode = resolveMode(input, suppressedSet);
 
   if (shouldLogAllocation) {

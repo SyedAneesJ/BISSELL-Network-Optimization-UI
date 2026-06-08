@@ -1,5 +1,5 @@
 import React from 'react';
-import { Tooltip } from '@/components/ui';
+import { Tooltip, Select } from '@/components/ui';
 import { DatasetOptionSets } from '@/services';
 import type { ScenarioTypePolicy } from '@/services/scenario/scenarioTypeRules';
 import { NewScenarioFormData } from './types';
@@ -86,33 +86,26 @@ export const Step4RelocationBcv: React.FC<Step4RelocationBcvProps> = ({
         )}
       </div>
 
-      <div>
-        <div className="flex items-center gap-2 mb-2">
-          <label className="text-sm font-medium text-slate-700">
-            BCV Relocation Mapping
-          </label>
-          <Tooltip content="Business Critical Volume routing rules for network changes" />
-        </div>
-        <select
-          value={formData.bcvRuleSet}
-          onChange={(e) => onFormDataChange({ ...formData, bcvRuleSet: e.target.value })}
-          className={`w-full rounded-xl border border-white/70 bg-white/80 px-3 py-2 shadow-sm backdrop-blur-md focus:outline-none focus:ring-2 focus:ring-blue-500/15 ${
-            datasetOptions.bcvRuleSets.length === 0 ? 'bg-slate-100' : ''
-          }`}
-          disabled={datasetOptions.bcvRuleSets.length === 0 || scenarioPolicy.locks.bcvRuleSet}
-        >
-          {datasetOptions.bcvRuleSets.length === 0 ? (
-            <option value="">NA</option>
-          ) : (
-            datasetOptions.bcvRuleSets.map((rule) => (
-              <option key={rule} value={rule}>{rule}</option>
-            ))
+      {scenarioPolicy.supports.bcvMapping && (
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <label className="text-sm font-medium text-slate-700">
+              BCV Relocation Mapping
+            </label>
+            <Tooltip content="Business Critical Volume routing rules for network changes" />
+          </div>
+          <Select
+            value={formData.bcvRuleSet}
+            onChange={(val) => onFormDataChange({ ...formData, bcvRuleSet: val })}
+            disabled={datasetOptions.bcvRuleSets.length === 0 || scenarioPolicy.locks.bcvRuleSet}
+            options={datasetOptions.bcvRuleSets.length === 0 ? [] : datasetOptions.bcvRuleSets.map((rule) => ({ value: rule, label: rule }))}
+            placeholder="NA"
+          />
+          {datasetOptions.bcvRuleSets.length === 0 && (
+            <p className="text-xs text-slate-500 mt-1">No BCV mapping data available.</p>
           )}
-        </select>
-        {datasetOptions.bcvRuleSets.length === 0 && (
-          <p className="text-xs text-slate-500 mt-1">No BCV mapping data available.</p>
-        )}
-      </div>
+        </div>
+      )}
 
     </div>
   );

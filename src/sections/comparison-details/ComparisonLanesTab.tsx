@@ -1,6 +1,7 @@
 import React from 'react';
+import { Download } from 'lucide-react';
 import { FileSpreadsheet } from 'lucide-react';
-import { DataTable, Column } from '@/components/ui';
+import { Button, DataTable, Column } from '@/components/ui';
 import { ComparisonDetailLane } from '@/data';
 
 interface ComparisonLanesTabProps {
@@ -11,6 +12,8 @@ interface ComparisonLanesTabProps {
   filteredLaneComparison: ComparisonDetailLane[];
   laneComparisonColumns: Column<ComparisonDetailLane>[];
   hasLaneData: boolean;
+  onExportLaneDiff: () => void;
+  exportLaneActive: boolean;
 }
 
 export const ComparisonLanesTab: React.FC<ComparisonLanesTabProps> = ({
@@ -21,6 +24,8 @@ export const ComparisonLanesTab: React.FC<ComparisonLanesTabProps> = ({
   filteredLaneComparison,
   laneComparisonColumns,
   hasLaneData,
+  onExportLaneDiff,
+  exportLaneActive,
 }) => {
   if (!hasLaneData) {
     return (
@@ -65,10 +70,20 @@ export const ComparisonLanesTab: React.FC<ComparisonLanesTabProps> = ({
       </div>
 
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-        <p className="text-sm text-blue-800">
-          Showing {filteredLaneComparison.length} lane(s) with differences between the two scenarios.
-          Use filters above to focus on specific types of changes.
-        </p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-blue-800">
+            Showing {filteredLaneComparison.length} lane(s) with differences between the two scenarios.
+            Use filters above to focus on specific types of changes.
+          </p>
+          <Button
+            variant="secondary"
+            icon={<Download className="w-4 h-4" />}
+            onClick={onExportLaneDiff}
+            className={exportLaneActive ? 'bg-amber-100 text-amber-800' : ''}
+          >
+            {exportLaneActive ? 'Exporting...' : 'Export Lane Diff CSV'}
+          </Button>
+        </div>
       </div>
 
       <DataTable

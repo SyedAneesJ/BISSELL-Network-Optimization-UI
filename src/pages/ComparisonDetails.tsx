@@ -52,6 +52,7 @@ export const ComparisonDetails: React.FC<ComparisonDetailsProps> = (props) => {
     laneComparison,
     filteredLaneComparison,
     handleExportComparisonPack,
+    handleExportKpiComparison,
     handleExportLaneDiff,
     handleExportDCDiff,
     handleSaveDecision,
@@ -61,6 +62,7 @@ export const ComparisonDetails: React.FC<ComparisonDetailsProps> = (props) => {
     formatValue,
     dcComparisonColumns,
     laneComparisonColumns,
+    changedLaneCount,
   } = useComparisonDetails({
     comparisonId: props.comparisonId,
     scenarioRunHeaders: props.scenarioRunHeaders,
@@ -96,6 +98,9 @@ export const ComparisonDetails: React.FC<ComparisonDetailsProps> = (props) => {
           comparison={comparison}
           kpiComparisons={kpiComparisons}
           formatValue={formatValue}
+          onExportKpiComparison={handleExportKpiComparison}
+          exportKpiActive={isActionActive('comparison_export_kpi')}
+          changedLaneCount={changedLaneCount}
         />
       ),
     },
@@ -107,6 +112,8 @@ export const ComparisonDetails: React.FC<ComparisonDetailsProps> = (props) => {
         <ComparisonDcTab
           dcComparison={dcComparison}
           dcComparisonColumns={dcComparisonColumns}
+          onExportDcDiff={handleExportDCDiff}
+          exportDcActive={isActionActive('comparison_export_dc')}
         />
       ),
     },
@@ -123,6 +130,8 @@ export const ComparisonDetails: React.FC<ComparisonDetailsProps> = (props) => {
           filteredLaneComparison={filteredLaneComparison}
           laneComparisonColumns={laneComparisonColumns}
           hasLaneData={laneComparison.length > 0}
+          onExportLaneDiff={handleExportLaneDiff}
+          exportLaneActive={isActionActive('comparison_export_lane')}
         />
       ),
     },
@@ -136,8 +145,6 @@ export const ComparisonDetails: React.FC<ComparisonDetailsProps> = (props) => {
           comparison={comparison}
           scenarioA={scenarioA}
           scenarioB={scenarioB}
-          onExportLaneDiff={handleExportLaneDiff}
-          exportLaneActive={isActionActive('comparison_export_lane')}
         />
       ),
     },

@@ -1,5 +1,6 @@
 import React from 'react';
-import { Tooltip } from '@/components/ui';
+import { Tooltip, Select } from '@/components/ui';
+import { compactSelectBaseClass } from '@/components/ui/formStyles';
 import { DatasetOptionSets } from '@/services';
 import { NewScenarioFormData } from './types';
 
@@ -31,22 +32,13 @@ export const Step3ServiceCost: React.FC<Step3ServiceCostProps> = ({
           </label>
           <Tooltip content="Maximum acceptable delivery time. Lanes exceeding this will be flagged or excluded based on settings." />
         </div>
-        <select
-          value={formData.leadTimeCap}
-          onChange={(e) => onFormDataChange({ ...formData, leadTimeCap: Number(e.target.value) })}
-          className={`w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-            datasetOptions.leadTimeCaps.length === 0 ? 'bg-slate-100' : ''
-          }`}
+        <Select
+          value={String(formData.leadTimeCap)}
+          onChange={(val) => onFormDataChange({ ...formData, leadTimeCap: Number(val) })}
           disabled={datasetOptions.leadTimeCaps.length === 0}
-        >
-          {datasetOptions.leadTimeCaps.length === 0 ? (
-            <option value={0}>NA</option>
-          ) : (
-            datasetOptions.leadTimeCaps.map((cap) => (
-              <option key={cap} value={cap}>{cap}</option>
-            ))
-          )}
-        </select>
+          options={datasetOptions.leadTimeCaps.length === 0 ? [{ value: '0', label: 'NA' }] : datasetOptions.leadTimeCaps.map((cap) => ({ value: String(cap), label: String(cap) }))}
+          placeholder="NA"
+        />
         {datasetOptions.leadTimeCaps.length === 0 && (
           <p className="text-xs text-slate-500 mt-1">No lead time cap data available.</p>
         )}
