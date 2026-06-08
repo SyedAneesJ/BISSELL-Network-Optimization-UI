@@ -1311,6 +1311,7 @@ export const mapDcResultsFromRows = (
       UtilPct: Number((maxUtil || asPercent(getField(row, FIELD_ALIASES.palletUtilizationPct))).toFixed(2)),
       SpaceRequired: Number(spaceRequired.toFixed(2)),
       SpaceCore: Number(((squareFootage > 0 ? squareFootage : (rawCoreSpace ?? 0))).toFixed(2)),
+      ActualSpace: Number(((squareFootage > 0 ? squareFootage : (rawCoreSpace ?? 0))).toFixed(2)),
           SpaceBCV: Number((explicitBcvSpace ?? workingCapacity).toFixed(2)),
           SLABreachCount: asNumber(getField(row, FIELD_ALIASES.slaBreachCount)),
           ExcludedBySLACount: Math.max(0, Math.round(squareFootage - spaceRequired)),

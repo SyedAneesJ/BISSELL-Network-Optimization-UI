@@ -132,12 +132,13 @@ export const HomeScenarioRunsSection: React.FC<HomeScenarioRunsSectionProps> = (
             </span>
           </label>
 
-          <label className="flex items-center gap-2 rounded-xl border border-white/70 bg-white/75 px-3 py-1 backdrop-blur-md cursor-pointer">
+          <label className="flex items-center gap-2 rounded-xl border border-white/70 bg-white/75 px-3 py-1 backdrop-blur-md cursor-not-allowed opacity-50">
             <input
               type="checkbox"
               checked={onlyPublished}
               onChange={(e) => onOnlyPublishedChange(e.target.checked)}
               className="rounded"
+              disabled
             />
             <span className="text-sm text-slate-700 whitespace-nowrap">
               Only Published

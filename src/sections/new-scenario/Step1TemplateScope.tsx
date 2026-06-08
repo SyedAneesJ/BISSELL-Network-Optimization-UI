@@ -70,7 +70,7 @@ const buildFormDataFromTemplate = (
     levelLoad: template?.levelLoad ?? fallbackDatasetOptions.levelLoadModes.includes('On'),
     leadTimeCap: template?.leadTimeCap ?? fallbackDatasetOptions.leadTimeCaps[0] ?? 0,
     excludeBeyondCap: template?.excludeBeyondCap ?? fallbackDatasetOptions.excludeBeyondCap.includes(true),
-    costVsService: template?.costVsService ?? fallbackDatasetOptions.costVsServiceWeights[0] ?? 0,
+    costVsService: 0, // Default to Cost Priority
     fuelSurchargeMode: template?.fuelSurchargeMode || fallbackDatasetOptions.fuelSurchargeModes[0] || 'NA',
     fuelSurchargeOverride: template?.fuelSurchargeOverride ?? null,
     accessorials: {

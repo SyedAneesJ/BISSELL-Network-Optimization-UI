@@ -62,6 +62,14 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
     };
   };
 
+  const maxUtilDc = dcResults.reduce(
+    (max, dc) => (Number(dc.UtilPct) > (max ? Number(max.UtilPct) : -1) ? dc : max),
+    null as ScenarioRunResultsDC | null,
+  );
+  const maxUtilDisplay = scenario.MaxUtilPct > 0 
+    ? `${scenario.MaxUtilPct.toFixed(2)}%${maxUtilDc && maxUtilDc.DCName ? ` | ${maxUtilDc.DCName}` : ''}` 
+    : 'NA';
+
   return (
     <div className="space-y-6">
       <div className="flex justify-end">
@@ -85,7 +93,7 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
         <KPICard label="Avg Delivery Days" value={formatDecimalOrNA(scenario.AvgDeliveryDays, 2)} />
         <KPICard label="Avg Transit Days" value={formatDecimalOrNA(scenario.AvgTransitDays, 2)} />
         <KPICard label="SLA Breach %" value={Number.isFinite(scenario.SLABreachPct) ? scenario.SLABreachPct : 'NA'} format="decimal" />
-        <KPICard label="Max Utilization %" value={scenario.MaxUtilPct > 0 ? scenario.MaxUtilPct.toFixed(2) : 'NA'} />
+        <KPICard label="Max Utilization %" value={maxUtilDisplay} />
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -99,12 +107,12 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
         <div className="surface-panel p-5">
           <h3 className="mb-4 text-lg font-semibold text-slate-900">Scenario Configuration</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
-            <div><span className="text-slate-600">Active DCs:</span> {formatTextOrNA(scenarioConfig.ActiveDCs)}</div>
-            <div><span className="text-slate-600">Suppressed DCs:</span> {formatTextOrNA(scenarioConfig.SuppressedDCs)}</div>
+            <div><span className="text-slate-600">Active DCs:</span> {scenarioConfig.ActiveDCs && scenarioConfig.ActiveDCs !== 'NA' ? scenarioConfig.ActiveDCs : 'None'}</div>
+            <div><span className="text-slate-600">Suppressed DCs:</span> {scenarioConfig.SuppressedDCs && scenarioConfig.SuppressedDCs !== 'NA' ? scenarioConfig.SuppressedDCs : 'None'}</div>
             <div><span className="text-slate-600">Footprint Mode:</span> {formatTextOrNA(scenarioConfig.FootprintMode)}</div>
             <div><span className="text-slate-600">Util Cap:</span> {scenarioConfig.UtilCapPct ? `${scenarioConfig.UtilCapPct}%` : 'NA'}</div>
             <div><span className="text-slate-600">Level Load:</span> {formatTextOrNA(scenarioConfig.LevelLoadMode)}</div>
-            <div><span className="text-slate-600">Lead Time Cap:</span> {formatTextOrNA(scenarioConfig.LeadTimeCapDays)}</div>
+            {/* <div><span className="text-slate-600">Lead Time Cap:</span> {formatTextOrNA(scenarioConfig.LeadTimeCapDays)}</div> */}
             <div><span className="text-slate-600">Cost vs Service:</span> {formatTextOrNA(scenarioConfig.CostVsServiceWeight)}</div>
             <div><span className="text-slate-600">Relocation Prepaid:</span> {formatTextOrNA(scenarioConfig.AllowRelocationPrepaid)}</div>
             <div><span className="text-slate-600">Relocation Collect:</span> {formatTextOrNA(scenarioConfig.AllowRelocationCollect)}</div>
@@ -212,7 +220,7 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
         </div>
       </div>
 
-      <div className="surface-panel p-5">
+      {/* <div className="surface-panel p-5">
         <h3 className="mb-4 text-lg font-semibold text-slate-900">Exceptions Summary</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="text-center p-4 bg-red-50 rounded-lg">
@@ -232,7 +240,7 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
             <p className="text-sm text-blue-600 mt-1">Flagged Lanes</p>
           </div>
         </div>
-      </div>
+      </div> */}
     </div>
   );
 };

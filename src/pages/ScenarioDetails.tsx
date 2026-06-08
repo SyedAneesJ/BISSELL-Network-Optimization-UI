@@ -201,8 +201,8 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = (props) => {
           networkView={networkView}
           onToggleBaseline={() => setNetworkView(networkView === 'baseline' ? 'current' : 'baseline')}
           onToggleDifference={() => setNetworkView(networkView === 'difference' ? 'current' : 'difference')}
-          canShowBaseline={Boolean(baselineScenarioId)}
-          canShowDifference={canShowDifference}
+          canShowBaseline={Boolean(baselineScenarioId) && scenario?.ScenarioType !== 'US Baseline' && scenario?.ScenarioType !== 'Canada Baseline'}
+          canShowDifference={false}
           networkLaneEntries={networkLaneEntries}
           networkDcVolumeRowsDiff={networkDcVolumeRowsDiff.map((row) => ({ dcName: row.dcName, delta: row.delta }))}
           networkDcVolumeRowsBase={networkDcVolumeRowsBase}

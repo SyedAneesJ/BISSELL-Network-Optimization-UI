@@ -1,4 +1,5 @@
 import React from 'react';
+import { Lock } from 'lucide-react';
 import { Tooltip, Select } from '@/components/ui';
 import { compactSelectBaseClass } from '@/components/ui/formStyles';
 import { DatasetOptionSets } from '@/services';
@@ -27,55 +28,13 @@ export const Step3ServiceCost: React.FC<Step3ServiceCostProps> = ({
     <div className="surface-panel space-y-6 p-5">
       <div>
         <div className="flex items-center gap-2 mb-2">
-          <label className="text-sm font-medium text-slate-700">
-            Lead Time Cap (Days)
-          </label>
-          <Tooltip content="Maximum acceptable delivery time. Lanes exceeding this will be flagged or excluded based on settings." />
-        </div>
-        <Select
-          value={String(formData.leadTimeCap)}
-          onChange={(val) => onFormDataChange({ ...formData, leadTimeCap: Number(val) })}
-          disabled={datasetOptions.leadTimeCaps.length === 0}
-          options={datasetOptions.leadTimeCaps.length === 0 ? [{ value: '0', label: 'NA' }] : datasetOptions.leadTimeCaps.map((cap) => ({ value: String(cap), label: String(cap) }))}
-          placeholder="NA"
-        />
-        {datasetOptions.leadTimeCaps.length === 0 && (
-          <p className="text-xs text-slate-500 mt-1">No lead time cap data available.</p>
-        )}
-      </div>
-
-      <div>
-        {datasetOptions.excludeBeyondCap.length === 0 ? (
-          <>
-            <label className="flex items-center gap-2 text-slate-500 cursor-not-allowed">
-              <input type="checkbox" disabled className="rounded" />
-              <span className="text-sm font-medium text-slate-500">Exclude lanes beyond lead time cap</span>
-            </label>
-            <p className="text-xs text-slate-500 mt-1 ml-6">
-              No exclusion data available
-            </p>
-          </>
-        ) : (
-          <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={formData.excludeBeyondCap}
-              onChange={(e) => onFormDataChange({ ...formData, excludeBeyondCap: e.target.checked })}
-              className="rounded"
-            />
-            <span className="text-sm font-medium text-slate-700">Exclude lanes beyond lead time cap</span>
-          </label>
-        )}
-      </div>
-
-      <div>
-        <div className="flex items-center gap-2 mb-2">
-          <label className="text-sm font-medium text-slate-700">
+          <label className="text-sm font-medium text-slate-700 flex items-center gap-1.5">
             Cost vs Service Priority
+            <Lock className="w-3.5 h-3.5 text-slate-400" />
           </label>
           <Tooltip content="Toggle between cost focus and service focus. The scenario math still uses the underlying 0-100 value." />
         </div>
-        <div className="inline-flex rounded-xl border border-white/70 bg-white/80 p-1 shadow-[0_8px_24px_rgba(15,23,42,0.06)] backdrop-blur-md">
+        <div className="inline-flex rounded-xl border border-white/70 bg-white/80 p-1 shadow-[0_8px_24px_rgba(15,23,42,0.06)] backdrop-blur-md opacity-50 cursor-not-allowed">
           <button
             type="button"
             className={`rounded-md px-4 py-2 text-sm font-medium transition ${
@@ -84,7 +43,7 @@ export const Step3ServiceCost: React.FC<Step3ServiceCostProps> = ({
                 : 'text-slate-600 hover:bg-slate-100'
             }`}
             onClick={() => setCostVsServicePreset('cost')}
-            disabled={datasetOptions.costVsServiceWeights.length === 0}
+            disabled={true}
           >
             Cost
           </button>
@@ -96,7 +55,7 @@ export const Step3ServiceCost: React.FC<Step3ServiceCostProps> = ({
                 : 'text-slate-600 hover:bg-slate-100'
             }`}
             onClick={() => setCostVsServicePreset('service')}
-            disabled={datasetOptions.costVsServiceWeights.length === 0}
+            disabled={true}
           >
             Service
           </button>
@@ -111,91 +70,6 @@ export const Step3ServiceCost: React.FC<Step3ServiceCostProps> = ({
         {datasetOptions.costVsServiceWeights.length === 0 && (
           <p className="text-xs text-slate-500 mt-1">No cost vs service data available.</p>
         )}
-      </div>
-
-      <div className="surface-card p-4">
-        <h4 className="text-sm font-semibold text-slate-900 mb-3">Advanced: Fuel Surcharge</h4>
-
-        <div className="space-y-3">
-          {datasetOptions.fuelSurchargeModes.length === 0 ? (
-            <>
-              <div className="flex gap-4">
-                <label className="flex items-center gap-2 text-slate-500 cursor-not-allowed">
-                  <input type="radio" disabled className="text-blue-600" />
-                  <span className="text-sm">NA</span>
-                </label>
-              </div>
-              <p className="text-xs text-slate-500 mt-1">No fuel surcharge data available.</p>
-            </>
-          ) : (
-            <div className="flex gap-4">
-              {datasetOptions.fuelSurchargeModes.map((mode) => (
-                <label key={mode} className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="fuelSurchargeMode"
-                    value={mode}
-                    checked={formData.fuelSurchargeMode === mode}
-                    onChange={(e) => onFormDataChange({ ...formData, fuelSurchargeMode: e.target.value })}
-                    className="text-blue-600"
-                  />
-                  <span className="text-sm text-slate-700">{mode}</span>
-                </label>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div>
-        <label className="text-sm font-medium text-slate-700 mb-2 block">
-          Accessorials
-        </label>
-        <div className="space-y-2">
-          {datasetOptions.accessorialFlags.length === 0 ? (
-            <label className="flex items-center gap-2 text-slate-500 cursor-not-allowed">
-              <input type="checkbox" disabled className="rounded" />
-              <span className="text-sm">NA</span>
-            </label>
-          ) : (
-            <>
-              {['Residential', 'Liftgate', 'InsideDelivery']
-                .filter((flag) => datasetOptions.accessorialFlags.includes(flag))
-                .map((flag) => {
-                const key = flag === 'InsideDelivery' ? 'insideDelivery' : flag.toLowerCase();
-                const checked = (formData.accessorials as any)[key] as boolean;
-                return (
-                  <label key={flag} className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={(e) =>
-                        onFormDataChange({
-                          ...formData,
-                          accessorials: {
-                            ...formData.accessorials,
-                            [key]: e.target.checked,
-                          },
-                        })
-                      }
-                      className="rounded"
-                    />
-                    <span className="text-sm text-slate-700">{flag}</span>
-                  </label>
-                );
-              })}
-            </>
-          )}
-        </div>
-        {datasetOptions.accessorialFlags.length === 0 && (
-          <p className="text-xs text-slate-500 mt-1">No accessorial data available.</p>
-        )}
-      </div>
-
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-        <p className="text-sm text-blue-800">
-          <strong>Excluded by SLA preview:</strong> NA (no lane data available).
-        </p>
       </div>
     </div>
   );

@@ -93,10 +93,6 @@ export const HomeHeader: React.FC<HomeHeaderProps> = ({
                 ))}
               </select>
               <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <span className="pointer-events-none absolute right-9 top-1/2 hidden -translate-y-1/2 items-center gap-1 rounded-full border border-white/70 bg-white/90 px-2 py-0.5 text-[10px] font-semibold text-slate-500 shadow-sm transition group-hover:flex backdrop-blur-md">
-                <Lock className="h-3 w-3" />
-                Disabled
-              </span>
             </div>
           </div>
 

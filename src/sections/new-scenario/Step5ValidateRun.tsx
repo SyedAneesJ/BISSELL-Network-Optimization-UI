@@ -1,5 +1,5 @@
 import React from 'react';
-import { Check, CheckCircle } from 'lucide-react';
+import { Check, CheckCircle, XCircle } from 'lucide-react';
 import { StatusBadge } from '@/components/ui';
 import { DataHealthSnapshot } from '@/data';
 import { DatasetOptionSets } from '@/services';
@@ -18,6 +18,14 @@ export const Step5ValidateRun: React.FC<Step5ValidateRunProps> = ({
   dataHealthSnapshot,
   availableDcsByRegion,
 }) => {
+  const isConfigComplete = Boolean(formData.scenarioType) && Boolean(formData.region) && Boolean(formData.entityScope) && formData.runName.trim().length > 0;
+  const isActiveDcSelected = formData.activeDCs.size > 0;
+
+  const checklist = [
+    { label: 'All required configuration fields completed', valid: isConfigComplete },
+    { label: 'At least one active DC selected', valid: isActiveDcSelected },
+  ];
+
   return (
     <div className="surface-panel space-y-6 p-5">
       <div className="surface-card p-4">
@@ -31,11 +39,11 @@ export const Step5ValidateRun: React.FC<Step5ValidateRunProps> = ({
           <p><strong>Type:</strong> {formData.scenarioType || 'NA'}</p>
           <p><strong>Entity:</strong> {formData.entityScope}</p>
           <p><strong>Active DCs:</strong> {formData.activeDCs.size} of {(availableDcsByRegion[formData.region] || []).length}</p>
-          <p><strong>Lead Time Cap:</strong> {datasetOptions.leadTimeCaps.length === 0 ? 'NA' : formData.leadTimeCap === 0 ? 'No cap' : `${formData.leadTimeCap} days`}</p>
+          {/* <p><strong>Lead Time Cap:</strong> {datasetOptions.leadTimeCaps.length === 0 ? 'NA' : formData.leadTimeCap === 0 ? 'No cap' : `${formData.leadTimeCap} days`}</p> */}
         </div>
       </div>
 
-      <div>
+      {/* <div>
         <h3 className="mb-3 font-semibold text-slate-900">Data Health Snapshot</h3>
 
         <div className="space-y-3">
@@ -71,20 +79,15 @@ export const Step5ValidateRun: React.FC<Step5ValidateRunProps> = ({
             <StatusBadge status={dataHealthSnapshot.BCVDimsAvailability === 'OK' ? 'OK' : 'Warn'} size="small" />
           </div>
         </div>
-      </div>
+      </div> */}
 
       <div className="surface-card p-4">
         <h4 className="mb-2 text-sm font-semibold text-slate-900">Validation Checklist</h4>
         <div className="space-y-2">
-          {[
-            'All required configuration fields completed',
-            'At least one active DC selected',
-            'Data snapshot is current',
-            'Rate coverage meets minimum threshold',
-          ].map((item, idx) => (
-            <div key={idx} className="flex items-center gap-2 text-sm text-slate-700">
-              <CheckCircle className="w-4 h-4 text-green-600" />
-              {item}
+          {checklist.map((item, idx) => (
+            <div key={idx} className={`flex items-center gap-2 text-sm ${item.valid ? 'text-slate-700' : 'text-red-700'}`}>
+              {item.valid ? <CheckCircle className="w-4 h-4 text-green-600" /> : <XCircle className="w-4 h-4 text-red-600" />}
+              {item.label}
             </div>
           ))}
         </div>

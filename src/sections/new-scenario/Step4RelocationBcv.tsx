@@ -55,13 +55,13 @@ export const Step4RelocationBcv: React.FC<Step4RelocationBcvProps> = ({
           <div className="space-y-3">
             {showPrepaid && (
               <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 cursor-not-allowed opacity-70">
                   <input
                     type="checkbox"
                     checked={formData.allowRelocationPrepaid}
                     onChange={(e) => onFormDataChange({ ...formData, allowRelocationPrepaid: e.target.checked })}
                     className="rounded"
-                    disabled={scenarioPolicy.locks.allowRelocationPrepaid}
+                    disabled={true}
                   />
                   <span className="text-sm font-medium text-slate-700">Prepaid</span>
                 </div>
@@ -70,13 +70,13 @@ export const Step4RelocationBcv: React.FC<Step4RelocationBcvProps> = ({
 
             {showCollect && (
               <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 cursor-not-allowed opacity-70">
                   <input
                     type="checkbox"
                     checked={formData.allowRelocationCollect}
                     onChange={(e) => onFormDataChange({ ...formData, allowRelocationCollect: e.target.checked })}
                     className="rounded"
-                    disabled={scenarioPolicy.locks.allowRelocationCollect}
+                    disabled={true}
                   />
                   <span className="text-sm font-medium text-slate-700">Collect</span>
                 </div>
