@@ -22,25 +22,41 @@ export const formatTextOrNA = (value: unknown): string =>
 export const formatNumberOrNA = (value: unknown, decimals = 0): string => {
   const num = toNumber(value);
   if (num === null) return 'NA';
-  if (decimals > 0) return num.toFixed(decimals);
+  if (decimals > 0) {
+    return num.toLocaleString('en-US', {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
+    });
+  }
   return num.toLocaleString('en-US');
 };
 
 export const formatDecimalOrNA = (value: unknown, decimals = 2): string => {
   const num = toNumber(value);
   if (num === null) return 'NA';
-  return num.toFixed(decimals);
+  return num.toLocaleString('en-US', {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
 };
 
 export const formatCurrencyOrNA = (value: unknown, decimals = 0): string => {
   const num = toNumber(value);
   if (num === null) return 'NA';
-  if (decimals > 0) return `$${num.toFixed(decimals)}`;
+  if (decimals > 0) {
+    return `$${num.toLocaleString('en-US', {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
+    })}`;
+  }
   return `$${num.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
 };
 
 export const formatPercentOrNA = (value: unknown, decimals = 2): string => {
   const num = toNumber(value);
   if (num === null) return 'NA';
-  return `${num.toFixed(decimals)}%`;
+  return `${num.toLocaleString('en-US', {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  })}%`;
 };

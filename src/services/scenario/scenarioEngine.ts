@@ -158,6 +158,7 @@ const resolveSuppressedDcs = (
 
 const buildLaneGroupKey = (lane: ScenarioRunResultsLane): string =>
   [
+    lane.ScenarioRunID || '',
     lane.Dest3Zip || '',
     lane.Channel || '',
     lane.Terms || '',
@@ -180,6 +181,9 @@ const laneCostToDisplay = (lane: ScenarioRunResultsLane): number =>
 
 const laneDaysToDisplay = (lane: ScenarioRunResultsLane): number =>
   Number((lane.DeliveryDays ?? lane.RankedOption1Days ?? 0).toFixed(1));
+
+const laneOptionDc = (lane: ScenarioRunResultsLane | null | undefined): string =>
+  lane?.AssignedDC || lane?.CostingWarehouse || lane?.DefaultShipFrom || '';
 
 const laneIsActive = (lane: ScenarioRunResultsLane, activeDcs: Set<string>, suppressedDcs: Set<string>): boolean => {
   const dc = String(lane.AssignedDC || lane.CostingWarehouse || lane.DefaultShipFrom || '').trim();
@@ -226,7 +230,7 @@ const buildScenarioLanes = (
 ): ScenarioRunResultsLane[] => {
   const activeSet = new Set(activeDcs.map((dc) => String(dc || '').trim()).filter(Boolean));
   const suppressedSet = new Set(suppressedDcs.map((dc) => String(dc || '').trim()).filter(Boolean));
-  const grouped = dedupeRowsByKey(rows, buildLaneGroupKey).reduce<Record<string, ScenarioRunResultsLane[]>>((acc, row) => {
+  const grouped = rows.reduce<Record<string, ScenarioRunResultsLane[]>>((acc, row) => {
     const key = buildLaneGroupKey(row);
     acc[key] = acc[key] || [];
     acc[key].push(row);
@@ -242,6 +246,8 @@ const buildScenarioLanes = (
         const cpuA = laneCostPerUnit(a);
         const cpuB = laneCostPerUnit(b);
         if (cpuA !== cpuB) return cpuA - cpuB;
+        const totalCostDelta = laneCostToDisplay(a) - laneCostToDisplay(b);
+        if (totalCostDelta !== 0) return totalCostDelta;
         const warehouseA = `${a.CostingWarehouse || a.AssignedDC || ''}|${a.DefaultShipFrom || ''}`;
         const warehouseB = `${b.CostingWarehouse || b.AssignedDC || ''}|${b.DefaultShipFrom || ''}`;
         const warehouseDelta = warehouseA.localeCompare(warehouseB);
@@ -256,12 +262,23 @@ const buildScenarioLanes = (
       const selectedCost = laneCostToDisplay(selected);
       const selectedCpu = laneCostPerUnit(selected);
       const bestCpu = best ? laneCostPerUnit(best) : selectedCpu;
+      const second = ranked[1] || null;
+      const third = ranked[2] || null;
       const selectedDc = selected.AssignedDC || selected.CostingWarehouse || selected.DefaultShipFrom || 'NA';
       const baseRow = best || selected;
       return {
         ...baseRow,
         ScenarioRunID: scenarioId,
         AssignedDC: selectedDc,
+        RankedOption1DC: laneOptionDc(best),
+        RankedOption1Cost: best ? laneCostPerUnit(best) : 0,
+        RankedOption1Days: best?.DeliveryDays || best?.RankedOption1Days || 0,
+        RankedOption2DC: laneOptionDc(second),
+        RankedOption2Cost: second ? laneCostPerUnit(second) : 0,
+        RankedOption2Days: second?.DeliveryDays || second?.RankedOption1Days || 0,
+        RankedOption3DC: laneOptionDc(third),
+        RankedOption3Cost: third ? laneCostPerUnit(third) : 0,
+        RankedOption3Days: third?.DeliveryDays || third?.RankedOption1Days || 0,
         ChosenRank: selectedRank,
         LaneCost: selectedCost,
         TotalCost: selectedCost,
@@ -341,6 +358,7 @@ const buildScenarioDcRows = (
       TotalCost: isSuppressed ? 0 : dc.TotalCost,
       VolumeUnits: isSuppressed ? 0 : dc.VolumeUnits,
       AvgDays: isSuppressed ? 0 : dc.AvgDays,
+      AvgTransitDays: isSuppressed ? null : dc.AvgTransitDays,
       UtilPct: isSuppressed ? 0 : dc.UtilPct,
       SpaceRequired: isSuppressed ? 0 : dc.SpaceRequired,
       SpaceCore: isSuppressed ? 0 : dc.SpaceCore,

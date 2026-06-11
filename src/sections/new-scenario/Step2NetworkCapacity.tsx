@@ -80,7 +80,7 @@ export const Step2NetworkCapacity: React.FC<Step2NetworkCapacityProps> = ({
                   </span>
                 </div>
                 <div className="text-xs text-slate-600">
-                  Capacity: {capacity === undefined ? 'NA' : capacity.toLocaleString()}
+                  Capacity: {capacity === undefined ? 'NA' : capacity.toLocaleString('en-US')}
                 </div>
                 {capacity === undefined && (
                   <div className="text-xs text-slate-500 mt-1">No capacity data</div>
@@ -170,7 +170,11 @@ export const Step2NetworkCapacity: React.FC<Step2NetworkCapacityProps> = ({
       <div>
         <div className="flex items-center gap-2 mb-2">
           <label className="text-sm font-medium text-slate-700">
-            Utilization Cap{datasetOptions.utilCaps.length === 0 ? ': NA' : `: ${formData.utilCap}%`}
+            Utilization Cap: {datasetOptions.utilCaps.length === 0 ? (
+              <span className="text-slate-400">NA</span>
+            ) : (
+              <span className="text-blue-600 font-semibold">{formData.utilCap}%</span>
+            )}
           </label>
           <Tooltip content="Maximum DC utilization percentage allowed. Lanes that would exceed this will be assigned to alternate DCs." />
         </div>
@@ -183,9 +187,9 @@ export const Step2NetworkCapacity: React.FC<Step2NetworkCapacityProps> = ({
           className="w-full"
           disabled={datasetOptions.utilCaps.length === 0 || scenarioPolicy.locks.utilCap}
         />
-        <div className="flex justify-between text-xs text-slate-500">
+        <div className="flex justify-between text-xs text-slate-400">
           <span>{utilCapMin}%</span>
-          <span className="font-medium text-slate-700">{formData.utilCap}%</span>
+          <span>{Math.round((utilCapMin + utilCapMax) / 2)}%</span>
           <span>{utilCapMax}%</span>
         </div>
         {datasetOptions.utilCaps.length === 0 && (

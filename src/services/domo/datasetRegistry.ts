@@ -30,7 +30,7 @@ export const scenarioDatasetRegistry: ScenarioDatasetRegistryItem[] = [
   { datasetId: '368699b9-895b-445e-9465-4fbc6032f7be', dataflowId: '3232', scenarioKey: 'etl_16', scenarioLabel: 'Dataset 16', regionDefault: 'Auto', enabled: true },
   { datasetId: 'ca512476-35cd-4889-92a2-d78494ca7be7', dataflowId: '3234', scenarioKey: 'etl_17', scenarioLabel: 'Dataset 17', regionDefault: 'Auto', enabled: true },
   { datasetId: 'f4cddd13-0419-4552-9487-b30580822651', dataflowId: '3235', scenarioKey: 'etl_18', scenarioLabel: 'Dataset 18', regionDefault: 'Auto', enabled: true },
-  { datasetId: 'bb807051-1b40-4484-97ae-aebf56604cb2', dataflowId: '3267', scenarioKey: 'etl_19', scenarioLabel: 'Dataset 19', regionDefault: 'Auto', enabled: true },
+  { datasetId: 'f442b2d4-1c8a-46e5-a94a-6feb0d1f2d1f', dataflowId: '3267', scenarioKey: 'etl_19', scenarioLabel: 'Dataset 19', regionDefault: 'Auto', enabled: true },
   { datasetId: CANADA_BASELINE_DATASET_ID, scenarioKey: 'etl_ca_01', scenarioLabel: 'Canada Baseline', regionDefault: 'Canada', enabled: true },
   { datasetId: CANADA_STRATFORD_DATASET_ID, scenarioKey: 'etl_ca_03', scenarioLabel: 'Canada Stratford', regionDefault: 'Canada', enabled: true },
 ];

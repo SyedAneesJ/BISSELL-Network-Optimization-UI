@@ -487,7 +487,7 @@ export const createComparisonColumns = ({
       <div className="flex items-center gap-1">
         {row.CostDelta > 0 ? <TrendingUp className="w-4 h-4 text-red-500" /> : row.CostDelta < 0 ? <TrendingDown className="w-4 h-4 text-green-500" /> : <Minus className="w-4 h-4 text-slate-400" />}
         <span className={row.CostDelta > 0 ? 'text-red-600' : row.CostDelta < 0 ? 'text-green-600' : ''}>
-          ${Math.abs(row.CostDelta).toLocaleString()}
+          ${Math.abs(row.CostDelta).toLocaleString('en-US')}
         </span>
       </div>
     ),
@@ -543,7 +543,7 @@ export const createComparisonColumns = ({
     sortable: true,
     render: (row) => (
       <span className={row.SpaceDelta > 0 ? 'text-amber-600' : ''}>
-        {row.SpaceDelta > 0 ? '+' : ''}{row.SpaceDelta.toLocaleString()}
+        {row.SpaceDelta > 0 ? '+' : ''}{row.SpaceDelta.toLocaleString('en-US')}
       </span>
     ),
   },

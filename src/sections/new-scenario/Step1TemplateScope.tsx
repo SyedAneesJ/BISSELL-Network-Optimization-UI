@@ -230,12 +230,12 @@ export const Step1TemplateScope: React.FC<Step1TemplateScopeProps> = ({
             <div className="text-sm font-semibold text-slate-900">{formData.scenarioType || 'NA'}</div>
           </div>
           <div className="h-8 w-px bg-slate-200" />
-          <div>
+          {/* <div>
             <div className="text-xs uppercase tracking-wide text-slate-500">Base Scenario</div>
             <div className="text-sm font-semibold text-slate-900">
               {selectedBaseScenario?.scenarioName || 'Select scenario type'}
             </div>
-          </div>
+          </div> */}
         </div>
       </div>
 

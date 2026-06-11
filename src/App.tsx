@@ -239,6 +239,23 @@ const dedupeScenarioResultsLanes = (rows: ScenarioRunResultsLane[]): ScenarioRun
 const cloneDcCapacityRows = (rows: DomoDcCapacityRow[]): DomoDcCapacityRow[] =>
   rows.map((row) => ({ ...row }));
 
+const shouldUseFreshDomoDcRowsForBaseline = (
+  scenarioId: string,
+  existingHeader: ScenarioRunHeader | undefined,
+  baseDcRows: ScenarioRunResultsDC[],
+): boolean => {
+  if (!existingHeader || baseDcRows.length === 0) return false;
+  const dataflowId = String(existingHeader.DataflowID || '').trim();
+  const scenarioType = String(existingHeader.ScenarioType || '').trim().toLowerCase();
+  const region = String(existingHeader.Region || '').trim().toLowerCase();
+  return (
+    scenarioId === 'SR_ETL_19_US_BASELINE_NA' &&
+    dataflowId === '3267' &&
+    region === 'us' &&
+    scenarioType === 'baseline'
+  );
+};
+
 const mergeScenarioStateWithRecords = (
   base: ScenarioState,
   records: ScenarioRepositoryRecord[],
@@ -289,6 +306,48 @@ const mergeScenarioStateWithRecords = (
     if (!record.snapshot) return;
     const scenarioId = record.definition.scenarioId;
     const existingHeader = headers.get(scenarioId);
+    const baseDcRows = resultsDC.get(scenarioId) || [];
+    const snapshotDcRows = record.snapshot.resultsDC || [];
+
+    if (DEBUG_DOMO_MAPPING) {
+      const isLikelyUsBaseline =
+        String(existingHeader?.DataflowID || record.definition.dataflowId || record.snapshot.header.DataflowID || '') === '3267' ||
+        String(existingHeader?.ScenarioType || record.snapshot.header.ScenarioType || '').toLowerCase().includes('baseline');
+      if (isLikelyUsBaseline) {
+        console.groupCollapsed(`[DC Scorecard Source] repository snapshot merge: ${scenarioId}`);
+        console.log('merge decision', {
+          scenarioId,
+          dataflowId: existingHeader?.DataflowID || record.definition.dataflowId || record.snapshot.header.DataflowID || 'missing',
+          scenarioType: existingHeader?.ScenarioType || record.snapshot.header.ScenarioType || 'missing',
+          baseDcRows: baseDcRows.length,
+          snapshotDcRows: snapshotDcRows.length,
+          finalDcSource: 'repository snapshot resultsDC overrides Domo-mapped resultsDC',
+          repositoryStatus: record.definition.status,
+          snapshotUpdatedAt: record.snapshot.updatedAt,
+        });
+        console.table(baseDcRows.slice(0, 6).map((dc) => ({
+          Source: 'Domo mapped base',
+          DCName: dc.DCName,
+          TotalCost: dc.TotalCost,
+          VolumeUnits: dc.VolumeUnits,
+          SpaceRequired: dc.SpaceRequired,
+          SpaceCore: dc.SpaceCore,
+          SpaceBCV: dc.SpaceBCV,
+          UtilPct: dc.UtilPct,
+        })));
+        console.table(snapshotDcRows.slice(0, 6).map((dc) => ({
+          Source: 'Repository snapshot',
+          DCName: dc.DCName,
+          TotalCost: dc.TotalCost,
+          VolumeUnits: dc.VolumeUnits,
+          SpaceRequired: dc.SpaceRequired,
+          SpaceCore: dc.SpaceCore,
+          SpaceBCV: dc.SpaceBCV,
+          UtilPct: dc.UtilPct,
+        })));
+        console.groupEnd();
+      }
+    }
 
     const hydratedHeader = existingHeader
       ? {
@@ -308,10 +367,26 @@ const mergeScenarioStateWithRecords = (
       : {
           ...cloneScenarioHeader(record.snapshot.header),
           DataflowID: record.snapshot.header.DataflowID || record.definition.dataflowId,
-        };
+    };
     headers.set(scenarioId, hydratedHeader);
     configs.set(scenarioId, cloneScenarioConfig(record.snapshot.config));
-    resultsDC.set(scenarioId, cloneScenarioResultsDC(record.snapshot.resultsDC));
+    const useFreshBaselineDcRows = shouldUseFreshDomoDcRowsForBaseline(scenarioId, existingHeader, baseDcRows);
+    if (DEBUG_DOMO_MAPPING && useFreshBaselineDcRows) {
+      console.log('[DC Scorecard Source] keeping fresh Domo DC rows for published US baseline', {
+        scenarioId,
+        dataflowId: existingHeader?.DataflowID,
+        baseDcRows: baseDcRows.length,
+        ignoredSnapshotDcRows: snapshotDcRows.length,
+      });
+    }
+    // Existing/published scenarios intentionally keep their persisted DC snapshot,
+    // except the canonical US baseline, whose scorecard must mirror the refreshed Domo 3267 dataset.
+    resultsDC.set(
+      scenarioId,
+      useFreshBaselineDcRows
+        ? cloneScenarioResultsDC(baseDcRows)
+        : cloneScenarioResultsDC(record.snapshot.resultsDC),
+    );
     resultsLanes.set(
       scenarioId,
       freshLanesByScenarioId.get(scenarioId)?.length
@@ -1390,6 +1465,49 @@ function App() {
           );
 
           if (DEBUG_DOMO_MAPPING) {
+            console.groupCollapsed(`[US Baseline/DC Data Trace] Domo dataset payload -> state candidate: ${identity.scenarioId}`);
+            console.log('dataset source', {
+              datasetId: datasetResult.datasetId,
+              dataflowId: effectiveRegistryInfo.dataflowId || 'missing',
+              scenarioKey: effectiveRegistryInfo.scenarioKey,
+              scenarioLabel: effectiveRegistryInfo.scenarioLabel,
+              region: identity.region,
+              scenarioType: identity.scenarioType,
+              entityScope: identity.entityScope,
+              rawRows: rows.length,
+              dcRows: dcResults.length,
+              isDataflow3267: String(effectiveRegistryInfo.dataflowId || '') === '3267',
+            });
+            console.log('header metrics from this dataset', {
+              ScenarioRunID: header.ScenarioRunID,
+              RunName: header.RunName,
+              TotalCost: header.TotalCost,
+              CostPerUnit: header.CostPerUnit,
+              AvgDeliveryDays: header.AvgDeliveryDays,
+              AvgTransitDays: header.AvgTransitDays,
+              SLABreachPct: header.SLABreachPct,
+              MaxUtilPct: header.MaxUtilPct,
+              TotalSpaceRequired: header.TotalSpaceRequired,
+              SpaceCore: header.SpaceCore,
+              SpaceBCV: header.SpaceBCV,
+            });
+            console.table(dcResults.slice(0, 8).map((dc) => ({
+              DCName: dc.DCName,
+              TotalCost: dc.TotalCost,
+              VolumeUnits: dc.VolumeUnits,
+              AvgDays: dc.AvgDays,
+              AvgTransitDays: dc.AvgTransitDays ?? 'NA',
+              UtilPct: dc.UtilPct,
+              SpaceRequired: dc.SpaceRequired,
+              SpaceCore: dc.SpaceCore,
+              SpaceBCV: dc.SpaceBCV,
+              SLABreachCount: dc.SLABreachCount,
+              IsSuppressed: dc.IsSuppressed,
+            })));
+            console.groupEnd();
+          }
+
+          if (DEBUG_DOMO_MAPPING) {
             const rawPreview = rows.slice(0, 5).map((row, index) => ({
               '#': index + 1,
               DC: String(row.DC ?? row.dc ?? row['DC Name'] ?? row['DCName'] ?? '').trim(),
@@ -1471,6 +1589,10 @@ function App() {
           if (scenarioTypeKey) acc[scenarioTypeKey] = header.ScenarioRunID;
           if (runNameKey) acc[runNameKey] = header.ScenarioRunID;
           if (compositeKey) acc[compositeKey] = header.ScenarioRunID;
+          if (String(header.ScenarioType || '').toLowerCase().includes('baseline') || String(header.RunName || '').toLowerCase().includes('baseline')) {
+            acc[normalizeScenarioLookupKey('baseline')] = header.ScenarioRunID;
+            acc[normalizeScenarioLookupKey(`${region} baseline`)] = header.ScenarioRunID;
+          }
           return acc;
         }, {});
       const usLaneScenarioRunIdLookup = buildLaneScenarioRunIdLookup('US');
@@ -1577,6 +1699,45 @@ function App() {
         ),
         overrides: [],
       };
+      if (DEBUG_DOMO_MAPPING) {
+        const baselineHeaders = baseScenarioState.headers.filter((header) =>
+          String(header.DataflowID || '') === '3267' ||
+          String(header.ScenarioType || '').toLowerCase().includes('baseline')
+        );
+        console.groupCollapsed('[DC Scorecard Source] base Domo state before repository merge');
+        console.table(baselineHeaders.map((header) => {
+          const dcRows = baseScenarioState.resultsDC.filter((row) => row.ScenarioRunID === header.ScenarioRunID);
+          return {
+            ScenarioRunID: header.ScenarioRunID,
+            RunName: header.RunName,
+            DataflowID: header.DataflowID,
+            Region: header.Region,
+            ScenarioType: header.ScenarioType,
+            TotalCost: header.TotalCost,
+            TotalSpaceRequired: header.TotalSpaceRequired,
+            SpaceCore: header.SpaceCore,
+            SpaceBCV: header.SpaceBCV,
+            DcRows: dcRows.length,
+            DcNames: dcRows.map((row) => row.DCName).join(', '),
+          };
+        }));
+        baselineHeaders.slice(0, 3).forEach((header) => {
+          console.table(baseScenarioState.resultsDC
+            .filter((row) => row.ScenarioRunID === header.ScenarioRunID)
+            .slice(0, 8)
+            .map((dc) => ({
+              ScenarioRunID: header.ScenarioRunID,
+              DCName: dc.DCName,
+              TotalCost: dc.TotalCost,
+              VolumeUnits: dc.VolumeUnits,
+              SpaceRequired: dc.SpaceRequired,
+              SpaceCore: dc.SpaceCore,
+              SpaceBCV: dc.SpaceBCV,
+              UtilPct: dc.UtilPct,
+            })));
+        });
+        console.groupEnd();
+      }
       const freshLanesByScenarioId = safeLoadedLanes.reduce<Map<string, ScenarioRunResultsLane[]>>((acc, lane) => {
         const scenarioId = String(lane.ScenarioRunID || '').trim();
         if (!scenarioId) return acc;
@@ -1671,6 +1832,55 @@ function App() {
       setScenarioRepositoryCache(repairedRecords, scenarioPersistenceSourceRef.current);
 
       const mergedState = mergeScenarioStateWithRecords(baseScenarioState, repairedRecords);
+      if (DEBUG_DOMO_MAPPING) {
+        const persistedScenarioIdsForTrace = new Set(persistedRecords.map((record) => record.definition.scenarioId));
+        const baselineHeaders = mergedState.headers.filter((header) =>
+          String(header.DataflowID || '') === '3267' ||
+          String(header.ScenarioType || '').toLowerCase().includes('baseline')
+        );
+        console.groupCollapsed('[DC Scorecard Source] final merged state used by UI');
+        console.table(baselineHeaders.map((header) => {
+          const dcRows = mergedState.resultsDC.filter((row) => row.ScenarioRunID === header.ScenarioRunID);
+          return {
+            ScenarioRunID: header.ScenarioRunID,
+            RunName: header.RunName,
+            DataflowID: header.DataflowID,
+            Region: header.Region,
+            ScenarioType: header.ScenarioType,
+            HeaderTotalCost: header.TotalCost,
+            HeaderTotalSpaceRequired: header.TotalSpaceRequired,
+            HeaderSpaceCore: header.SpaceCore,
+            HeaderSpaceBCV: header.SpaceBCV,
+            DcRows: dcRows.length,
+            DcTotalCost: Number(dcRows.reduce((sum, row) => sum + Number(row.TotalCost || 0), 0).toFixed(2)),
+            DcSpaceRequired: Number(dcRows.reduce((sum, row) => sum + Number(row.SpaceRequired || 0), 0).toFixed(2)),
+            DcSpaceCore: Number(dcRows.reduce((sum, row) => sum + Number(row.SpaceCore || 0), 0).toFixed(2)),
+            DcSpaceBCV: Number(dcRows.reduce((sum, row) => sum + Number(row.SpaceBCV || 0), 0).toFixed(2)),
+            DcSource: persistedScenarioIdsForTrace.has(header.ScenarioRunID)
+              ? `${scenarioPersistenceSourceRef.current} snapshot`
+              : 'fresh Domo dataset mapping',
+          };
+        }));
+        baselineHeaders.slice(0, 3).forEach((header) => {
+          console.table(mergedState.resultsDC
+            .filter((row) => row.ScenarioRunID === header.ScenarioRunID)
+            .slice(0, 8)
+            .map((dc) => ({
+              ScenarioRunID: header.ScenarioRunID,
+              DCName: dc.DCName,
+              TotalCost: dc.TotalCost,
+              VolumeUnits: dc.VolumeUnits,
+              AvgDays: dc.AvgDays,
+              AvgTransitDays: dc.AvgTransitDays ?? 'NA',
+              UtilPct: dc.UtilPct,
+              SpaceRequired: dc.SpaceRequired,
+              SpaceCore: dc.SpaceCore,
+              SpaceBCV: dc.SpaceBCV,
+              IsSuppressed: dc.IsSuppressed,
+            })));
+        });
+        console.groupEnd();
+      }
       const debugZip = '427';
       const uiZipRows = mergedState.resultsLanes.filter((lane) => String(lane.Dest3Zip || '').trim() === debugZip);
       if (uiZipRows.length > 0) {

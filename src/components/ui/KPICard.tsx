@@ -26,9 +26,9 @@ export const KPICard: React.FC<KPICardProps> = ({
       case 'currency':
         return `$${val.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
       case 'percent':
-        return `${val.toFixed(2)}%`;
+        return `${val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
       case 'decimal':
-        return val.toFixed(2);
+        return val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
       default:
         return val.toLocaleString('en-US');
     }
@@ -71,7 +71,10 @@ export const KPICard: React.FC<KPICardProps> = ({
           {delta !== undefined && (
             <div className="mt-2 flex items-center gap-1">
               <span className={`text-sm font-medium ${delta > 0 ? 'text-red-600' : delta < 0 ? 'text-green-600' : 'text-slate-500'}`}>
-                {delta > 0 ? '+' : ''}{format === 'percent' ? delta.toFixed(1) : delta.toFixed(2)}
+                {delta > 0 ? '+' : ''}
+                {format === 'percent'
+                  ? delta.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+                  : delta.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 {format === 'percent' ? 'pp' : ''}
               </span>
               {deltaLabel && <span className="text-xs text-slate-500">{deltaLabel}</span>}

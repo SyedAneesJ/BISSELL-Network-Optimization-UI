@@ -8,10 +8,12 @@ export const summarizeDcResults = (rows: ScenarioRunResultsDC[]): ScenarioBuildS
       totalUnits: 0,
       costPerUnit: 0,
       avgDays: 0,
+      avgTransitDays: null,
       maxUtil: 0,
       totalSpaceRequired: 0,
       excludedBySla: 0,
       slaBreachCount: 0,
+      slaBreachPct: 0,
       missingAvgDays: 0,
     };
   }
@@ -21,16 +23,24 @@ export const summarizeDcResults = (rows: ScenarioRunResultsDC[]): ScenarioBuildS
 
   let avgDaysNumerator = 0;
   let avgDaysWeight = 0;
+  let avgTransitDaysNumerator = 0;
+  let avgTransitDaysWeight = 0;
   rows.forEach((row) => {
     const weight = row.VolumeUnits > 0 ? row.VolumeUnits : 1;
     avgDaysNumerator += row.AvgDays * weight;
     avgDaysWeight += weight;
+    if (Number(row.AvgTransitDays ?? 0) > 0) {
+      avgTransitDaysNumerator += Number(row.AvgTransitDays) * weight;
+      avgTransitDaysWeight += weight;
+    }
   });
   const avgDays = avgDaysWeight > 0 ? avgDaysNumerator / avgDaysWeight : 0;
+  const avgTransitDays = avgTransitDaysWeight > 0 ? avgTransitDaysNumerator / avgTransitDaysWeight : null;
   const maxUtil = rows.reduce((max, row) => Math.max(max, row.UtilPct), 0);
   const totalSpaceRequired = rows.reduce((sum, row) => sum + row.SpaceRequired, 0);
   const excludedBySla = rows.reduce((sum, row) => sum + row.ExcludedBySLACount, 0);
   const slaBreachCount = rows.reduce((sum, row) => sum + row.SLABreachCount, 0);
+  const slaBreachPct = totalUnits > 0 ? (slaBreachCount / totalUnits) * 100 : 0;
   const missingAvgDays = rows.filter((row) => row.AvgDays === 0).length;
 
   return {
@@ -38,10 +48,12 @@ export const summarizeDcResults = (rows: ScenarioRunResultsDC[]): ScenarioBuildS
     totalUnits,
     costPerUnit: Number((totalUnits > 0 ? totalCost / totalUnits : 0).toFixed(2)),
     avgDays: Number(avgDays.toFixed(2)),
+    avgTransitDays: avgTransitDays === null ? null : Number(avgTransitDays.toFixed(2)),
     maxUtil: Number(maxUtil.toFixed(2)),
     totalSpaceRequired,
     excludedBySla,
     slaBreachCount,
+    slaBreachPct,
     missingAvgDays,
   };
 };

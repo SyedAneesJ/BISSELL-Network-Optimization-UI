@@ -85,7 +85,7 @@ export const ScenarioNetworkTab: React.FC<ScenarioNetworkTabProps> = ({
                   <div className="flex justify-between text-sm mb-1">
                     <span className="text-slate-700">{row.dcName}</span>
                     <span className={`font-medium ${row.delta >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      {row.delta >= 0 ? '+' : ''}{row.delta.toLocaleString()} units
+                      {row.delta >= 0 ? '+' : ''}{row.delta.toLocaleString('en-US')} units
                     </span>
                   </div>
                   <div className="w-full bg-slate-200 rounded-full h-2">
@@ -103,7 +103,7 @@ export const ScenarioNetworkTab: React.FC<ScenarioNetworkTabProps> = ({
                   <div key={row.dcName}>
                     <div className="flex justify-between text-sm mb-1">
                       <span className="text-slate-700">{row.dcName}</span>
-                      <span className="font-medium">{(row.value || 0).toLocaleString()} units</span>
+                      <span className="font-medium">{(row.value || 0).toLocaleString('en-US')} units</span>
                     </div>
                     <div className="w-full bg-slate-200 rounded-full h-2">
                       <div

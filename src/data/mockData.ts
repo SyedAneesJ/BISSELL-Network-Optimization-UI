@@ -67,6 +67,7 @@ export interface ScenarioRunResultsDC {
   TotalCost: number;
   VolumeUnits: number;
   AvgDays: number;
+  AvgTransitDays?: number | null;
   UtilPct: number;
   ActualSpace?: number;
   SpaceRequired: number;
@@ -85,6 +86,7 @@ export interface ScenarioRunResultsLane {
   DestState: string;
   Channel: 'B2C' | 'B2B' | 'D2C' | string;
   Terms: 'Collect' | 'Prepaid' | 'Collect+Prepaid' | 'NA';
+  FreightTerms?: string;
   CustomerGroup: string;
   AssignedDC: string;
   RankedOption1DC: string;
@@ -100,6 +102,8 @@ export interface ScenarioRunResultsLane {
   LaneCost: number;
   CostDeltaVsBest: number;
   DeliveryDays: number;
+  AvgDeliveryDays?: number;
+  AvgTransitDays?: number | null;
   SLABreachFlag: 'Y' | 'N';
   ExcludedBySLAFlag: 'Y' | 'N';
   FootprintContribution: number;
@@ -110,6 +114,9 @@ export interface ScenarioRunResultsLane {
   ScenarioType?: string;
   RunName?: string;
   CostingWarehouse?: string;
+  TotalCount?: number;
+  TotalUnits?: number;
+  VolumeUnits?: number;
   DefaultShipFrom?: string;
   InboundSpend?: number;
   ParcelSpend?: number;
@@ -127,6 +134,9 @@ export interface ScenarioRunResultsLane {
   PartyName?: string;
   Threshold?: number;
   SquareFootage?: number;
+  TotalCount?: number;
+  TotalUnits?: number;
+  VolumeUnits?: number;
   OvercapFlag?: 'Y' | 'N';
   SourceDatasetId?: string;
 }

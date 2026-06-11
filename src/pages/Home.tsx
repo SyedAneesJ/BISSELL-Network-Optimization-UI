@@ -111,8 +111,7 @@ export const Home: React.FC<HomeProps> = ({
       !String(scenario.CreatedBy || '').trim() || String(scenario.CreatedBy || '').trim() === 'NA';
 
     const isVisibleOriginalScenario = (scenario: ScenarioRunHeader) =>
-      scenario.Region === 'Canada'
-      || String(scenario.RunName || '').toLowerCase().includes('baseline')
+      String(scenario.RunName || '').toLowerCase().includes('baseline')
       || String(scenario.ScenarioType || '').toLowerCase().includes('baseline');
 
     return scenarioRunHeaders.filter((scenario) => !isOriginalScenario(scenario) || isVisibleOriginalScenario(scenario));
@@ -316,6 +315,32 @@ export const Home: React.FC<HomeProps> = ({
     const isOriginalScenario = (scenario: ScenarioRunHeader) =>
       !String(scenario.CreatedBy || '').trim() || String(scenario.CreatedBy || '').trim() === 'NA';
 
+    const getScenarioSortKey = (scenario: ScenarioRunHeader): number => {
+      const candidates = [scenario.LastUpdatedAt, scenario.CreatedAt, scenario.LastRunAt]
+        .map((value) => Date.parse(String(value || '')))
+        .filter((value) => Number.isFinite(value) && value > 0);
+      return candidates.length > 0 ? Math.max(...candidates) : 0;
+    };
+
+    const pickCanonicalBaselineForRegion = (region: 'US' | 'Canada'): ScenarioRunHeader | null => {
+      const regionBaselineCandidates = scenarioRunHeaders.filter((scenario) =>
+        scenario.Region === region && isOriginalScenario(scenario) && (
+          String(scenario.RunName || '').toLowerCase().includes('baseline')
+          || String(scenario.ScenarioType || '').toLowerCase().includes('baseline')
+        )
+      );
+      if (regionBaselineCandidates.length === 0) return null;
+      return [...regionBaselineCandidates].sort((a, b) => {
+        const updatedDelta = getScenarioSortKey(b) - getScenarioSortKey(a);
+        if (updatedDelta !== 0) return updatedDelta;
+        const dataflowA = String(a.DataflowID || '');
+        const dataflowB = String(b.DataflowID || '');
+        const dataflowDelta = dataflowB.localeCompare(dataflowA);
+        if (dataflowDelta !== 0) return dataflowDelta;
+        return String(a.ScenarioRunID || '').localeCompare(String(b.ScenarioRunID || ''));
+      })[0];
+    };
+
     const toNumber = (value: unknown) => {
       const n = typeof value === 'number' ? value : Number(String(value ?? '').replace(/[$,%\s,]/g, ''));
       return Number.isFinite(n) ? n : 0;
@@ -325,26 +350,10 @@ export const Home: React.FC<HomeProps> = ({
     const baselineHeadersSource = scenarioRunHeaders;
     const baselineResultsSource = scenarioRunResultsDC;
 
-    const baselineScenarioIds = visibleRegions.flatMap((region) => {
-      const originalHeaders = baselineHeadersSource.filter((scenario) => scenario.Region === region && isOriginalScenario(scenario));
-      const exactMatches = originalHeaders.filter((scenario) =>
-        String(scenario.RunName || '').toLowerCase().includes('baseline')
-        || String(scenario.ScenarioType || '').toLowerCase().includes('baseline')
-      );
-      if (exactMatches.length > 0) {
-        return exactMatches.map((scenario) => scenario.ScenarioRunID);
-      }
-
-      const nameMatches = originalHeaders.filter((scenario) =>
-        scenario.RunName.toLowerCase().includes('baseline')
-      );
-      if (nameMatches.length > 0) {
-        return nameMatches.map((scenario) => scenario.ScenarioRunID);
-      }
-
-      const firstMatch = originalHeaders[0] || null;
-      return firstMatch ? [firstMatch.ScenarioRunID] : [];
-    });
+    const canonicalBaselineHeaders = visibleRegions
+      .map((region) => pickCanonicalBaselineForRegion(region))
+      .filter((scenario): scenario is ScenarioRunHeader => Boolean(scenario));
+    const baselineScenarioIds = canonicalBaselineHeaders.map((scenario) => scenario.ScenarioRunID);
 
     const baselineRows = baselineResultsSource.filter((row) => baselineScenarioIds.includes(row.ScenarioRunID));
     const baselineHeaders = baselineHeadersSource.filter((scenario) => baselineScenarioIds.includes(scenario.ScenarioRunID));
@@ -379,13 +388,40 @@ export const Home: React.FC<HomeProps> = ({
       ? sourceHeaders.reduce((sum, s) => sum + toNumber(s.SLABreachPct), 0) / sourceHeaders.length
       : 0;
 
-    return {
+    const derivedKPIs = {
       totalCost,
       avgDeliveryDays,
       maxUtilPct,
       totalSpaceRequired,
       slaBreachPct,
     };
+
+    console.log('[Home KPI Metrics Calculation]', {
+      workspace,
+      visibleRegions,
+      selectedBaselineIds: baselineScenarioIds,
+      selectedBaselineNames: canonicalBaselineHeaders.map((scenario) => ({
+        id: scenario.ScenarioRunID,
+        name: scenario.RunName,
+        region: scenario.Region,
+        dataflowId: scenario.DataflowID,
+      })),
+      selectedBaselines: sourceHeaders.map((s) => ({
+        id: s.ScenarioRunID,
+        name: s.RunName,
+        region: s.Region,
+        snapshotVersion: s.DataSnapshotVersion,
+        totalCost: s.TotalCost,
+        totalCount: s.TotalCount,
+        avgDeliveryDays: s.AvgDeliveryDays,
+        maxUtilPct: s.MaxUtilPct,
+        totalSpaceRequired: s.TotalSpaceRequired,
+        slaBreachPct: s.SLABreachPct,
+      })),
+      derivedKPIs,
+    });
+
+    return derivedKPIs;
   }, [visibleScenarioRunHeaders, visibleScenarioRunResultsDC, workspace]);
 
   const handleExportScenarioList = () => {

@@ -31,6 +31,8 @@ type DcAccumulator = {
   volumeUnits: number;
   avgDaysWeight: number;
   avgDaysNumerator: number;
+  avgTransitDaysWeight: number;
+  avgTransitDaysNumerator: number;
   spaceRequired: number;
   spaceCore: number;
   spaceBCV: number;
@@ -120,6 +122,11 @@ const inferLaneUnits = (lane: ScenarioRunResultsLane): number => {
   }
 
   return 1;
+};
+
+const isLaneSlaBreach = (lane: ScenarioRunResultsLane): boolean => {
+  const text = String(lane.SLABreachFlag || lane.ExcludedBySLAFlag || lane.BreachFlag || '').trim().toLowerCase();
+  return text === 'y' || text === 'yes' || text === 'true' || (text.includes('breach') && !text.includes('no breach') && !text.includes('non-breach'));
 };
 
 const capacityValue = (row?: DomoDcCapacityRow): number => {
@@ -371,6 +378,8 @@ const buildSelectedLaneRow = (
     CostPerUnit: selectedCpu,
     CostDeltaVsBest: Number(Math.max(0, selectedCpu - bestCpu).toFixed(2)),
     DeliveryDays: Number(selected.days.toFixed(2)),
+    AvgDeliveryDays: Number(selected.days.toFixed(2)),
+    AvgTransitDays: sourceRow.AvgTransitDays ?? null,
     FootprintContribution: demand,
     UtilImpactPct: Number((
       Number.isFinite(selectedCapacity) && selectedCapacity > 0
@@ -631,6 +640,7 @@ const buildEmptyDcRow = (scenarioId: string, dcName: string): ScenarioRunResults
   TotalCost: 0,
   VolumeUnits: 0,
   AvgDays: 0,
+  AvgTransitDays: null,
   UtilPct: 0,
   ActualSpace: 0,
   SpaceRequired: 0,
@@ -741,6 +751,8 @@ const buildDcRows = (
       volumeUnits: 0,
       avgDaysWeight: 0,
       avgDaysNumerator: 0,
+      avgTransitDaysWeight: 0,
+      avgTransitDaysNumerator: 0,
       spaceRequired: 0,
       spaceCore: 0,
       spaceBCV: 0,
@@ -756,6 +768,8 @@ const buildDcRows = (
       volumeUnits: 0,
       avgDaysWeight: 0,
       avgDaysNumerator: 0,
+      avgTransitDaysWeight: 0,
+      avgTransitDaysNumerator: 0,
       spaceRequired: 0,
       spaceCore: 0,
       spaceBCV: 0,
@@ -767,12 +781,16 @@ const buildDcRows = (
     acc.volumeUnits += laneUnits;
     acc.avgDaysNumerator += Number(row.DeliveryDays ?? 0) * laneUnits;
     acc.avgDaysWeight += laneUnits;
+    if (Number(row.AvgTransitDays ?? 0) > 0) {
+      acc.avgTransitDaysNumerator += Number(row.AvgTransitDays) * laneUnits;
+      acc.avgTransitDaysWeight += laneUnits;
+    }
     acc.spaceRequired += Number(row.WorkingCapacity ?? row.FootprintContribution ?? 0);
     acc.spaceCore += Number(row.WorkingCapacity ?? row.FootprintContribution ?? 0);
     acc.spaceBCV += Number(row.WorkingCapacity ?? row.FootprintContribution ?? 0);
-    if (String(row.SLABreachFlag || row.ExcludedBySLAFlag || row.BreachFlag || '').toUpperCase() === 'Y') {
-      acc.slaBreachCount += 1;
-      acc.excludedBySlaCount += 1;
+    if (isLaneSlaBreach(row)) {
+      acc.slaBreachCount += laneUnits;
+      acc.excludedBySlaCount += laneUnits;
     }
     dcAccum.set(dcKey, acc);
   });
@@ -785,6 +803,8 @@ const buildDcRows = (
       volumeUnits: 0,
       avgDaysWeight: 0,
       avgDaysNumerator: 0,
+      avgTransitDaysWeight: 0,
+      avgTransitDaysNumerator: 0,
       spaceRequired: 0,
       spaceCore: 0,
       spaceBCV: 0,
@@ -801,6 +821,7 @@ const buildDcRows = (
       TotalCost: isSuppressed ? 0 : Number(acc.totalCost.toFixed(2)),
       VolumeUnits: isSuppressed ? 0 : Number(acc.volumeUnits.toFixed(2)),
       AvgDays: isSuppressed ? 0 : Number((acc.avgDaysWeight > 0 ? acc.avgDaysNumerator / acc.avgDaysWeight : 0).toFixed(2)),
+      AvgTransitDays: isSuppressed ? null : (acc.avgTransitDaysWeight > 0 ? Number((acc.avgTransitDaysNumerator / acc.avgTransitDaysWeight).toFixed(2)) : null),
       UtilPct: isSuppressed ? 0 : Number(utilPct.toFixed(2)),
       SpaceRequired: isSuppressed ? 0 : Number(acc.spaceRequired.toFixed(2)),
       SpaceCore: isSuppressed ? 0 : Number(acc.spaceCore.toFixed(2)),
@@ -886,6 +907,8 @@ export const allocateScenarioOutputs = (input: AllocationInput): AllocationResul
       DCName: row.DCName,
       TotalCost: row.TotalCost,
       VolumeUnits: row.VolumeUnits,
+      AvgTransitDays: row.AvgTransitDays ?? 'NA',
+      SLABreachCount: row.SLABreachCount,
       UtilPct: row.UtilPct,
       SpaceRequired: row.SpaceRequired,
       IsSuppressed: row.IsSuppressed,

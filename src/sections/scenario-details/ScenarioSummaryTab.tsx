@@ -148,7 +148,7 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-slate-600">Cost:</span>
-                  <span className="font-medium">${dc.TotalCost.toLocaleString()}</span>
+                  <span className="font-medium">${dc.TotalCost.toLocaleString('en-US')}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-600">Avg Days:</span>
@@ -163,11 +163,11 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-600">Actual Space:</span>
-                  <span className="font-medium">{(dc.ActualSpace ?? 0).toLocaleString()}</span>
+                  <span className="font-medium">{(dc.ActualSpace ?? 0).toLocaleString('en-US')}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-600">Space:</span>
-                  <span className="font-medium">{dc.SpaceRequired.toLocaleString()}</span>
+                  <span className="text-slate-600">Space Required:</span>
+                  <span className="font-medium">{dc.SpaceRequired.toLocaleString('en-US')}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-600">Flag:</span>
@@ -188,7 +188,7 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
                   <div className="text-xs text-slate-500 mb-1">Util Space / Space Required</div>
                   <div
                     className="flex gap-1 h-3 overflow-hidden rounded-full bg-slate-200"
-                    title={`Util Space ${getUtilSpace(dc).toLocaleString()} vs Space Required ${dc.SpaceRequired.toLocaleString()}`}
+                    title={`Util Space ${getUtilSpace(dc).toLocaleString('en-US')} vs Space Required ${dc.SpaceRequired.toLocaleString('en-US')}`}
                   >
                     <div
                       className="bg-blue-500 rounded-l"
@@ -202,8 +202,8 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
                     />
                   </div>
                   <div className="flex justify-between text-xs text-slate-600 mt-1 gap-1">
-                    <span className="truncate">{getUtilSpace(dc).toLocaleString()}</span>
-                    <span className="truncate text-right">{dc.SpaceRequired.toLocaleString()}</span>
+                    <span className="truncate">{getUtilSpace(dc).toLocaleString('en-US')}</span>
+                    <span className="truncate text-right">{dc.SpaceRequired.toLocaleString('en-US')}</span>
                   </div>
                   <div className="flex justify-between text-[11px] text-slate-500 mt-0.5 gap-1">
                     <span>Util Space: {clampBarWidth(getUtilSpace(dc), Math.max(getUtilSpace(dc), dc.SpaceRequired, 1)).toFixed(2)}%</span>

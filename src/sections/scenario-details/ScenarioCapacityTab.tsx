@@ -66,9 +66,9 @@ export const ScenarioCapacityTab: React.FC<ScenarioCapacityTabProps> = ({
               <div key={dc.DCName}>
                 <div className="flex justify-between text-sm mb-1">
                   <span className="text-slate-700">{dc.DCName}</span>
-                  <span className="font-medium">{utilSpace.toLocaleString()} / {dc.SpaceRequired.toLocaleString()} sq ft</span>
+                  <span className="font-medium">{utilSpace.toLocaleString('en-US')} / {dc.SpaceRequired.toLocaleString('en-US')} sq ft</span>
                 </div>
-                <div className="flex h-3 rounded-full overflow-hidden bg-slate-200" title={`Util Space ${utilSpace.toLocaleString()} vs Space Required ${dc.SpaceRequired.toLocaleString()}`}>
+                <div className="flex h-3 rounded-full overflow-hidden bg-slate-200" title={`Util Space ${utilSpace.toLocaleString('en-US')} vs Space Required ${dc.SpaceRequired.toLocaleString('en-US')}`}>
                   <div
                     className="bg-blue-500"
                     style={getSegmentStyle(utilSpace, total)}
@@ -102,7 +102,7 @@ export const ScenarioCapacityTab: React.FC<ScenarioCapacityTabProps> = ({
                 {lane.Dest3Zip} {lane.DestState} | {lane.Channel} {lane.Terms} | {lane.CustomerGroup}
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
-                <div className="font-medium text-slate-900">{lane.FootprintContribution.toLocaleString()}</div>
+                <div className="font-medium text-slate-900">{lane.FootprintContribution.toLocaleString('en-US')}</div>
                 {lane.OvercapFlag === 'Y' ? (
                   <span className="px-2 py-0.5 rounded bg-red-100 text-red-700 text-[11px] font-semibold">Overcap</span>
                 ) : null}

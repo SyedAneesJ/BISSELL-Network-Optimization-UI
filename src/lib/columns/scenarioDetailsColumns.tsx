@@ -192,6 +192,15 @@ export const createScenarioLaneColumns = (): Column<ScenarioRunResultsLane>[] =>
   },
 ];
 
+const formatOptionDays = (value: unknown): string => {
+  if (value === null || value === undefined) return 'NA';
+  const str = String(value).trim();
+  if (str === '' || str.toLowerCase() === 'na') return 'NA';
+  const num = Number(str.replace(/,/g, ''));
+  if (Number.isNaN(num)) return str;
+  return String(Math.round(num * 1000) / 1000);
+};
+
 export const createScenarioRankedOptionsColumns = (): Column<ScenarioRunResultsLane>[] => [
   { key: 'Dest3Zip', header: '3-Zip', width: '80px', sortable: true },
   { key: 'Channel', header: 'Channel', width: '80px', sortable: true },
@@ -203,7 +212,7 @@ export const createScenarioRankedOptionsColumns = (): Column<ScenarioRunResultsL
     render: (row) => (
       <div className="text-xs">
         <div className="font-medium">{row.RankedOption1DC}</div>
-        <div className="text-slate-600">{formatCurrencyOrNA(row.RankedOption1Cost, 2)} | {formatTextOrNA(row.RankedOption1Days)}d</div>
+        <div className="text-slate-600">{formatCurrencyOrNA(row.RankedOption1Cost, 2)} | {formatOptionDays(row.RankedOption1Days)}d</div>
       </div>
     ),
   },
@@ -214,7 +223,7 @@ export const createScenarioRankedOptionsColumns = (): Column<ScenarioRunResultsL
     render: (row) => (
       <div className="text-xs">
         <div className="font-medium">{row.RankedOption2DC}</div>
-        <div className="text-slate-600">{formatCurrencyOrNA(row.RankedOption2Cost, 2)} | {formatTextOrNA(row.RankedOption2Days)}d</div>
+        <div className="text-slate-600">{formatCurrencyOrNA(row.RankedOption2Cost, 2)} | {formatOptionDays(row.RankedOption2Days)}d</div>
       </div>
     ),
   },
@@ -225,7 +234,7 @@ export const createScenarioRankedOptionsColumns = (): Column<ScenarioRunResultsL
     render: (row) => (
       <div className="text-xs">
         <div className="font-medium">{row.RankedOption3DC}</div>
-        <div className="text-slate-600">{formatCurrencyOrNA(row.RankedOption3Cost, 2)} | {formatTextOrNA(row.RankedOption3Days)}d</div>
+        <div className="text-slate-600">{formatCurrencyOrNA(row.RankedOption3Cost, 2)} | {formatOptionDays(row.RankedOption3Days)}d</div>
       </div>
     ),
   },

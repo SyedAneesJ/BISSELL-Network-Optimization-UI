@@ -54,7 +54,7 @@ export const ComparisonDcTab: React.FC<ComparisonDcTabProps> = ({
                 <div key={dc.DCName}>
                   <div className="flex justify-between text-sm mb-1">
                     <span className="text-slate-700">{dc.DCName}</span>
-                    <span className="font-medium">${dc.Cost_A.toLocaleString()} vs ${dc.Cost_B.toLocaleString()}</span>
+                    <span className="font-medium">${dc.Cost_A.toLocaleString('en-US')} vs ${dc.Cost_B.toLocaleString('en-US')}</span>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <div className="bg-slate-200 rounded h-2 overflow-hidden">

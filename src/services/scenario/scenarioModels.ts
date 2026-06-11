@@ -66,10 +66,12 @@ export interface ScenarioBuildSummary {
   totalUnits: number;
   costPerUnit: number;
   avgDays: number;
+  avgTransitDays: number | null;
   maxUtil: number;
   totalSpaceRequired: number;
   excludedBySla: number;
   slaBreachCount: number;
+  slaBreachPct: number;
   missingAvgDays: number;
 }
 

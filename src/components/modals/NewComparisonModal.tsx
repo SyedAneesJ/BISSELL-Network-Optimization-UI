@@ -138,8 +138,8 @@ export const NewComparisonModal: React.FC<NewComparisonModalProps> = ({
               <div className="font-medium text-slate-600 text-center">Run B</div>
 
               <div className="text-slate-700">Total Cost</div>
-              <div className="text-center">${scenarioA.TotalCost.toLocaleString()}</div>
-              <div className="text-center">${scenarioB.TotalCost.toLocaleString()}</div>
+              <div className="text-center">${scenarioA.TotalCost.toLocaleString('en-US')}</div>
+              <div className="text-center">${scenarioB.TotalCost.toLocaleString('en-US')}</div>
 
               <div className="text-slate-700">Cost / Unit</div>
               <div className="text-center">${scenarioA.CostPerUnit.toFixed(2)}</div>
@@ -161,7 +161,7 @@ export const NewComparisonModal: React.FC<NewComparisonModalProps> = ({
               <div className={`text-center font-semibold pt-2 border-t border-slate-200 ${
                 scenarioB.TotalCost - scenarioA.TotalCost > 0 ? 'text-red-600' : 'text-green-600'
               }`}>
-                ${Math.abs(scenarioB.TotalCost - scenarioA.TotalCost).toLocaleString()}
+                ${Math.abs(scenarioB.TotalCost - scenarioA.TotalCost).toLocaleString('en-US')}
               </div>
               <div className={`text-center font-semibold pt-2 border-t border-slate-200 ${
                 scenarioB.TotalCost - scenarioA.TotalCost > 0 ? 'text-red-600' : 'text-green-600'

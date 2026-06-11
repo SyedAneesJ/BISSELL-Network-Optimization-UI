@@ -113,6 +113,49 @@ export const useScenarioDetails = ({
       }, new Map())
       .values(),
   ).map(normalizeDcDisplay), [normalizeDcDisplay, scenarioId, scenarioRunResultsDC]);
+
+  useEffect(() => {
+    const shouldTrace = String(import.meta.env.VITE_ENABLE_DATA_TRACE ?? 'true').toLowerCase() !== 'false';
+    if (!shouldTrace || !scenario) return;
+    const isBaselineTrace =
+      String(scenario.DataflowID || '') === '3267' ||
+      String(scenario.ScenarioType || '').toLowerCase().includes('baseline');
+    if (!isBaselineTrace) return;
+    console.groupCollapsed(`[Scenario Details DC Source] scorecard/capacity rows selected: ${scenarioId}`);
+    console.log('header used by details page', {
+      ScenarioRunID: scenario.ScenarioRunID,
+      RunName: scenario.RunName,
+      DataflowID: scenario.DataflowID,
+      Region: scenario.Region,
+      ScenarioType: scenario.ScenarioType,
+      TotalCost: scenario.TotalCost,
+      TotalSpaceRequired: scenario.TotalSpaceRequired,
+      SpaceCore: scenario.SpaceCore,
+      SpaceBCV: scenario.SpaceBCV,
+      MaxUtilPct: scenario.MaxUtilPct,
+    });
+    console.log('raw props counts', {
+      allDcRowsProp: scenarioRunResultsDC.length,
+      matchingScenarioRowsBeforeDedupe: scenarioRunResultsDC.filter((dc) => dc.ScenarioRunID === scenarioId).length,
+      dcRowsAfterDedupeAndDisplayNormalize: dcResults.length,
+    });
+    console.table(dcResults.map((dc) => ({
+      DCName: dc.DCName,
+      TotalCost: dc.TotalCost,
+      VolumeUnits: dc.VolumeUnits,
+      AvgDays: dc.AvgDays,
+      AvgTransitDays: dc.AvgTransitDays ?? 'NA',
+      UtilPct: dc.UtilPct,
+      ActualSpace: dc.ActualSpace ?? 'NA',
+      SpaceRequired: dc.SpaceRequired,
+      SpaceCore: dc.SpaceCore,
+      SpaceBCV: dc.SpaceBCV,
+      SLABreachCount: dc.SLABreachCount,
+      SLABreachPct: (dc as { SLABreachPct?: number | null }).SLABreachPct ?? 'NA',
+      IsSuppressed: dc.IsSuppressed,
+    })));
+    console.groupEnd();
+  }, [dcResults, scenario, scenarioId, scenarioRunResultsDC]);
   const laneGroupKey = useCallback((lane: ScenarioRunResultsLane) => [
     lane.Dest3Zip,
     lane.Channel,
@@ -367,7 +410,7 @@ export const useScenarioDetails = ({
         totalCost: dc.TotalCost,
         costPerUnit: dc.VolumeUnits > 0 ? Number((dc.TotalCost / dc.VolumeUnits).toFixed(2)) : 0,
         averageDeliveryDays: Number(dc.AvgDays.toFixed(2)),
-        averageTransitDays: Number(dc.AvgDays.toFixed(2)),
+        averageTransitDays: dc.AvgTransitDays == null ? '' : Number(dc.AvgTransitDays.toFixed(2)),
         maxUtilization: Number(dc.UtilPct.toFixed(2)),
         actualSpace: dc.ActualSpace ?? '',
         coreSpace: dc.SpaceCore,
@@ -376,9 +419,13 @@ export const useScenarioDetails = ({
         overcapFlag: dc.OvercapFlag ?? '',
         sqft: dc.SpaceCore,
         slaBreach: dc.SLABreachCount,
-        'slaBreach%': Number(
-          ((dc.SLABreachCount / Math.max(1, dc.VolumeUnits)) * 100).toFixed(2)
-        ),
+        'slaBreach%': (() => {
+          const typedDc = dc as { SLABreachPct?: number | null; SLABreachCount: number; VolumeUnits: number };
+          const breachPct =
+            typedDc.SLABreachPct ??
+            (typedDc.VolumeUnits > 0 ? (typedDc.SLABreachCount / typedDc.VolumeUnits) * 100 : null);
+          return breachPct == null ? '' : Number(breachPct.toFixed(2));
+        })(),
         totalcount: dc.VolumeUnits,
       }));
       const csv = toCSV(rows);
@@ -394,12 +441,15 @@ export const useScenarioDetails = ({
         DestState: lane.DestState,
         Channel: lane.Channel,
         Terms: lane.Terms,
-        CustomerGroup: lane.CustomerGroup,
+
         AssignedDC: lane.AssignedDC,
         CostRank: lane.CostRank ?? '',
         LaneCost: lane.LaneCost,
         CostPerUnit: lane.CostPerUnit ?? '',
         DeliveryDays: lane.DeliveryDays,
+        AvgDeliveryDays: lane.AvgDeliveryDays ?? '',
+        AvgTransitDays: lane.AvgTransitDays ?? '',
+        TotalUnits: lane.TotalUnits ?? lane.TotalCount ?? lane.VolumeUnits ?? '',
         SLABreachFlag: lane.SLABreachFlag,
         ExcludedBySLAFlag: lane.ExcludedBySLAFlag,
         ScenarioType: lane.ScenarioType || '',
@@ -417,7 +467,7 @@ export const useScenarioDetails = ({
         OrderToDeliverCalendarDays: lane.OrderToDeliverCalendarDays ?? '',
         ShipToDeliverCalendarDays: lane.ShipToDeliverCalendarDays ?? '',
         State: lane.State || '',
-        PartyName: lane.PartyName || '',
+
         Threshold: lane.Threshold ?? '',
       }));
       const csv = toCSV(rows);
@@ -433,7 +483,7 @@ export const useScenarioDetails = ({
         DestState: lane.DestState,
         Channel: lane.Channel,
         Terms: lane.Terms,
-        CustomerGroup: lane.CustomerGroup,
+
         AssignedDC: lane.AssignedDC,
         RankedOption1DC: lane.RankedOption1DC,
         RankedOption1Cost: lane.RankedOption1Cost,
@@ -448,6 +498,9 @@ export const useScenarioDetails = ({
         LaneCost: lane.LaneCost,
         CostDeltaVsBest: lane.CostDeltaVsBest,
         DeliveryDays: lane.DeliveryDays,
+        AvgDeliveryDays: lane.AvgDeliveryDays ?? '',
+        AvgTransitDays: lane.AvgTransitDays ?? '',
+        TotalUnits: lane.TotalUnits ?? lane.TotalCount ?? lane.VolumeUnits ?? '',
         OvercapFlag: lane.OvercapFlag ?? '',
         SLABreachFlag: lane.SLABreachFlag,
         ExcludedBySLAFlag: lane.ExcludedBySLAFlag,
@@ -473,7 +526,7 @@ export const useScenarioDetails = ({
         OrderToDeliverCalendarDays: lane.OrderToDeliverCalendarDays ?? '',
         ShipToDeliverCalendarDays: lane.ShipToDeliverCalendarDays ?? '',
         State: lane.State || '',
-        PartyName: lane.PartyName || '',
+
         Threshold: lane.Threshold ?? '',
         SourceDatasetId: lane.SourceDatasetId || '',
       }));
@@ -492,7 +545,7 @@ export const useScenarioDetails = ({
           DestState: lane.DestState,
           Channel: lane.Channel,
           Terms: lane.Terms,
-          CustomerGroup: lane.CustomerGroup,
+
           AssignedDC: lane.AssignedDC,
           CostPerUnit: lane.CostPerUnit ?? '',
           OvercapFlag: lane.OvercapFlag ?? '',
@@ -516,7 +569,7 @@ export const useScenarioDetails = ({
           OrderToDeliverCalendarDays: lane.OrderToDeliverCalendarDays ?? '',
           ShipToDeliverCalendarDays: lane.ShipToDeliverCalendarDays ?? '',
           State: lane.State || '',
-          PartyName: lane.PartyName || '',
+
           Threshold: lane.Threshold ?? '',
         }));
       const csv = toCSV(rows);

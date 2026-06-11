@@ -7,13 +7,13 @@ export const createComparisonDcColumns = (): Column<ComparisonDetailDC>[] => [
     key: 'Cost_A',
     header: 'Cost A',
     sortable: true,
-    render: (row) => `$${row.Cost_A.toLocaleString()}`,
+    render: (row) => `$${row.Cost_A.toLocaleString('en-US')}`,
   },
   {
     key: 'Cost_B',
     header: 'Cost B',
     sortable: true,
-    render: (row) => `$${row.Cost_B.toLocaleString()}`,
+    render: (row) => `$${row.Cost_B.toLocaleString('en-US')}`,
   },
   {
     key: 'Cost_Delta',
@@ -21,7 +21,7 @@ export const createComparisonDcColumns = (): Column<ComparisonDetailDC>[] => [
     sortable: true,
     render: (row) => (
       <span className={row.Cost_Delta > 0 ? 'text-red-600 font-medium' : row.Cost_Delta < 0 ? 'text-green-600 font-medium' : ''}>
-        {row.Cost_Delta > 0 ? '+' : ''}${row.Cost_Delta.toLocaleString()}
+        {row.Cost_Delta > 0 ? '+' : ''}${row.Cost_Delta.toLocaleString('en-US')}
       </span>
     ),
   },

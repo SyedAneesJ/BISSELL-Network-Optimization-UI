@@ -84,8 +84,20 @@ const RAW_LANE_FIELD_ALIASES = {
   scenarioRunId: ['ScenarioRunID', 'scenarioRunId', 'scenario_id', 'Scenario Run ID', 'scenarioRunID'],
   zip3: ['3-zip', '3Zip', '3-Zip', 'Dest3Zip', 'dest3Zip', 'zip3'],
   distributionCost: ['3-zip x Channel Distribution Cost', 'distributionCost', 'distribution_cost'],
+  totalUnits: [
+    '3-zip x Channel line_id Count x Origin',
+    'totalUnits',
+    'TotalUnits',
+    'totalcount',
+    'TotalCount',
+  ],
   tlSpend: ['3-zip x Channel TL Spend', '3-zip x Channel TL Spend ', 'tlSpend', 'LtlSpend'],
-  workingCapacity: ['3-zip x Channel Working Capacity', 'workingCapacity', 'working_capacity'],
+  workingCapacity: [
+    'laneSpaceSqFt',
+    '3-zip x Channel Containers x Origin', 
+    'workingCapacity', 
+    'working_capacity'
+  ],
   breachFlag: ['breach_flag', 'breachFlag', 'BreachFlag'],
   channel: ['Channel', 'channel'],
   costingWarehouse: ['Costing Warehouse', 'CostingWarehouse', 'costingWarehouse'],
@@ -99,11 +111,13 @@ const RAW_LANE_FIELD_ALIASES = {
   scenarioType: ['scenarioType', 'ScenarioType'],
   shipToDeliverDays: ['Ship to Deliver Calendar Days', 'ShipToDeliverCalendarDays', 'shipToDeliverDays'],
   deliveryDays: ['DeliveryDays', 'deliveryDays'],
+  avgDeliveryDays: ['avgDeliveryDays', 'AverageDeliveryDays', 'averageDeliveryDays'],
+  avgTransitDays: ['avgTransitDays', 'AverageTransitDays', 'averageTransitDays'],
   squareFootage: ['Square Footage', 'SquareFootage', 'squareFootage'],
   state: ['state', 'State'],
-  terms: ['terms', 'Terms'],
+  terms: ['terms', 'Terms', 'freight_terms', 'freightTerms', 'freight terms'],
   threshold: ['threshold', 'Threshold'],
-  totalCost: ['totalCost', 'TotalCost'],
+  totalCost: ['totalCost', 'TotalCost', '3-zip x Channel Scenario Cost', '3-zip x Channel Scenario Cost '],
 } as const;
 
 const NORMALIZED_LANE_FIELD_ALIASES = {
@@ -111,7 +125,7 @@ const NORMALIZED_LANE_FIELD_ALIASES = {
   dest3Zip: ['Dest3Zip', 'dest3Zip'],
   destState: ['DestState', 'destState'],
   channel: ['Channel', 'channel'],
-  terms: ['Terms', 'terms'],
+  terms: ['Terms', 'terms', 'freight_terms', 'freightTerms', 'freight terms'],
   customerGroup: ['CustomerGroup', 'customerGroup'],
   assignedDc: ['AssignedDC', 'assignedDc'],
   rankedOption1Dc: ['RankedOption1DC', 'rankedOption1Dc'],
@@ -124,7 +138,7 @@ const NORMALIZED_LANE_FIELD_ALIASES = {
   rankedOption3Cost: ['RankedOption3Cost', 'rankedOption3Cost'],
   rankedOption3Days: ['RankedOption3Days', 'rankedOption3Days'],
   chosenRank: ['ChosenRank', 'chosenRank'],
-  laneCost: ['LaneCost', 'laneCost'],
+  laneCost: ['LaneCost', 'laneCost', '3-zip x Channel Scenario Cost', '3-zip x Channel Scenario Cost '],
   costDeltaVsBest: ['CostDeltaVsBest', 'costDeltaVsBest'],
   deliveryDays: ['DeliveryDays', 'deliveryDays'],
   slaBreachFlag: ['SLABreachFlag', 'slaBreachFlag'],
@@ -141,7 +155,7 @@ const NORMALIZED_LANE_FIELD_ALIASES = {
   inboundSpend: ['InboundSpend', 'Inbound Spend', 'inboundSpend'],
   parcelSpend: ['ParcelSpend', 'Parcel Spend', 'parcelSpend'],
   ltlSpend: ['LtlSpend', 'LTL Spend', 'ltlSpend'],
-  totalCost: ['TotalCost', 'totalCost'],
+  totalCost: ['TotalCost', 'totalCost', '3-zip x Channel Scenario Cost', '3-zip x Channel Scenario Cost '],
   costRank: ['CostRank', 'costRank'],
   workingCapacity: ['WorkingCapacity', 'workingCapacity'],
   squareFootage: ['Square Footage', 'SquareFootage', 'squareFootage'],
@@ -150,10 +164,13 @@ const NORMALIZED_LANE_FIELD_ALIASES = {
   breachFlag: ['BreachFlag', 'breachFlag'],
   orderToDeliverDays: ['OrderToDeliverCalendarDays', 'Order to Deliver Calendar Days_Days', 'orderToDeliverDays'],
   shipToDeliverDays: ['ShipToDeliverCalendarDays', 'Ship to Deliver Calendar Days', 'shipToDeliverDays'],
+  avgDeliveryDays: ['AvgDeliveryDays', 'avgDeliveryDays', 'AverageDeliveryDays', 'averageDeliveryDays'],
+  avgTransitDays: ['AvgTransitDays', 'avgTransitDays', 'AverageTransitDays', 'averageTransitDays'],
   state: ['State', 'state'],
   partyName: ['PartyName', 'party_name', 'partyName'],
   threshold: ['Threshold', 'threshold'],
   sourceDatasetId: ['SourceDatasetId', 'sourceDatasetId'],
+  totalUnits: ['TotalUnits', 'totalUnits', 'TotalCount', 'totalCount', 'VolumeUnits', 'volumeUnits'],
 } as const;
 
 const LANE_NORMALIZED_SCHEMA = {
@@ -178,6 +195,8 @@ const LANE_NORMALIZED_SCHEMA = {
     { name: 'LaneCost', type: 'DOUBLE' },
     { name: 'CostDeltaVsBest', type: 'DOUBLE' },
     { name: 'DeliveryDays', type: 'DOUBLE' },
+    { name: 'AvgDeliveryDays', type: 'DOUBLE' },
+    { name: 'AvgTransitDays', type: 'DOUBLE' },
     { name: 'SLABreachFlag', type: 'STRING' },
     { name: 'ExcludedBySLAFlag', type: 'STRING' },
     { name: 'FootprintContribution', type: 'DOUBLE' },
@@ -272,7 +291,22 @@ const normalizeRegistryRow = (row: ScenarioDatasetRegistryCsvRow): ScenarioDatas
   };
 };
 
-const normalizeLaneBreachFlag = (value: unknown): 'Y' | 'N' => (parseBoolean(value) ? 'Y' : 'N');
+const normalizeLaneBreachFlag = (value: unknown): 'Y' | 'N' => {
+  const text = asText(value).toLowerCase();
+  if (!text) return 'N';
+  if (parseBoolean(text)) return 'Y';
+  if (text.includes('breach') && !text.includes('no breach') && !text.includes('non-breach')) return 'Y';
+  return 'N';
+};
+
+const normalizeLaneTerms = (value: unknown): ScenarioRunResultsLane['Terms'] => {
+  const text = String(value ?? '').trim().toLowerCase();
+  if (!text) return 'NA';
+  if (text.includes('collect') && text.includes('prepaid')) return 'Collect+Prepaid';
+  if (text.includes('collect')) return 'Collect';
+  if (text.includes('prepaid')) return 'Prepaid';
+  return 'NA';
+};
 
 const normalizeScenarioRunIdKey = (value: string): string =>
   String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
@@ -283,16 +317,18 @@ const resolveRawLaneScenarioRunId = (
 ): string => {
   const scenarioType = readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.scenarioType]);
   const partyName = readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.partyName]);
-  const terms = readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.terms]);
+  const freightTerms = readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.terms]);
+  const terms = normalizeLaneTerms(freightTerms);
+  const termsKey = terms === 'NA' ? '' : terms;
   const state = readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.state]);
   const candidates = [
     scenarioType,
     partyName,
-    terms,
+    termsKey,
     state,
     [scenarioType, partyName].filter(Boolean).join('|'),
-    [scenarioType, partyName, terms].filter(Boolean).join('|'),
-    [scenarioType, partyName, terms, state].filter(Boolean).join('|'),
+    [scenarioType, partyName, termsKey].filter(Boolean).join('|'),
+    [scenarioType, partyName, termsKey, state].filter(Boolean).join('|'),
   ].map(normalizeScenarioRunIdKey).filter(Boolean);
 
   for (const candidate of candidates) {
@@ -304,7 +340,7 @@ const resolveRawLaneScenarioRunId = (
     return scenarioRunIdLookup[normalizeScenarioRunIdKey(scenarioType)] || scenarioType;
   }
 
-  return [partyName, terms, state].filter(Boolean).join('|') || 'UNKNOWN';
+  return [partyName, termsKey, state].filter(Boolean).join('|') || 'UNKNOWN';
 };
 
 const normalizeRawLaneRow = (
@@ -316,19 +352,22 @@ const normalizeRawLaneRow = (
 
   const dest3Zip = readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.zip3]);
   const channel = readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.channel]) || 'B2C';
-  const terms = readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.terms]) || 'NA';
   const partyName =
     readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.partyName]) ||
     'All';
   const state = readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.state]);
   const costingWarehouse = readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.costingWarehouse]);
   const defaultShipFrom = readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.defaultShipFrom]);
+  const freightTerms = readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.terms]);
   const distributionCost = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.distributionCost]));
   const tlSpend = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.tlSpend]));
   const workingCapacity = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.workingCapacity]));
   const inboundSpend = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.inboundSpend]));
   const parcelSpend = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.parcelSpend]));
   const costPerUnit = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.costPerUnit]));
+  const totalUnits = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.totalUnits]));
+  const avgDeliveryDays = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.avgDeliveryDays]));
+  const avgTransitDays = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.avgTransitDays]));
   const shipToDeliverDays = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.shipToDeliverDays]));
   const orderToDeliverDays = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.orderToDeliverDays]));
   const threshold = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.threshold]));
@@ -338,7 +377,14 @@ const normalizeRawLaneRow = (
   const breachFlag = normalizeLaneBreachFlag(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.breachFlag]));
   const assignedDc = costingWarehouse || defaultShipFrom || '';
   const laneCost = rawTotalCost > 0 ? rawTotalCost : Math.max(0, distributionCost + inboundSpend + parcelSpend + tlSpend);
-  const deliveryDays = shipToDeliverDays > 0 ? shipToDeliverDays : orderToDeliverDays;
+  const deliveryDays = avgDeliveryDays > 0
+    ? avgDeliveryDays
+    : avgTransitDays > 0
+      ? avgTransitDays
+      : shipToDeliverDays > 0
+        ? shipToDeliverDays
+        : orderToDeliverDays;
+  const laneUnits = totalUnits > 0 ? totalUnits : 0;
   const footprintContribution = workingCapacity > 0
     ? workingCapacity
     : threshold > 0
@@ -353,7 +399,7 @@ const normalizeRawLaneRow = (
     Dest3Zip: dest3Zip,
     DestState: state,
     Channel: channel as ScenarioRunResultsLane['Channel'],
-    Terms: terms as ScenarioRunResultsLane['Terms'],
+    Terms: normalizeLaneTerms(freightTerms),
     CustomerGroup: partyName,
     AssignedDC: assignedDc,
     RankedOption1DC: assignedDc,
@@ -369,6 +415,8 @@ const normalizeRawLaneRow = (
     LaneCost: laneCost,
     CostDeltaVsBest: 0,
     DeliveryDays: deliveryDays,
+    AvgDeliveryDays: avgDeliveryDays > 0 ? avgDeliveryDays : undefined,
+    AvgTransitDays: avgTransitDays > 0 ? avgTransitDays : undefined,
     SLABreachFlag: breachFlag,
     ExcludedBySLAFlag: breachFlag,
     FootprintContribution: footprintContribution,
@@ -392,10 +440,14 @@ const normalizeRawLaneRow = (
     BreachFlag: breachFlag,
     OrderToDeliverCalendarDays: orderToDeliverDays || undefined,
     ShipToDeliverCalendarDays: shipToDeliverDays || undefined,
+    FreightTerms: freightTerms || undefined,
     State: state || undefined,
     PartyName: partyName || undefined,
     Threshold: threshold || undefined,
     SquareFootage: squareFootage || undefined,
+    TotalCount: laneUnits || undefined,
+    TotalUnits: laneUnits || undefined,
+    VolumeUnits: laneUnits || undefined,
     SourceDatasetId:
       String((row as any).SourceDatasetId || '').trim() ||
       String(sourceDatasetId || '').trim() ||
@@ -418,6 +470,22 @@ const normalizeNormalizedLaneRow = (row: DomoLaneRow): ScenarioRunResultsLane | 
   );
   const laneCost = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.laneCost]), normalized.LaneCost);
   const deliveryDays = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.deliveryDays]), normalized.DeliveryDays);
+  const avgDeliveryDays = asNumber(
+    readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.avgDeliveryDays]),
+    normalized.AvgDeliveryDays || 0,
+  );
+  const avgTransitDays = asNumber(
+    readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.avgTransitDays]),
+    normalized.AvgTransitDays || 0,
+  );
+  const freightTerms =
+    readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.terms]) ||
+    normalized.FreightTerms ||
+    normalized.Terms;
+  const totalUnits = asNumber(
+    readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.totalUnits]),
+    normalized.TotalUnits || normalized.TotalCount || normalized.VolumeUnits || 0,
+  );
   const scenarioRunId = readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.scenarioRunId]) || normalized.ScenarioRunID;
   const scenarioType = readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.scenarioType]) || normalized.ScenarioType || '';
   const runName = readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.runName]) || normalized.RunName || '';
@@ -429,7 +497,8 @@ const normalizeNormalizedLaneRow = (row: DomoLaneRow): ScenarioRunResultsLane | 
     Dest3Zip: readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.dest3Zip]) || normalized.Dest3Zip,
     DestState: readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.destState]) || normalized.DestState,
     Channel: readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.channel]) || normalized.Channel,
-    Terms: (readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.terms]) || normalized.Terms) as ScenarioRunResultsLane['Terms'],
+    Terms: normalizeLaneTerms(freightTerms),
+    FreightTerms: freightTerms || undefined,
     CustomerGroup: readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.customerGroup]) || normalized.CustomerGroup,
     AssignedDC: readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.assignedDc]) || normalized.AssignedDC,
     RankedOption1DC: readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.rankedOption1Dc]) || normalized.RankedOption1DC,
@@ -446,8 +515,16 @@ const normalizeNormalizedLaneRow = (row: DomoLaneRow): ScenarioRunResultsLane | 
     CostPerUnit: costPerUnit > 0 ? costPerUnit : normalized.CostPerUnit,
     CostDeltaVsBest: asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.costDeltaVsBest]), normalized.CostDeltaVsBest),
     DeliveryDays: deliveryDays,
-    SLABreachFlag: normalizeLaneBreachFlag(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.slaBreachFlag])) || normalized.SLABreachFlag,
-    ExcludedBySLAFlag: normalizeLaneBreachFlag(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.excludedBySlaFlag])) || normalized.ExcludedBySLAFlag,
+    AvgDeliveryDays: avgDeliveryDays > 0 ? avgDeliveryDays : normalized.AvgDeliveryDays,
+    AvgTransitDays: avgTransitDays > 0 ? avgTransitDays : normalized.AvgTransitDays,
+    SLABreachFlag: (() => {
+      const raw = readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.slaBreachFlag]);
+      return raw ? normalizeLaneBreachFlag(raw) : normalized.SLABreachFlag;
+    })(),
+    ExcludedBySLAFlag: (() => {
+      const raw = readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.excludedBySlaFlag]);
+      return raw ? normalizeLaneBreachFlag(raw) : normalized.ExcludedBySLAFlag;
+    })(),
     FootprintContribution: asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.footprintContribution]), normalized.FootprintContribution),
     UtilImpactPct: asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.utilImpactPct]), normalized.UtilImpactPct),
     OverrideAppliedFlag: (readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.overrideAppliedFlag]) || normalized.OverrideAppliedFlag) as ScenarioRunResultsLane['OverrideAppliedFlag'],
@@ -475,12 +552,16 @@ const normalizeNormalizedLaneRow = (row: DomoLaneRow): ScenarioRunResultsLane | 
     PartyName: readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.partyName]) || normalized.PartyName,
     Threshold: asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.threshold]), normalized.Threshold || 0) || undefined,
     SquareFootage: squareFootage || undefined,
+    TotalCount: totalUnits || normalized.TotalCount,
+    TotalUnits: totalUnits || normalized.TotalUnits,
+    VolumeUnits: totalUnits || normalized.VolumeUnits,
     SourceDatasetId: readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.sourceDatasetId]) || normalized.SourceDatasetId,
   };
 };
 
 const laneGroupingKey = (row: ScenarioRunResultsLane): string =>
   [
+    row.ScenarioRunID || '',
     row.Dest3Zip || '',
     row.Channel || '',
     row.Terms || '',
@@ -491,6 +572,12 @@ const laneGroupingKey = (row: ScenarioRunResultsLane): string =>
 
 const laneCostPerUnit = (row: ScenarioRunResultsLane): number =>
   Number(((row.CostPerUnit ?? row.LaneCost ?? row.TotalCost ?? 0)).toFixed(2));
+
+const laneTotalCost = (row: ScenarioRunResultsLane): number =>
+  Number((row.TotalCost ?? row.LaneCost ?? row.RankedOption1Cost ?? 0).toFixed(2));
+
+const laneOptionDc = (row: ScenarioRunResultsLane | null | undefined): string =>
+  row?.AssignedDC || row?.CostingWarehouse || row?.DefaultShipFrom || '';
 
 const rankLaneRows = (rows: ScenarioRunResultsLane[]): ScenarioRunResultsLane[] => {
   const grouped = rows.reduce<Record<string, ScenarioRunResultsLane[]>>((acc, row) => {
@@ -507,6 +594,8 @@ const rankLaneRows = (rows: ScenarioRunResultsLane[]): ScenarioRunResultsLane[] 
         const cpuB = laneCostPerUnit(b);
         const costDelta = cpuA - cpuB;
         if (costDelta !== 0) return costDelta;
+        const totalCostDelta = laneTotalCost(a) - laneTotalCost(b);
+        if (totalCostDelta !== 0) return totalCostDelta;
         const warehouseA = `${a.CostingWarehouse || a.AssignedDC || ''}|${a.DefaultShipFrom || ''}`;
         const warehouseB = `${b.CostingWarehouse || b.AssignedDC || ''}|${b.DefaultShipFrom || ''}`;
         const warehouseDelta = warehouseA.localeCompare(warehouseB);
@@ -518,22 +607,23 @@ const rankLaneRows = (rows: ScenarioRunResultsLane[]): ScenarioRunResultsLane[] 
       const [best = null, second = null, third = null] = sorted;
       if (!best) return [];
       const bestCpu = laneCostPerUnit(best);
+      const bestTotalCost = laneTotalCost(best);
       return [{
         ...best,
         CostRank: 1,
         ChosenRank: 1,
-        AssignedDC: best.AssignedDC || best.CostingWarehouse || best.DefaultShipFrom || '',
-        RankedOption1DC: best.AssignedDC || best.CostingWarehouse || best.DefaultShipFrom || '',
+        AssignedDC: laneOptionDc(best),
+        RankedOption1DC: laneOptionDc(best),
         RankedOption1Cost: bestCpu,
         RankedOption1Days: best.DeliveryDays || 0,
-        RankedOption2DC: second?.AssignedDC || second?.CostingWarehouse || second?.DefaultShipFrom || '',
+        RankedOption2DC: laneOptionDc(second),
         RankedOption2Cost: second ? laneCostPerUnit(second) : 0,
         RankedOption2Days: second?.DeliveryDays || 0,
-        RankedOption3DC: third?.AssignedDC || third?.CostingWarehouse || third?.DefaultShipFrom || '',
+        RankedOption3DC: laneOptionDc(third),
         RankedOption3Cost: third ? laneCostPerUnit(third) : 0,
         RankedOption3Days: third?.DeliveryDays || 0,
-        LaneCost: best.LaneCost ?? best.TotalCost ?? 0,
-        TotalCost: best.TotalCost ?? best.LaneCost ?? 0,
+        LaneCost: bestTotalCost,
+        TotalCost: bestTotalCost,
         CostPerUnit: best.CostPerUnit ?? bestCpu,
         CostDeltaVsBest: 0,
         FootprintContribution: best.WorkingCapacity || best.FootprintContribution || best.Threshold || 0,
@@ -575,6 +665,8 @@ const buildLaneNormalizedSeedRows = (rows: ScenarioRunResultsLane[]): Array<Reco
     LaneCost: row.LaneCost,
     CostDeltaVsBest: row.CostDeltaVsBest,
     DeliveryDays: row.DeliveryDays,
+    AvgDeliveryDays: row.AvgDeliveryDays ?? 0,
+    AvgTransitDays: row.AvgTransitDays ?? 0,
     SLABreachFlag: row.SLABreachFlag,
     ExcludedBySLAFlag: row.ExcludedBySLAFlag,
     FootprintContribution: row.FootprintContribution,
@@ -703,10 +795,21 @@ const loadScenarioLaneDatasetFrom = async (
     const rawCsv = await DatasetApi.getDatasetDataCsv(datasetId, token, 50000, 0);
     const rawRows = csvToObjects(rawCsv) as DomoLaneRow[];
     const rawRowsWithScenarioRunId = rawRows.filter((row) => Boolean(resolveRawLaneScenarioRunId(row, scenarioRunIdLookup)));
+    const normalizedCandidateRows = rawRows
+      .map((row) => normalizeRawLaneRow(row, scenarioRunIdLookup, datasetId))
+      .filter((item): item is ScenarioRunResultsLane => Boolean(item));
     const normalizedFromRaw = rankLaneRows(
-      rawRows
-        .map((row) => normalizeRawLaneRow(row, scenarioRunIdLookup, datasetId))
-        .filter((item): item is ScenarioRunResultsLane => Boolean(item)),
+      normalizedCandidateRows,
+    );
+    const rankedOptionDiagnostics = normalizedFromRaw.reduce(
+      (acc, row) => {
+        if (row.RankedOption2Cost > 0) acc.withOption2 += 1;
+        if (row.RankedOption3Cost > 0) acc.withOption3 += 1;
+        if (Number(row.AvgTransitDays ?? 0) > 0) acc.withTransitDays += 1;
+        if (row.SLABreachFlag === 'Y' || row.ExcludedBySLAFlag === 'Y') acc.withSlaBreach += 1;
+        return acc;
+      },
+      { withOption2: 0, withOption3: 0, withTransitDays: 0, withSlaBreach: 0 },
     );
     const debugZip = label === 'Raw' ? '427' : '';
     const rawZipRows = rawRows.filter((row) => {
@@ -722,7 +825,23 @@ const loadScenarioLaneDatasetFrom = async (
       rows: rawRows.length,
       rowsWithScenarioRunId: rawRowsWithScenarioRunId.length,
       missingScenarioRunIdRows: Math.max(0, rawRows.length - rawRowsWithScenarioRunId.length),
+      normalizedCandidateRows: normalizedCandidateRows.length,
       normalizedRows: normalizedFromRaw.length,
+      rankedRowsWithOption2: rankedOptionDiagnostics.withOption2,
+      rankedRowsWithOption3: rankedOptionDiagnostics.withOption3,
+      rankedRowsWithTransitDays: rankedOptionDiagnostics.withTransitDays,
+      rankedRowsWithSlaBreach: rankedOptionDiagnostics.withSlaBreach,
+      rankedSample: normalizedFromRaw.slice(0, 3).map((row) => ({
+        ScenarioRunID: row.ScenarioRunID,
+        Dest3Zip: row.Dest3Zip,
+        Channel: row.Channel,
+        Terms: row.Terms,
+        AvgTransitDays: row.AvgTransitDays ?? null,
+        SLABreachFlag: row.SLABreachFlag,
+        Option1: `${row.RankedOption1DC}:${row.RankedOption1Cost}`,
+        Option2: `${row.RankedOption2DC}:${row.RankedOption2Cost}`,
+        Option3: `${row.RankedOption3DC}:${row.RankedOption3Cost}`,
+      })),
     });
     if (datasetId === CANADA_STRATFORD_LANE_DATASET_ENV_ID) {
       console.log(`[Domo Lanes ${label}] source=canada-stratford`, {
@@ -1012,6 +1131,7 @@ const FIELD_ALIASES = {
   totalOrderCount: ['totalOrderCount', 'totalcount'],
   costPerUnit: ['costPerUnit'],
   slaBreachPct: ['slaBreach%', ' slaBreach%'],
+  breachFlag: ['breach_flag', 'breachFlag', 'BreachFlag', 'SLABreachFlag'],
   maxUtilizationPct: ['maxUtilization%', 'maxUtilization %', 'maxUtilization'],
   palletUtilizationPct: ['Pallet Pos Util %', 'Pallet Pos Util % '],
   squareFootage: ['sqft', 'Square Footage', 'SquareFootage', 'Square Footage ', 'coreSpace'],
@@ -1277,7 +1397,7 @@ export const mapDcResultsFromRows = (
   _entityOrder: string[],
   _datasetInfo?: ScenarioDatasetRegistryItem
 ): ScenarioRunResultsDC[] => {
-  return [...rows]
+  const mappedRows = [...rows]
     .sort((a, b) => {
       const costA = asAbsNumber(getField(a, FIELD_ALIASES.totalCost));
       const costB = asAbsNumber(getField(b, FIELD_ALIASES.totalCost));
@@ -1297,6 +1417,20 @@ export const mapDcResultsFromRows = (
       const rawCoreSpace = asNumberOptional(getField(row, FIELD_ALIASES.coreSpace));
       const explicitBcvSpace = asNumberOptional(getField(row, FIELD_ALIASES.bcvSpace));
       const spaceRequired = asNumberOptional(getField(row, FIELD_ALIASES.workingCapacity)) ?? workingCapacity;
+      const avgTransitDays = asNumberOptional(getField(row, FIELD_ALIASES.avgTransitDays));
+      const slaBreachPct = asNumberOptional(getField(row, FIELD_ALIASES.slaBreachPct));
+      const scenarioTypeValue = asText(getField(row, FIELD_ALIASES.scenarioType)).toLowerCase();
+      const datasetScenarioLabel = String(_datasetInfo?.scenarioLabel || '').toLowerCase();
+      const isBaselineLike =
+        scenarioTypeValue.includes('baseline') ||
+        datasetScenarioLabel.includes('baseline');
+      const resolvedActualSpace = squareFootage > 0 ? squareFootage : (rawCoreSpace ?? 0);
+      const resolvedCoreSpace = isBaselineLike
+        ? (rawCoreSpace ?? resolvedActualSpace)
+        : (rawCoreSpace ?? resolvedActualSpace);
+      const resolvedBcvSpace = isBaselineLike
+        ? (explicitBcvSpace ?? spaceRequired ?? 0)
+        : (explicitBcvSpace ?? workingCapacity ?? 0);
     const maxUtil = asNumber(getField(row, FIELD_ALIASES.maxUtilizationPct));
     const avgDaysRaw =
       asNumberOptional(getField(row, FIELD_ALIASES.avgDeliveryDays)) ??
@@ -1308,19 +1442,72 @@ export const mapDcResultsFromRows = (
           TotalCost: asAbsNumber(getField(row, FIELD_ALIASES.totalCost)),
           VolumeUnits: asNumber(getField(row, FIELD_ALIASES.totalUnits)),
       AvgDays: avgDaysRaw ?? 0,
+      AvgTransitDays: avgTransitDays ?? null,
+      SLABreachPct: slaBreachPct ?? null,
       UtilPct: Number((maxUtil || asPercent(getField(row, FIELD_ALIASES.palletUtilizationPct))).toFixed(2)),
       SpaceRequired: Number(spaceRequired.toFixed(2)),
-      SpaceCore: Number(((squareFootage > 0 ? squareFootage : (rawCoreSpace ?? 0))).toFixed(2)),
-      ActualSpace: Number(((squareFootage > 0 ? squareFootage : (rawCoreSpace ?? 0))).toFixed(2)),
-          SpaceBCV: Number((explicitBcvSpace ?? workingCapacity).toFixed(2)),
+      SpaceCore: Number(resolvedCoreSpace.toFixed(2)),
+      ActualSpace: Number(resolvedActualSpace.toFixed(2)),
+          SpaceBCV: Number(resolvedBcvSpace.toFixed(2)),
           SLABreachCount: asNumber(getField(row, FIELD_ALIASES.slaBreachCount)),
           ExcludedBySLACount: Math.max(0, Math.round(squareFootage - spaceRequired)),
           RankOverall: idx + 1,
           IsSuppressed: (asAbsNumber(getField(row, FIELD_ALIASES.totalCost)) <= 0 && asNumber(getField(row, FIELD_ALIASES.totalUnits)) <= 0)
             ? 'Y'
             : 'N',
-        };
+        } as ScenarioRunResultsDC;
       });
+
+  const shouldTraceDc = String(import.meta.env.VITE_ENABLE_DATA_TRACE ?? 'true').toLowerCase() !== 'false';
+  if (shouldTraceDc) {
+    const firstRow = rows[0] || {};
+    const rawDcPreview = rows.slice(0, 6).map((row, index) => ({
+      '#': index + 1,
+      DC: asText(getField(row, FIELD_ALIASES.dc)),
+      totalCost: getField(row, FIELD_ALIASES.totalCost),
+      totalUnits: getField(row, FIELD_ALIASES.totalUnits),
+      spaceRequired: getField(row, FIELD_ALIASES.workingCapacity),
+      sqft: getField(row, FIELD_ALIASES.squareFootage),
+      coreSpace: getField(row, FIELD_ALIASES.coreSpace),
+      bcvSpace: getField(row, FIELD_ALIASES.bcvSpace),
+      avgDeliveryDays: getField(row, FIELD_ALIASES.avgDeliveryDays),
+      avgTransitDays: getField(row, FIELD_ALIASES.avgTransitDays),
+      slaBreach: getField(row, FIELD_ALIASES.slaBreachCount),
+    }));
+    const mappedPreview = mappedRows.slice(0, 6).map((row, index) => ({
+      '#': index + 1,
+      DCName: row.DCName,
+      TotalCost: row.TotalCost,
+      VolumeUnits: row.VolumeUnits,
+      AvgDays: row.AvgDays,
+      AvgTransitDays: row.AvgTransitDays ?? 'NA',
+      SLABreachPct: row.SLABreachPct ?? 'NA',
+      UtilPct: row.UtilPct,
+      ActualSpace: row.ActualSpace,
+      SpaceRequired: row.SpaceRequired,
+      SpaceCore: row.SpaceCore,
+      SpaceBCV: row.SpaceBCV,
+      SLABreachCount: row.SLABreachCount,
+      IsSuppressed: row.IsSuppressed,
+    }));
+    console.groupCollapsed(`[DC Scorecard Source] mapped from Domo rows: ${scenarioRunId}`);
+    console.log('source', {
+      scenarioRunId,
+      datasetId: _datasetInfo?.datasetId || 'registry item has no datasetId field',
+      dataflowId: _datasetInfo?.dataflowId || 'missing',
+      scenarioKey: _datasetInfo?.scenarioKey || 'missing',
+      scenarioLabel: _datasetInfo?.scenarioLabel || 'missing',
+      regionDefault: _datasetInfo?.regionDefault || 'missing',
+      rawRows: rows.length,
+      mappedDcRows: mappedRows.length,
+      firstRowColumns: Object.keys(firstRow),
+    });
+    console.table(rawDcPreview);
+    console.table(mappedPreview);
+    console.groupEnd();
+  }
+
+  return mappedRows;
 };
 
 export const buildScenarioHeaderFromRows = (
@@ -1329,6 +1516,11 @@ export const buildScenarioHeaderFromRows = (
   entityOrderOverride?: string[],
   datasetInfo?: ScenarioDatasetRegistryItem
 ): ScenarioRunHeader => {
+  const isBaselineLike = rows.some((row) => {
+    const scenarioTypeValue = asText(getField(row, FIELD_ALIASES.scenarioType)).toLowerCase();
+    const datasetScenarioLabel = String(datasetInfo?.scenarioLabel || '').toLowerCase();
+    return scenarioTypeValue.includes('baseline') || datasetScenarioLabel.includes('baseline');
+  });
   const totalCost = rows.reduce((sum, row) => sum + asAbsNumber(getField(row, FIELD_ALIASES.totalCost)), 0);
   const totalUnits = rows.reduce((sum, row) => sum + asNumber(getField(row, FIELD_ALIASES.totalUnits)), 0);
   let avgDaysNumerator = 0;
@@ -1345,17 +1537,35 @@ export const buildScenarioHeaderFromRows = (
   });
   const avgDays = avgDaysWeight > 0 ? avgDaysNumerator / avgDaysWeight : 0;
 
-  let slaNumerator = 0;
-  let slaWeight = 0;
+  let transitDaysNumerator = 0;
+  let transitDaysWeight = 0;
   rows.forEach((row) => {
-    const slaRaw = asNumberOptional(getField(row, FIELD_ALIASES.slaBreachPct));
-    if (slaRaw === null) return;
-    const orders = asNumber(getField(row, FIELD_ALIASES.totalOrderCount));
-    const weight = orders > 0 ? orders : 1;
-    slaNumerator += slaRaw * weight;
-    slaWeight += weight;
+    const transitDaysRaw = asNumberOptional(getField(row, FIELD_ALIASES.avgTransitDays));
+    if (transitDaysRaw === null) return;
+    const units = asNumber(getField(row, FIELD_ALIASES.totalUnits));
+    const weight = units > 0 ? units : 1;
+    transitDaysNumerator += transitDaysRaw * weight;
+    transitDaysWeight += weight;
   });
-  const slaBreachPct = slaWeight > 0 ? slaNumerator / slaWeight : 0;
+  const avgTransitDays = transitDaysWeight > 0 ? transitDaysNumerator / transitDaysWeight : null;
+
+  let slaBreachUnits = 0;
+  let slaTotalUnits = 0;
+  rows.forEach((row) => {
+    const units = asNumber(getField(row, FIELD_ALIASES.totalUnits)) || asNumber(getField(row, FIELD_ALIASES.totalOrderCount)) || 1;
+    const rawSlaPct = asNumberOptional(getField(row, FIELD_ALIASES.slaBreachPct));
+    const breachCount = asNumberOptional(getField(row, FIELD_ALIASES.slaBreachCount));
+    const isBreach = normalizeLaneBreachFlag(getField(row, FIELD_ALIASES.breachFlag)) === 'Y';
+    if (rawSlaPct !== null && units > 0) {
+      slaBreachUnits += (rawSlaPct / 100) * units;
+    } else if (breachCount !== null) {
+      slaBreachUnits += breachCount;
+    } else if (isBreach) {
+      slaBreachUnits += units;
+    }
+    slaTotalUnits += units;
+  });
+  const slaBreachPct = slaTotalUnits > 0 ? (slaBreachUnits / slaTotalUnits) * 100 : 0;
   const maxUtil = rows.reduce((max, row) => {
     const value = asNumber(getField(row, FIELD_ALIASES.maxUtilizationPct));
     return Math.max(max, value || asPercent(getField(row, FIELD_ALIASES.palletUtilizationPct)));
@@ -1393,20 +1603,26 @@ export const buildScenarioHeaderFromRows = (
   const snapshotVersions = uniqueStrings(rows.map((row) => asText(getField(row, FIELD_ALIASES.dataSnapshotVersion))));
   const latestComments = uniqueStrings(rows.map((row) => asText(getField(row, FIELD_ALIASES.latestComment))));
 
-  const totalSquareFootage = Math.round(rows.reduce(
-    (sum, row) => sum + asNumber(getField(row, FIELD_ALIASES.squareFootage)),
-    0
-  ));
+  const totalSquareFootage = Math.round(rows.reduce((sum, row) => {
+    const squareFootage = asNumber(getField(row, FIELD_ALIASES.squareFootage));
+    const rawCoreSpace = asNumberOptional(getField(row, FIELD_ALIASES.coreSpace));
+    return sum + (isBaselineLike ? (squareFootage > 0 ? squareFootage : (rawCoreSpace ?? 0)) : squareFootage);
+  }, 0));
   const totalWorkingCapacity = Math.round(rows.reduce(
     (sum, row) => sum + asNumber(getField(row, FIELD_ALIASES.workingCapacity)),
     0
   ));
   const excludedBySla = Math.max(0, totalSquareFootage - totalWorkingCapacity);
 
-  const totalCoreSpace = rows.reduce((sum, row) => sum + asNumber(getField(row, FIELD_ALIASES.squareFootage)), 0);
+  const totalCoreSpace = rows.reduce((sum, row) => {
+    const squareFootage = asNumber(getField(row, FIELD_ALIASES.squareFootage));
+    const rawCoreSpace = asNumberOptional(getField(row, FIELD_ALIASES.coreSpace));
+    return sum + (isBaselineLike ? (rawCoreSpace ?? squareFootage) : squareFootage);
+  }, 0);
   const totalBcvSpace = rows.reduce((sum, row) => {
     const explicit = asNumberOptional(getField(row, FIELD_ALIASES.bcvSpace));
-    return sum + (explicit ?? asNumber(getField(row, FIELD_ALIASES.workingCapacity)));
+    const workingCapacity = asNumber(getField(row, FIELD_ALIASES.workingCapacity));
+    return sum + (isBaselineLike ? (explicit ?? workingCapacity) : (explicit ?? workingCapacity));
   }, 0);
 
   const weightedCostPerUnit = totalUnits > 0
@@ -1416,18 +1632,6 @@ export const buildScenarioHeaderFromRows = (
         return sum + cpu * units;
       }, 0) / totalUnits
     : 0;
-
-  let transitDaysNumerator = 0;
-  let transitDaysWeight = 0;
-  rows.forEach((row) => {
-    const transitDaysRaw = asNumberOptional(getField(row, FIELD_ALIASES.avgTransitDays));
-    if (transitDaysRaw === null) return;
-    const units = asNumber(getField(row, FIELD_ALIASES.totalUnits));
-    const weight = units > 0 ? units : 1;
-    transitDaysNumerator += transitDaysRaw * weight;
-    transitDaysWeight += weight;
-  });
-  const avgTransitDays = transitDaysWeight > 0 ? transitDaysNumerator / transitDaysWeight : null;
 
   const totalCountRaw = rows.reduce((sum, row) => sum + asNumber(getField(row, ['totalcount'])), 0);
   const totalCount = totalCountRaw > 0 ? totalCountRaw : totalUnits;
@@ -1469,7 +1673,7 @@ export const buildScenarioHeaderFromRows = (
     AvgTransitDays: avgTransitDays === null ? null : Number(avgTransitDays.toFixed(2)),
     TotalCount: totalCount,
     SLABreachPct: Number(slaBreachPct.toFixed(2)),
-    ExcludedBySLACount: excludedBySla,
+    ExcludedBySLACount: slaBreachUnits,
     MaxUtilPct: Number(maxUtil.toFixed(2)),
     TotalSpaceRequired: totalWorkingCapacity,
     SpaceCore: Math.round(totalCoreSpace),

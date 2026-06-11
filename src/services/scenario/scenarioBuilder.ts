@@ -500,6 +500,9 @@ const buildScenarioResultsDC = (
         AvgDays: active.has(dc.DCName)
           ? dc.AvgDays
           : 0,
+        AvgTransitDays: active.has(dc.DCName)
+          ? dc.AvgTransitDays ?? null
+          : null,
         UtilPct: active.has(dc.DCName)
           ? clampPercent(context.hasUtilCaps ? Math.min(dc.UtilPct, payload.input.utilCap) : dc.UtilPct)
           : 0,
@@ -549,11 +552,13 @@ const summarizeDcResults = (rows: ScenarioRunResultsDC[]): ScenarioBuildSummary 
       totalUnits: 0,
       costPerUnit: 0,
       avgDays: 0,
+      avgTransitDays: null,
       maxUtil: 0,
       totalSpaceRequired: 0,
       excludedBySla: 0,
       slaBreachCount: 0,
       missingAvgDays: 0,
+      slaBreachPct: 0,
     };
   }
 
@@ -570,27 +575,37 @@ const summarizeDcResults = (rows: ScenarioRunResultsDC[]): ScenarioBuildSummary 
     : 0;
   let avgDaysNumerator = 0;
   let avgDaysWeight = 0;
+  let avgTransitDaysNumerator = 0;
+  let avgTransitDaysWeight = 0;
   rows.forEach((row) => {
     const weight = row.VolumeUnits > 0 ? row.VolumeUnits : 1;
     avgDaysNumerator += row.AvgDays * weight;
     avgDaysWeight += weight;
+    if (Number(row.AvgTransitDays ?? 0) > 0) {
+      avgTransitDaysNumerator += Number(row.AvgTransitDays) * weight;
+      avgTransitDaysWeight += weight;
+    }
   });
   const avgDays = avgDaysWeight > 0 ? avgDaysNumerator / avgDaysWeight : 0;
+  const avgTransitDays = avgTransitDaysWeight > 0 ? avgTransitDaysNumerator / avgTransitDaysWeight : null;
   const maxUtil = rows.reduce((max, row) => Math.max(max, row.UtilPct), 0);
   const totalSpaceRequired = rows.reduce((sum, row) => sum + row.SpaceRequired, 0);
   const excludedBySla = rows.reduce((sum, row) => sum + row.ExcludedBySLACount, 0);
   const slaBreachCount = rows.reduce((sum, row) => sum + row.SLABreachCount, 0);
   const missingAvgDays = rows.filter((row) => row.AvgDays === 0).length;
+  const slaBreachPct = totalUnits > 0 ? (slaBreachCount / totalUnits) * 100 : 0;
 
   return {
     totalCost,
     totalUnits,
     costPerUnit: Number(weightedCostPerUnit.toFixed(2)),
     avgDays: Number(avgDays.toFixed(2)),
+    avgTransitDays: avgTransitDays === null ? null : Number(avgTransitDays.toFixed(2)),
     maxUtil: Number(maxUtil.toFixed(2)),
     totalSpaceRequired,
     excludedBySla,
     slaBreachCount,
+    slaBreachPct,
     missingAvgDays,
   };
 };
@@ -603,10 +618,12 @@ const summarizeBaselineFromHeader = (
   totalUnits: Number(header.TotalCount ?? 0),
   costPerUnit: Number(header.CostPerUnit ?? 0),
   avgDays: Number(header.AvgDeliveryDays ?? 0),
+  avgTransitDays: header.AvgTransitDays ?? null,
   maxUtil: Number(header.MaxUtilPct ?? 0),
   totalSpaceRequired: Number(header.TotalSpaceRequired ?? 0),
   excludedBySla: Number(header.ExcludedBySLACount ?? 0),
   slaBreachCount: rows.reduce((sum, row) => sum + row.SLABreachCount, 0),
+  slaBreachPct: Number(header.SLABreachPct ?? 0),
   missingAvgDays: rows.filter((row) => row.AvgDays === 0).length,
 });
 
@@ -623,6 +640,7 @@ const zeroSuppressedDcRow = (row: ScenarioRunResultsDC): ScenarioRunResultsDC =>
   TotalCost: 0,
   VolumeUnits: 0,
   AvgDays: 0,
+  AvgTransitDays: null,
   UtilPct: 0,
   SpaceRequired: 0,
   SpaceCore: 0,
@@ -662,10 +680,12 @@ const applySummaryToHeader = (
   TotalCost: summary.totalCost,
   CostPerUnit: summary.costPerUnit,
   AvgDeliveryDays: summary.avgDays,
+  AvgTransitDays: summary.avgTransitDays,
   TotalCount: summary.totalUnits,
   MaxUtilPct: summary.maxUtil,
   TotalSpaceRequired: summary.totalSpaceRequired,
   ExcludedBySLACount: summary.excludedBySla,
+  SLABreachPct: summary.slaBreachPct,
   AlertFlags: buildAlertFlagsFromSummary(summary),
   LastUpdatedAt: lastUpdatedAt,
 });
@@ -778,6 +798,22 @@ export const buildScenarioArtifacts = (
     summary = allocation.summary;
   }
 
+  let computedAvgTransitDays: number | null = null;
+  if (resultsLanes && resultsLanes.length > 0) {
+    let transitNumerator = 0;
+    let transitWeight = 0;
+    resultsLanes.forEach((lane) => {
+      if (lane.AvgTransitDays != null && lane.AvgTransitDays > 0) {
+        const units = lane.TotalCount || lane.TotalUnits || lane.VolumeUnits || 1;
+        transitNumerator += lane.AvgTransitDays * units;
+        transitWeight += units;
+      }
+    });
+    if (transitWeight > 0) {
+      computedAvgTransitDays = Number((transitNumerator / transitWeight).toFixed(2));
+    }
+  }
+
   const header: ScenarioRunHeader = resultsDC.length === 0
     ? headerBase
     : mode === 'baseline' && baseline
@@ -786,7 +822,7 @@ export const buildScenarioArtifacts = (
         TotalCost: Number(baseline.TotalCost ?? headerBase.TotalCost ?? 0),
         CostPerUnit: Number(baseline.CostPerUnit ?? headerBase.CostPerUnit ?? 0),
         AvgDeliveryDays: Number(baseline.AvgDeliveryDays ?? headerBase.AvgDeliveryDays ?? 0),
-        AvgTransitDays: baseline.AvgTransitDays ?? headerBase.AvgTransitDays ?? null,
+        AvgTransitDays: baseline.AvgTransitDays ?? computedAvgTransitDays ?? headerBase.AvgTransitDays ?? null,
         TotalCount: Number(baseline.TotalCount ?? headerBase.TotalCount ?? 0),
         SLABreachPct: Number(baseline.SLABreachPct ?? headerBase.SLABreachPct ?? 0),
         ExcludedBySLACount: Number(baseline.ExcludedBySLACount ?? headerBase.ExcludedBySLACount ?? 0),
@@ -803,10 +839,12 @@ export const buildScenarioArtifacts = (
         TotalCost: summary.totalCost,
         CostPerUnit: summary.costPerUnit,
         AvgDeliveryDays: summary.avgDays,
+        AvgTransitDays: computedAvgTransitDays,
         TotalCount: summary.totalUnits,
         MaxUtilPct: summary.maxUtil,
         TotalSpaceRequired: summary.totalSpaceRequired,
         ExcludedBySLACount: summary.excludedBySla,
+        SLABreachPct: summary.slaBreachPct,
         AlertFlags: buildAlertFlagsFromSummary(summary),
       };
 
