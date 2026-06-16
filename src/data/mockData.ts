@@ -78,6 +78,9 @@ export interface ScenarioRunResultsDC {
   RankOverall: number;
   IsSuppressed: 'Y' | 'N';
   OvercapFlag?: 'Y' | 'N';
+  Rent?: number;
+  ContractLabor?: number;
+  ManagementFee?: number;
 }
 
 export interface ScenarioRunResultsLane {
@@ -622,7 +625,7 @@ export const scenarioRunConfigs: ScenarioRunConfig[] = [
   },
 ];
 
-export const scenarioRunResultsDC: ScenarioRunResultsDC[] = [
+const rawScenarioRunResultsDC: ScenarioRunResultsDC[] = [
   { ScenarioRunID: 'SR001', DCName: 'DC1', TotalCost: 2847320, VolumeUnits: 448200, AvgDays: 3.8, UtilPct: 72, SpaceRequired: 78000, SpaceCore: 62000, SpaceBCV: 16000, SLABreachCount: 4, ExcludedBySLACount: 2, RankOverall: 2, IsSuppressed: 'N' },
   { ScenarioRunID: 'SR001', DCName: 'DC2', TotalCost: 1924800, VolumeUnits: 298400, AvgDays: 4.1, UtilPct: 65, SpaceRequired: 64000, SpaceCore: 52000, SpaceBCV: 12000, SLABreachCount: 3, ExcludedBySLACount: 1, RankOverall: 3, IsSuppressed: 'N' },
   { ScenarioRunID: 'SR001', DCName: 'DC3', TotalCost: 3124680, VolumeUnits: 512400, AvgDays: 4.5, UtilPct: 78, SpaceRequired: 82000, SpaceCore: 64000, SpaceBCV: 18000, SLABreachCount: 5, ExcludedBySLACount: 4, RankOverall: 1, IsSuppressed: 'N' },
@@ -664,6 +667,31 @@ export const scenarioRunResultsDC: ScenarioRunResultsDC[] = [
   { ScenarioRunID: 'SR007', DCName: 'Pharr TX', TotalCost: 1720000, VolumeUnits: 262000, AvgDays: 5.2, UtilPct: 72, SpaceRequired: 64000, SpaceCore: 48000, SpaceBCV: 16000, SLABreachCount: 5, ExcludedBySLACount: 3, RankOverall: 5, IsSuppressed: 'N' },
   { ScenarioRunID: 'SR007', DCName: 'Stratford CT', TotalCost: 980000, VolumeUnits: 162000, AvgDays: 4.1, UtilPct: 52, SpaceRequired: 42000, SpaceCore: 32000, SpaceBCV: 10000, SLABreachCount: 3, ExcludedBySLACount: 2, RankOverall: 6, IsSuppressed: 'N' },
 ];
+
+export const getAdditionalCostsForDc = (dcName: string) => {
+  const norm = dcName.toLowerCase().trim();
+  if (norm === 'dc1' || norm === 'elwood') {
+    return { Rent: 2255715, ContractLabor: 2841864, ManagementFee: 1621690 };
+  }
+  if (norm === 'dc2' || norm === 'dallas') {
+    return { Rent: 2121872, ContractLabor: 1375751, ManagementFee: 856068 };
+  }
+  if (norm === 'dc3' || norm === 'los angeles') {
+    return { Rent: 5638491, ContractLabor: 2494351, ManagementFee: 1451546 };
+  }
+  if (norm === 'dc4' || norm === 'r virginia' || norm === 'virginia') {
+    return { Rent: 3451005, ContractLabor: 4015333, ManagementFee: 2044227 };
+  }
+  return { Rent: 0, ContractLabor: 0, ManagementFee: 0 };
+};
+
+export const scenarioRunResultsDC = rawScenarioRunResultsDC.map((row) => {
+  const costs = getAdditionalCostsForDc(row.DCName);
+  return {
+    ...row,
+    ...costs,
+  };
+});
 
 export const scenarioRunResultsLanes: ScenarioRunResultsLane[] = [
   { ScenarioRunID: 'SR001', Dest3Zip: '900', DestState: 'CA', Channel: 'B2C', Terms: 'Prepaid', CustomerGroup: 'Other', AssignedDC: 'DC1', RankedOption1DC: 'DC1', RankedOption1Cost: 6.20, RankedOption1Days: 3, RankedOption2DC: 'DC3', RankedOption2Cost: 7.40, RankedOption2Days: 4, RankedOption3DC: 'Pharr TX', RankedOption3Cost: 8.90, RankedOption3Days: 6, ChosenRank: 1, LaneCost: 6.20, CostDeltaVsBest: 0, DeliveryDays: 3, SLABreachFlag: 'N', ExcludedBySLAFlag: 'N', FootprintContribution: 12400, UtilImpactPct: 3.8, OverrideAppliedFlag: 'N', OverrideVersion: null, NotesFlag: '' },

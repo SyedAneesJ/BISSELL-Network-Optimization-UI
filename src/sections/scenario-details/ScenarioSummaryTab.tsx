@@ -6,6 +6,7 @@ import {
   ScenarioRunHeader,
   ScenarioRunResultsDC,
   ScenarioRunResultsLane,
+  getAdditionalCostsForDc,
 } from '@/data';
 import { formatCurrencyOrNA, formatDecimalOrNA, formatNumberOrNA, formatTextOrNA } from '@/utils';
 
@@ -46,6 +47,13 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
     return Math.max(0, Math.min(100, (numerator / denominator) * 100));
   };
 
+  // Returns the true percentage (unclamped) against actual DC capacity
+  const truePct = (numerator: number, dc: ScenarioRunResultsDC): number => {
+    const base = Number(dc.ActualSpace ?? dc.SpaceCore ?? 0);
+    if (!Number.isFinite(base) || base <= 0) return 0;
+    return (numerator / base) * 100;
+  };
+
   const getSegmentStyle = (value: number, total: number) => {
     if (value <= 0 || total <= 0) {
       return {
@@ -66,6 +74,14 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
     (max, dc) => (Number(dc.UtilPct) > (max ? Number(max.UtilPct) : -1) ? dc : max),
     null as ScenarioRunResultsDC | null,
   );
+  const additionalCost = dcResults.reduce((sum, dc) => {
+    if (dc.IsSuppressed === 'Y') return sum;
+    const costs = getAdditionalCostsForDc(dc.DCName);
+    return sum + (dc.Rent ?? costs.Rent) + (dc.ContractLabor ?? costs.ContractLabor) + (dc.ManagementFee ?? costs.ManagementFee);
+  }, 0);
+
+  const baseCost = Math.max(0, scenario.TotalCost - additionalCost);
+
   const maxUtilDisplay = scenario.MaxUtilPct > 0 
     ? `${scenario.MaxUtilPct.toFixed(2)}%${maxUtilDc && maxUtilDc.DCName ? ` | ${maxUtilDc.DCName}` : ''}` 
     : 'NA';
@@ -87,20 +103,45 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
         )}
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        <KPICard label="Total Cost" value={scenario.TotalCost} format="currency" />
-        <KPICard label="Cost per Unit" value={formatCurrencyOrNA(scenario.CostPerUnit, 2)} />
-        <KPICard label="Avg Delivery Days" value={formatDecimalOrNA(scenario.AvgDeliveryDays, 2)} />
-        <KPICard label="Avg Transit Days" value={formatDecimalOrNA(scenario.AvgTransitDays, 2)} />
-        <KPICard label="SLA Breach %" value={Number.isFinite(scenario.SLABreachPct) ? scenario.SLABreachPct : 'NA'} format="decimal" />
-        <KPICard label="Max Utilization %" value={maxUtilDisplay} />
-      </div>
+      <div className="space-y-6">
+        {/* Cost Metrics */}
+        <div>
+          <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2.5 flex items-center gap-1.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-blue-500"></span> Cost Metrics
+          </h4>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <KPICard label="Total Cost" value={scenario.TotalCost} format="currency" />
+            <KPICard label="Base Cost" value={baseCost} format="currency" />
+            <KPICard label="Additional Cost" value={additionalCost} format="currency" />
+            <KPICard label="Cost per Unit" value={formatCurrencyOrNA(scenario.CostPerUnit, 2)} />
+          </div>
+        </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <KPICard label="Total Space Required" value={scenario.TotalSpaceRequired} format="number" tooltip="Total warehouse space required (sq ft)" />
-        <KPICard label={`Space ${entityLabels.first}`} value={scenario.SpaceCore} format="number" tooltip={`Space for ${entityLabels.first}`} />
-        <KPICard label={`Space ${entityLabels.second}`} value={scenario.SpaceBCV} format="number" tooltip={`Space for ${entityLabels.second}`} />
-        <KPICard label="Total Count" value={formatNumberOrNA(scenario.TotalCount)} tooltip="Dataset total count" />
+        {/* Service Metrics */}
+        <div>
+          <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2.5 flex items-center gap-1.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-green-500"></span> Service Metrics
+          </h4>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <KPICard label="Avg Delivery Days" value={formatDecimalOrNA(scenario.AvgDeliveryDays, 2)} />
+            <KPICard label="Avg Transit Days" value={formatDecimalOrNA(scenario.AvgTransitDays, 2)} />
+            <KPICard label="SLA Breach %" value={Number.isFinite(scenario.SLABreachPct) ? scenario.SLABreachPct : 'NA'} format="decimal" />
+            <KPICard label="Max Utilization %" value={maxUtilDisplay} />
+          </div>
+        </div>
+
+        {/* Space & Volume Metrics */}
+        <div>
+          <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2.5 flex items-center gap-1.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-indigo-500"></span> Space & Volume Metrics
+          </h4>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <KPICard label="Total Space Required" value={scenario.TotalSpaceRequired} format="number" />
+            <KPICard label={`Space ${entityLabels.first}`} value={scenario.SpaceCore} format="number" />
+            <KPICard label={`Space ${entityLabels.second}`} value={scenario.SpaceBCV} format="number" />
+            <KPICard label="Total Count" value={formatNumberOrNA(scenario.TotalCount)} />
+          </div>
+        </div>
       </div>
 
       {scenarioConfig ? (
@@ -146,9 +187,31 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
               </div>
 
               <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-slate-600">Cost:</span>
-                  <span className="font-medium">${dc.TotalCost.toLocaleString('en-US')}</span>
+                <div className="flex justify-between border-b border-slate-100 pb-1 font-medium">
+                  <span className="text-slate-600">Base Cost:</span>
+                  <span>${dc.TotalCost.toLocaleString('en-US')}</span>
+                </div>
+                {dc.IsSuppressed === 'N' && (
+                  <div className="space-y-1 pl-2 border-l-2 border-blue-200 text-xs my-1 text-slate-500">
+                    <div className="flex justify-between">
+                      <span>Rent:</span>
+                      <span>${(dc.Rent ?? 0).toLocaleString('en-US')}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Contract Labor:</span>
+                      <span>${(dc.ContractLabor ?? 0).toLocaleString('en-US')}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Management Fee:</span>
+                      <span>${(dc.ManagementFee ?? 0).toLocaleString('en-US')}</span>
+                    </div>
+                  </div>
+                )}
+                <div className="flex justify-between font-semibold text-slate-900 pt-1 border-t border-slate-100 mb-2">
+                  <span>Total Cost:</span>
+                  <span>
+                    ${(dc.TotalCost + (dc.IsSuppressed === 'N' ? (dc.Rent ?? 0) + (dc.ContractLabor ?? 0) + (dc.ManagementFee ?? 0) : 0)).toLocaleString('en-US')}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-600">Avg Days:</span>
@@ -192,13 +255,13 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
                   >
                     <div
                       className="bg-blue-500 rounded-l"
-                      style={getSegmentStyle(getUtilSpace(dc), Math.max(getUtilSpace(dc), dc.SpaceRequired, 1))}
-                      aria-label={`Util Space ${clampBarWidth(getUtilSpace(dc), Math.max(getUtilSpace(dc), dc.SpaceRequired, 1)).toFixed(2)}%`}
+                      style={getSegmentStyle(clampBarWidth(getUtilSpace(dc), dc.ActualSpace ?? dc.SpaceCore ?? 1), Math.max(clampBarWidth(getUtilSpace(dc), dc.ActualSpace ?? dc.SpaceCore ?? 1), clampBarWidth(dc.SpaceRequired, dc.ActualSpace ?? dc.SpaceCore ?? 1), 1))}
+                      aria-label={`Util Space ${truePct(getUtilSpace(dc), dc).toFixed(2)}%`}
                     />
                     <div
                       className="bg-green-500 rounded-r"
-                      style={getSegmentStyle(dc.SpaceRequired, Math.max(getUtilSpace(dc), dc.SpaceRequired, 1))}
-                      aria-label={`Space Required ${clampBarWidth(dc.SpaceRequired, Math.max(dc.ActualSpace ?? dc.SpaceCore, dc.SpaceRequired, 1)).toFixed(2)}%`}
+                      style={getSegmentStyle(clampBarWidth(dc.SpaceRequired, dc.ActualSpace ?? dc.SpaceCore ?? 1), Math.max(clampBarWidth(getUtilSpace(dc), dc.ActualSpace ?? dc.SpaceCore ?? 1), clampBarWidth(dc.SpaceRequired, dc.ActualSpace ?? dc.SpaceCore ?? 1), 1))}
+                      aria-label={`Space Required ${truePct(dc.SpaceRequired, dc).toFixed(2)}%`}
                     />
                   </div>
                   <div className="flex justify-between text-xs text-slate-600 mt-1 gap-1">
@@ -206,8 +269,8 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
                     <span className="truncate text-right">{dc.SpaceRequired.toLocaleString('en-US')}</span>
                   </div>
                   <div className="flex justify-between text-[11px] text-slate-500 mt-0.5 gap-1">
-                    <span>Util Space: {clampBarWidth(getUtilSpace(dc), Math.max(getUtilSpace(dc), dc.SpaceRequired, 1)).toFixed(2)}%</span>
-                    <span>Space Required: {clampBarWidth(dc.SpaceRequired, Math.max(getUtilSpace(dc), dc.SpaceRequired, 1)).toFixed(2)}%</span>
+                    <span>Util Space: {truePct(getUtilSpace(dc), dc).toFixed(2)}%</span>
+                    <span className={truePct(dc.SpaceRequired, dc) > 100 ? 'text-red-600 font-semibold' : ''}>Space Required: {truePct(dc.SpaceRequired, dc).toFixed(2)}%</span>
                   </div>
                 </div>
 

@@ -1,4 +1,4 @@
-import DatasetApi from './datasetApi';
+﻿import DatasetApi from './datasetApi';
 import { csvToObjects, toCSV } from '@/utils';
 import {
   ScenarioRunResultsLane,
@@ -257,6 +257,37 @@ const readRegistryField = (row: ScenarioDatasetRegistryCsvRow, keys: string[]): 
   return '';
 };
 
+/**
+ * Like readRegistryField but stops at the FIRST column key that EXISTS in the
+ * row, returning its raw value even when it is empty/zero.  Returns null only
+ * when NO key from the list is found in the row at all.
+ *
+ * Use this for fields where an explicitly-empty cell must be honoured as 0
+ * rather than falling through to the next alias (e.g. laneSpaceSqFt = '' must
+ * not cascade to '3-zip x Channel Containers x Origin').
+ */
+const readRegistryFieldRaw = (row: ScenarioDatasetRegistryCsvRow, keys: string[]): string | null => {
+  const rowEntries = Object.entries(row);
+  for (const key of keys) {
+    const direct = row[key];
+    if (direct !== undefined && direct !== null) return String(direct).trim();
+    const normalized = key.trim().toLowerCase();
+    const match = rowEntries.find(([rowKey]) => rowKey.trim().toLowerCase() === normalized);
+    if (match !== undefined) return String(match[1]).trim();
+  }
+  return null; // column genuinely absent from this row
+};
+const hasRegistryField = (row: ScenarioDatasetRegistryCsvRow, keys: string[]): boolean => {
+  const rowEntries = Object.entries(row);
+  for (const key of keys) {
+    if (row[key] !== undefined) return true;
+    const normalized = key.trim().toLowerCase();
+    const fallback = rowEntries.some(([rowKey]) => rowKey.trim().toLowerCase() === normalized);
+    if (fallback) return true;
+  }
+  return false;
+};
+
 const REGISTRY_FIELD_ALIASES = {
   datasetId: ['datasetId', 'dataset_id', 'Dataset ID', 'DatasetId'],
   dataflowId: ['dataflowId', 'dataflow_id', 'Dataflow ID', 'DataflowId'],
@@ -361,7 +392,11 @@ const normalizeRawLaneRow = (
   const freightTerms = readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.terms]);
   const distributionCost = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.distributionCost]));
   const tlSpend = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.tlSpend]));
-  const workingCapacity = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.workingCapacity]));
+  // Use readRegistryFieldRaw so that an empty laneSpaceSqFt cell is honoured as 0
+  // rather than falling through to the next alias ('3-zip x Channel Containers x Origin').
+  const workingCapacityRaw = readRegistryFieldRaw(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.workingCapacity]);
+  const hasWorkingCapacityColumn = workingCapacityRaw !== null;
+  const workingCapacity = asNumber(workingCapacityRaw ?? '');
   const inboundSpend = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.inboundSpend]));
   const parcelSpend = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.parcelSpend]));
   const costPerUnit = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.costPerUnit]));
@@ -385,11 +420,9 @@ const normalizeRawLaneRow = (
         ? shipToDeliverDays
         : orderToDeliverDays;
   const laneUnits = totalUnits > 0 ? totalUnits : 0;
-  const footprintContribution = workingCapacity > 0
+  const footprintContribution = hasWorkingCapacityColumn
     ? workingCapacity
-    : threshold > 0
-      ? threshold
-      : 0;
+    : (threshold > 0 ? threshold : 0);
   const utilImpactPct = threshold > 0
     ? Number(((workingCapacity / threshold) * 100).toFixed(2))
     : 0;
@@ -434,7 +467,7 @@ const normalizeRawLaneRow = (
     TotalCost: rawTotalCost || laneCost,
     CostRank: 0,
     CostPerUnit: costPerUnit > 0 ? costPerUnit : undefined,
-    WorkingCapacity: workingCapacity || undefined,
+    WorkingCapacity: hasWorkingCapacityColumn ? workingCapacity : (workingCapacity || undefined),
     DistributionCost: distributionCost || undefined,
     TlSpend: tlSpend || undefined,
     BreachFlag: breachFlag,
@@ -542,7 +575,13 @@ const normalizeNormalizedLaneRow = (row: DomoLaneRow): ScenarioRunResultsLane | 
     LtlSpend: asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.ltlSpend]), normalized.LtlSpend || 0),
     TotalCost: asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.totalCost]), normalized.TotalCost || laneCost),
     CostRank: costRank,
-    WorkingCapacity: asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.workingCapacity]), normalized.WorkingCapacity || 0) || undefined,
+    WorkingCapacity: (() => {
+      const hasCol = hasRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.workingCapacity]);
+      if (hasCol) {
+        return asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.workingCapacity]));
+      }
+      return normalized.WorkingCapacity;
+    })(),
     DistributionCost: asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.distributionCost]), normalized.DistributionCost || 0) || undefined,
     TlSpend: asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.tlSpend]), normalized.TlSpend || 0) || undefined,
     BreachFlag: readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.breachFlag]) || normalized.BreachFlag,
@@ -578,6 +617,44 @@ const laneTotalCost = (row: ScenarioRunResultsLane): number =>
 
 const laneOptionDc = (row: ScenarioRunResultsLane | null | undefined): string =>
   row?.AssignedDC || row?.CostingWarehouse || row?.DefaultShipFrom || '';
+
+const resolveSpaceProfile = (row: DomoDcRow, datasetInfo?: ScenarioDatasetRegistryItem) => {
+  const scenarioTypeValue = asText(getField(row, FIELD_ALIASES.scenarioType)).toLowerCase();
+  const datasetScenarioLabel = String(datasetInfo?.scenarioLabel || '').toLowerCase();
+  const isBaselineLike =
+    scenarioTypeValue.includes('baseline') ||
+    datasetScenarioLabel.includes('baseline');
+  const isBcvLike =
+    scenarioTypeValue.includes('bcv') ||
+    scenarioTypeValue.includes('consolidation') ||
+    datasetScenarioLabel.includes('bcv') ||
+    datasetScenarioLabel.includes('consolidation');
+  const isCoreOnly = !isBaselineLike && !isBcvLike;
+
+  const squareFootage = asNumber(getField(row, FIELD_ALIASES.squareFootage));
+  const workingCapacity = asNumber(getField(row, FIELD_ALIASES.workingCapacity));
+  const rawCoreSpace = asNumberOptional(getField(row, FIELD_ALIASES.coreSpace));
+  const explicitBcvSpace = asNumberOptional(getField(row, FIELD_ALIASES.bcvSpace));
+
+  const actualSpace = squareFootage > 0 ? squareFootage : (rawCoreSpace ?? workingCapacity ?? 0);
+  const spaceRequired = workingCapacity;
+  const spaceCore = isCoreOnly
+    ? (spaceRequired > 0 ? spaceRequired : 0)
+    : (rawCoreSpace ?? spaceRequired ?? 0);
+  const spaceBcv = isCoreOnly
+    ? 0
+    : (explicitBcvSpace ?? 0);
+
+  return {
+    isBaselineLike,
+    isBcvLike,
+    isCoreOnly,
+    actualSpace,
+    spaceRequired,
+    spaceCore,
+    spaceBcv,
+  };
+};
 
 const rankLaneRows = (rows: ScenarioRunResultsLane[]): ScenarioRunResultsLane[] => {
   const grouped = rows.reduce<Record<string, ScenarioRunResultsLane[]>>((acc, row) => {
@@ -1235,7 +1312,7 @@ const describeValues = (values: string[]): string => {
   return 'Multiple';
 };
 
-const normalizeRegion = (regionRaw: string, defaultRegion: ScenarioDatasetRegistryItem['regionDefault']): 'US' | 'Canada' => {
+export const normalizeRegion = (regionRaw: string, defaultRegion: ScenarioDatasetRegistryItem['regionDefault']): 'US' | 'Canada' => {
   const normalized = regionRaw.toLowerCase();
   if (normalized.includes('canada') || normalized === 'ca') return 'Canada';
   if (normalized.includes('us') || normalized.includes('usa') || normalized.includes('united states')) return 'US';
@@ -1412,25 +1489,9 @@ export const mapDcResultsFromRows = (
       return nameA.localeCompare(nameB);
     })
     .map((row, idx) => {
-      const squareFootage = asNumber(getField(row, FIELD_ALIASES.squareFootage));
-      const workingCapacity = asNumber(getField(row, FIELD_ALIASES.workingCapacity));
-      const rawCoreSpace = asNumberOptional(getField(row, FIELD_ALIASES.coreSpace));
-      const explicitBcvSpace = asNumberOptional(getField(row, FIELD_ALIASES.bcvSpace));
-      const spaceRequired = asNumberOptional(getField(row, FIELD_ALIASES.workingCapacity)) ?? workingCapacity;
       const avgTransitDays = asNumberOptional(getField(row, FIELD_ALIASES.avgTransitDays));
       const slaBreachPct = asNumberOptional(getField(row, FIELD_ALIASES.slaBreachPct));
-      const scenarioTypeValue = asText(getField(row, FIELD_ALIASES.scenarioType)).toLowerCase();
-      const datasetScenarioLabel = String(_datasetInfo?.scenarioLabel || '').toLowerCase();
-      const isBaselineLike =
-        scenarioTypeValue.includes('baseline') ||
-        datasetScenarioLabel.includes('baseline');
-      const resolvedActualSpace = squareFootage > 0 ? squareFootage : (rawCoreSpace ?? 0);
-      const resolvedCoreSpace = isBaselineLike
-        ? (rawCoreSpace ?? resolvedActualSpace)
-        : (rawCoreSpace ?? resolvedActualSpace);
-      const resolvedBcvSpace = isBaselineLike
-        ? (explicitBcvSpace ?? spaceRequired ?? 0)
-        : (explicitBcvSpace ?? workingCapacity ?? 0);
+      const spaceProfile = resolveSpaceProfile(row, _datasetInfo);
     const maxUtil = asNumber(getField(row, FIELD_ALIASES.maxUtilizationPct));
     const avgDaysRaw =
       asNumberOptional(getField(row, FIELD_ALIASES.avgDeliveryDays)) ??
@@ -1441,16 +1502,16 @@ export const mapDcResultsFromRows = (
           DCName: asText(getField(row, FIELD_ALIASES.dc)),
           TotalCost: asAbsNumber(getField(row, FIELD_ALIASES.totalCost)),
           VolumeUnits: asNumber(getField(row, FIELD_ALIASES.totalUnits)),
-      AvgDays: avgDaysRaw ?? 0,
-      AvgTransitDays: avgTransitDays ?? null,
-      SLABreachPct: slaBreachPct ?? null,
-      UtilPct: Number((maxUtil || asPercent(getField(row, FIELD_ALIASES.palletUtilizationPct))).toFixed(2)),
-      SpaceRequired: Number(spaceRequired.toFixed(2)),
-      SpaceCore: Number(resolvedCoreSpace.toFixed(2)),
-      ActualSpace: Number(resolvedActualSpace.toFixed(2)),
-          SpaceBCV: Number(resolvedBcvSpace.toFixed(2)),
+          AvgDays: avgDaysRaw ?? 0,
+          AvgTransitDays: avgTransitDays ?? null,
+          SLABreachPct: slaBreachPct ?? null,
+          UtilPct: Number((maxUtil || asPercent(getField(row, FIELD_ALIASES.palletUtilizationPct))).toFixed(2)),
+          SpaceRequired: Number(spaceProfile.spaceRequired.toFixed(2)),
+          SpaceCore: Number(spaceProfile.spaceCore.toFixed(2)),
+          ActualSpace: Number(spaceProfile.actualSpace.toFixed(2)),
+          SpaceBCV: Number(spaceProfile.spaceBcv.toFixed(2)),
           SLABreachCount: asNumber(getField(row, FIELD_ALIASES.slaBreachCount)),
-          ExcludedBySLACount: Math.max(0, Math.round(squareFootage - spaceRequired)),
+          ExcludedBySLACount: Math.max(0, Math.round(spaceProfile.actualSpace - spaceProfile.spaceRequired)),
           RankOverall: idx + 1,
           IsSuppressed: (asAbsNumber(getField(row, FIELD_ALIASES.totalCost)) <= 0 && asNumber(getField(row, FIELD_ALIASES.totalUnits)) <= 0)
             ? 'Y'
@@ -1516,11 +1577,6 @@ export const buildScenarioHeaderFromRows = (
   entityOrderOverride?: string[],
   datasetInfo?: ScenarioDatasetRegistryItem
 ): ScenarioRunHeader => {
-  const isBaselineLike = rows.some((row) => {
-    const scenarioTypeValue = asText(getField(row, FIELD_ALIASES.scenarioType)).toLowerCase();
-    const datasetScenarioLabel = String(datasetInfo?.scenarioLabel || '').toLowerCase();
-    return scenarioTypeValue.includes('baseline') || datasetScenarioLabel.includes('baseline');
-  });
   const totalCost = rows.reduce((sum, row) => sum + asAbsNumber(getField(row, FIELD_ALIASES.totalCost)), 0);
   const totalUnits = rows.reduce((sum, row) => sum + asNumber(getField(row, FIELD_ALIASES.totalUnits)), 0);
   let avgDaysNumerator = 0;
@@ -1604,9 +1660,8 @@ export const buildScenarioHeaderFromRows = (
   const latestComments = uniqueStrings(rows.map((row) => asText(getField(row, FIELD_ALIASES.latestComment))));
 
   const totalSquareFootage = Math.round(rows.reduce((sum, row) => {
-    const squareFootage = asNumber(getField(row, FIELD_ALIASES.squareFootage));
-    const rawCoreSpace = asNumberOptional(getField(row, FIELD_ALIASES.coreSpace));
-    return sum + (isBaselineLike ? (squareFootage > 0 ? squareFootage : (rawCoreSpace ?? 0)) : squareFootage);
+    const spaceProfile = resolveSpaceProfile(row, datasetInfo);
+    return sum + spaceProfile.actualSpace;
   }, 0));
   const totalWorkingCapacity = Math.round(rows.reduce(
     (sum, row) => sum + asNumber(getField(row, FIELD_ALIASES.workingCapacity)),
@@ -1615,14 +1670,12 @@ export const buildScenarioHeaderFromRows = (
   const excludedBySla = Math.max(0, totalSquareFootage - totalWorkingCapacity);
 
   const totalCoreSpace = rows.reduce((sum, row) => {
-    const squareFootage = asNumber(getField(row, FIELD_ALIASES.squareFootage));
-    const rawCoreSpace = asNumberOptional(getField(row, FIELD_ALIASES.coreSpace));
-    return sum + (isBaselineLike ? (rawCoreSpace ?? squareFootage) : squareFootage);
+    const spaceProfile = resolveSpaceProfile(row, datasetInfo);
+    return sum + spaceProfile.spaceCore;
   }, 0);
   const totalBcvSpace = rows.reduce((sum, row) => {
-    const explicit = asNumberOptional(getField(row, FIELD_ALIASES.bcvSpace));
-    const workingCapacity = asNumber(getField(row, FIELD_ALIASES.workingCapacity));
-    return sum + (isBaselineLike ? (explicit ?? workingCapacity) : (explicit ?? workingCapacity));
+    const spaceProfile = resolveSpaceProfile(row, datasetInfo);
+    return sum + spaceProfile.spaceBcv;
   }, 0);
 
   const weightedCostPerUnit = totalUnits > 0
@@ -1689,17 +1742,25 @@ export const buildScenarioHeaderFromRows = (
 };
 
 export const buildDataHealthSnapshotFromRows = (rows: DomoDcRow[]): DataHealthSnapshot => {
-  const totalRows = rows.length || 1;
-  const missingAvgDays = rows.filter((row) =>
+  const dcRows = rows.filter((row) => {
+    const dcName = asText(getField(row, FIELD_ALIASES.dc));
+    return dcName !== '';
+  });
+  const totalRows = dcRows.length || 1;
+  const missingAvgDays = dcRows.filter((row) =>
     asNumberOptional(getField(row, FIELD_ALIASES.avgDeliveryDays)) === null &&
     asNumberOptional(getField(row, FIELD_ALIASES.avgTransitDays)) === null
   ).length;
-  const missingSlaPct = rows.filter((row) => asNumberOptional(getField(row, FIELD_ALIASES.slaBreachPct)) === null).length;
-  const missingCapacity = rows.filter((row) => {
+  const missingSlaPct = dcRows.filter((row) =>
+    asNumberOptional(getField(row, FIELD_ALIASES.slaBreachPct)) === null &&
+    asNumberOptional(getField(row, FIELD_ALIASES.slaBreachCount)) === null &&
+    getField(row, FIELD_ALIASES.breachFlag) === undefined
+  ).length;
+  const missingCapacity = dcRows.filter((row) => {
     const capacity = asNumberOptional(getField(row, FIELD_ALIASES.workingCapacity));
     return capacity === null || capacity === 0;
   }).length;
-  const missingSquare = rows.filter((row) => {
+  const missingSquare = dcRows.filter((row) => {
     const square = asNumberOptional(getField(row, FIELD_ALIASES.squareFootage));
     return square === null || square === 0;
   }).length;

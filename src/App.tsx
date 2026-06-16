@@ -18,11 +18,13 @@ import {
   ScenarioRunResultsDC,
   ScenarioRunResultsLane,
 } from '@/data';
+import { getAdditionalCostsForDc } from '@/data';
 import {
   buildScenarioIdentityFromRows,
   buildScenarioHeaderFromRows,
   buildDataHealthSnapshotFromRows,
   buildDatasetOptionSets,
+  normalizeRegion,
   DatasetOptionSets,
   loadCanadaScenarioLaneDataset,
   loadCanadaStratfordScenarioLaneDataset as loadCanadaStratfordScenarioLaneDatasetRaw,
@@ -786,7 +788,38 @@ function App() {
   const [scenarioHistoryState, setScenarioHistoryState] = useState<ScenarioHistoryState>(EMPTY_SCENARIO_HISTORY);
   const [comparisonState, setComparisonState] = useState<ComparisonState>(EMPTY_COMPARISON_STATE);
   const [domoDcLoaded, setDomoDcLoaded] = useState(false);
-  const [dataHealthSnapshot, setDataHealthSnapshot] = useState(() => buildDataHealthSnapshotFromRows([]));
+  const [dataHealthSnapshots, setDataHealthSnapshots] = useState<Record<'All' | 'US' | 'Canada', DataHealthSnapshot>>(() => ({
+    All: {
+      SnapshotTime: '2026-01-10T06:00:00',
+      ForecastFreshness: 'Warn',
+      RatesCoveragePct: 91.4,
+      MissingRatesLaneCount: 188,
+      CapacityFreshness: 'OK',
+      MissingCapacityDCCount: 0,
+      BCVDimsAvailability: 'Assumed',
+      Notes: 'Aggregate snapshot of US and Canada data health.',
+    },
+    US: {
+      SnapshotTime: '2026-01-10T06:00:00',
+      ForecastFreshness: 'OK',
+      RatesCoveragePct: 94.2,
+      MissingRatesLaneCount: 142,
+      CapacityFreshness: 'OK',
+      MissingCapacityDCCount: 0,
+      BCVDimsAvailability: 'Assumed',
+      Notes: 'Forecast updated daily. BCV dimensions using carton average assumptions. Rate gaps primarily in new 3-digit zones (rural).',
+    },
+    Canada: {
+      SnapshotTime: '2026-01-09T06:00:00',
+      ForecastFreshness: 'Warn',
+      RatesCoveragePct: 88.5,
+      MissingRatesLaneCount: 46,
+      CapacityFreshness: 'OK',
+      MissingCapacityDCCount: 0,
+      BCVDimsAvailability: 'Assumed',
+      Notes: 'Forecast updated 3 days ago. Some carrier rates missing in northern regions.',
+    },
+  }));
   const [rawScenarioLaneRows, setRawScenarioLaneRows] = useState<ScenarioRunResultsLane[]>([]);
   const [preselectedRuns, setPreselectedRuns] = useState<{ a?: string; b?: string }>({});
   const [comparisonScenarioIds, setComparisonScenarioIds] = useState<string[] | null>(null);
@@ -822,11 +855,32 @@ function App() {
   const scenarioPersistenceSourceRef = useRef<'AppDB' | 'localStorage' | 'unknown'>('unknown');
   const lastPersistedComparisonStateRef = useRef<ComparisonState>(EMPTY_COMPARISON_STATE);
   const lastPersistedNotificationsRef = useRef<AppNotification[]>([]);
+  const hydratedScenarioHeaders = useMemo(() => {
+    return scenarioState.headers.map((header) => {
+      const dcs = scenarioState.resultsDC.filter((dc) => dc.ScenarioRunID === header.ScenarioRunID);
+      const additionalCost = dcs.reduce((sum, dc) => {
+        if (dc.IsSuppressed === 'Y') return sum;
+        const costs = getAdditionalCostsForDc(dc.DCName);
+        return sum + (dc.Rent ?? costs.Rent) + (dc.ContractLabor ?? costs.ContractLabor) + (dc.ManagementFee ?? costs.ManagementFee);
+      }, 0);
+
+      const totalCombinedCost = header.TotalCost + additionalCost;
+      const totalCount = Number(header.TotalCount || 1);
+      const combinedCostPerUnit = totalCount > 0 ? totalCombinedCost / totalCount : header.CostPerUnit;
+
+      return {
+        ...header,
+        TotalCost: Number(totalCombinedCost.toFixed(2)),
+        CostPerUnit: Number(combinedCostPerUnit.toFixed(2)),
+      };
+    });
+  }, [scenarioState.headers, scenarioState.resultsDC]);
+
   const comparisonModalScenarioHeaders = useMemo(() => {
-    if (!comparisonScenarioIds || comparisonScenarioIds.length === 0) return scenarioState.headers;
+    if (!comparisonScenarioIds || comparisonScenarioIds.length === 0) return hydratedScenarioHeaders;
     const allowed = new Set(comparisonScenarioIds);
-    return scenarioState.headers.filter((scenario) => allowed.has(scenario.ScenarioRunID));
-  }, [comparisonScenarioIds, scenarioState.headers]);
+    return hydratedScenarioHeaders.filter((scenario) => allowed.has(scenario.ScenarioRunID));
+  }, [comparisonScenarioIds, hydratedScenarioHeaders]);
 
   const setScenarioRepositoryCache = useCallback(
     (records: ScenarioRepositoryRecord[], source: 'AppDB' | 'localStorage' | 'unknown') => {
@@ -1687,7 +1741,30 @@ function App() {
       }
 
       setDatasetOptions(buildDatasetOptionSets(allRows));
-      setDataHealthSnapshot(buildDataHealthSnapshotFromRows(allRows));
+      
+      const baselineResults = datasetResults.filter((result) => {
+        const dfId = String(result.registryItem.dataflowId || '').trim();
+        const label = String(result.registryItem.scenarioLabel || '').toLowerCase();
+        const key = String(result.registryItem.scenarioKey || '').toLowerCase();
+        return dfId === '3267' || label.includes('baseline') || key.includes('baseline');
+      });
+      const baselineRows = baselineResults.length > 0
+        ? baselineResults.flatMap((result) => result.rows)
+        : allRows;
+
+      const usRows = baselineRows.filter((row) => {
+        const regionRaw = String(row['dcRegion'] ?? row['DC_region'] ?? row['region'] ?? '').trim() || 'US';
+        return normalizeRegion(regionRaw, 'US') === 'US';
+      });
+      const canadaRows = baselineRows.filter((row) => {
+        const regionRaw = String(row['dcRegion'] ?? row['DC_region'] ?? row['region'] ?? '').trim() || 'Canada';
+        return normalizeRegion(regionRaw, 'Canada') === 'Canada';
+      });
+      setDataHealthSnapshots({
+        All: buildDataHealthSnapshotFromRows(baselineRows),
+        US: buildDataHealthSnapshotFromRows(usRows),
+        Canada: buildDataHealthSnapshotFromRows(canadaRows),
+      });
       const safeLoadedLanes = Array.isArray(combinedLaneDatasetRows) ? combinedLaneDatasetRows : [];
       setRawScenarioLaneRows(safeLoadedLanes);
       const baseScenarioState: ScenarioState = {
@@ -2208,7 +2285,7 @@ function App() {
         dcCapacityRows: scopedDcCapacityRows,
         scenarioTypePolicy: familyPolicy,
         currentUserDisplayName,
-        dataSnapshotVersion: dataHealthSnapshot?.SnapshotTime || 'NA',
+        dataSnapshotVersion: dataHealthSnapshots[payload.input.region]?.SnapshotTime || dataHealthSnapshots.All.SnapshotTime || 'NA',
         hasCostVsServiceWeights: selectedTemplate
           ? selectedTemplate.costVsService > 0
           : datasetOptions.costVsServiceWeights.length > 0,
@@ -3563,10 +3640,10 @@ function App() {
             onDataHealth={handleDataHealth}
             workspace={workspace}
             onWorkspaceChange={setWorkspace}
-            scenarioRunHeaders={scenarioState.headers}
+            scenarioRunHeaders={hydratedScenarioHeaders}
             scenarioRunResultsDC={scenarioState.resultsDC}
             comparisonHeaders={comparisonState.headers}
-            dataHealthSnapshot={dataHealthSnapshot}
+            dataHealthSnapshot={dataHealthSnapshots[workspace]}
             onDuplicateScenario={duplicateScenario}
             onArchiveScenario={archiveScenario}
             onUnarchiveScenario={unarchiveScenario}
@@ -3600,7 +3677,7 @@ function App() {
           <ScenarioDetails
             scenarioId={appState.selectedScenarioId}
             onBack={navigateToHome}
-            scenarioRunHeaders={scenarioState.headers}
+            scenarioRunHeaders={hydratedScenarioHeaders}
             scenarioRunConfigs={scenarioState.configs}
             scenarioRunResultsDC={scenarioState.resultsDC}
           scenarioRunResultsLanes={scenarioState.resultsLanes}
@@ -3624,7 +3701,7 @@ function App() {
           <ComparisonDetails
             comparisonId={appState.selectedComparisonId}
             onBack={navigateToHome}
-            scenarioRunHeaders={scenarioState.headers}
+            scenarioRunHeaders={hydratedScenarioHeaders}
             comparisonHeaders={comparisonState.headers}
             comparisonDetailDC={comparisonState.detailDC}
             comparisonDetailLanes={comparisonState.detailLanes}
@@ -3660,7 +3737,7 @@ function App() {
           isOpen={showNewScenario}
           onClose={() => setShowNewScenario(false)}
           onComplete={handleScenarioComplete}
-          dataHealthSnapshot={dataHealthSnapshot}
+          dataHealthSnapshots={dataHealthSnapshots}
           availableRegions={['All', 'US', 'Canada']}
           missingDataReasons={datasetContext.missingDataReasons}
           scenarioTemplatesByRegion={scenarioTemplatesByRegion}
@@ -3682,7 +3759,7 @@ function App() {
       <DataHealthModal
         isOpen={showDataHealth}
         onClose={() => setShowDataHealth(false)}
-        dataHealthSnapshot={dataHealthSnapshot}
+        dataHealthSnapshot={dataHealthSnapshots[workspace]}
         missingLanes={scenarioState.resultsLanes
           .filter((lane) => {
             const scenario = scenarioState.headers.find((s) => s.ScenarioRunID === lane.ScenarioRunID);

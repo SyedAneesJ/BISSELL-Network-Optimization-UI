@@ -6,6 +6,7 @@ import {
   FileSpreadsheet,
   Package,
   Loader2,
+  Sparkles,
 } from 'lucide-react';
 import { Button, Tab, Tabs } from '@/components/ui';
 import {
@@ -28,6 +29,7 @@ import { ScenarioLaneDetailsModal } from '@/components/modals';
 import { ScenarioCommentModal } from '@/components/modals';
 import { useScenarioDetails } from '@/hooks';
 import { loadScenarioLaneSnapshotsFromAppDb, ScenarioRunHistoryEntry } from '@/services/scenario';
+import { AICopilotDrawer } from '@/sections/scenario-details/ai';
 
 interface ScenarioDetailsProps {
   scenarioId: string;
@@ -54,6 +56,7 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = (props) => {
   const [hydratedLaneResults, setHydratedLaneResults] = useState<ScenarioRunResultsLane[]>(baseLaneResults);
   const [isLaneDataLoading, setIsLaneDataLoading] = useState(false);
   const [isTabSwitching, setIsTabSwitching] = useState(false);
+  const [isCopilotOpen, setIsCopilotOpen] = useState(false);
   const tabSwitchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -299,6 +302,7 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = (props) => {
           publishActive={isActionActive('scenario_publish')}
           approveActive={isActionActive('scenario_approve')}
           commentOpenActive={isActionActive('scenario_comment_open')}
+          onOpenCopilot={() => setIsCopilotOpen(true)}
         />
       }
     >
@@ -398,6 +402,22 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = (props) => {
         onCancel={() => setShowCommentModal(false)}
         onSave={handleSaveComment}
         saveActive={isActionActive('scenario_comment_save')}
+      />
+
+      {/* Floating Action Button for AI Copilot */}
+      <button
+        onClick={() => setIsCopilotOpen(true)}
+        className="fixed bottom-12 right-6 z-40 flex h-12 items-center gap-2 rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 px-5 text-white shadow-lg shadow-blue-500/20 hover:shadow-xl hover:shadow-blue-500/30 transition-all duration-200 hover:scale-105 active:scale-95 border border-white/10"
+      >
+        <Sparkles className="w-4 h-4 animate-pulse" />
+        <span className="text-xs font-semibold tracking-wide">AI Copilot</span>
+      </button>
+
+      {/* AI Copilot Slide-over Drawer */}
+      <AICopilotDrawer
+        isOpen={isCopilotOpen}
+        onClose={() => setIsCopilotOpen(false)}
+        activeScenarioName={scenario.RunName}
       />
     </AppPage>
   );

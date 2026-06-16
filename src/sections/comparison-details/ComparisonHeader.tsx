@@ -110,7 +110,7 @@ export const ComparisonHeader: React.FC<ComparisonHeaderProps> = ({
           </Button>
         )}
 
-        {comparison.Status !== 'Published' && (
+        {/* {comparison.Status !== 'Published' && (
           <Button
             variant="primary"
             size="small"
@@ -119,7 +119,7 @@ export const ComparisonHeader: React.FC<ComparisonHeaderProps> = ({
           >
             {publishActive ? 'Publishing...' : 'Publish'}
           </Button>
-        )}
+        )} */}
       </div>
     </div>
   );

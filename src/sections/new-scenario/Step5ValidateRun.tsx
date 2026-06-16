@@ -43,7 +43,7 @@ export const Step5ValidateRun: React.FC<Step5ValidateRunProps> = ({
         </div>
       </div>
 
-      {/* <div>
+      <div>
         <h3 className="mb-3 font-semibold text-slate-900">Data Health Snapshot</h3>
 
         <div className="space-y-3">
@@ -79,7 +79,7 @@ export const Step5ValidateRun: React.FC<Step5ValidateRunProps> = ({
             <StatusBadge status={dataHealthSnapshot.BCVDimsAvailability === 'OK' ? 'OK' : 'Warn'} size="small" />
           </div>
         </div>
-      </div> */}
+      </div>
 
       <div className="surface-card p-4">
         <h4 className="mb-2 text-sm font-semibold text-slate-900">Validation Checklist</h4>

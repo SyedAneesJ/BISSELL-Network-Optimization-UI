@@ -792,6 +792,7 @@ export const buildScenarioArtifacts = (
       suppressedDcs: normalizedPayload.input.suppressedDCs,
       dcCapacityRows: context.dcCapacityRows,
       utilCap: normalizedPayload.input.utilCap,
+      levelLoad: normalizedPayload.input.levelLoad,
     });
     resultsDC = allocation.resultsDC;
     resultsLanes = allocation.resultsLanes;

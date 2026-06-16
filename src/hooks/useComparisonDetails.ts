@@ -6,6 +6,7 @@ import {
   ScenarioRunHeader,
   ScenarioRunResultsDC,
   ScenarioRunResultsLane,
+  getAdditionalCostsForDc,
 } from '@/data';
 import { downloadBlob, toCSV, useActionFeedback } from '@/utils';
 import { createComparisonDcColumns, createComparisonLaneColumns } from '@/lib';
@@ -60,12 +61,23 @@ export const useComparisonDetails = ({
     return dcNames.map((name) => {
       const dcA = byA.get(name);
       const dcB = byB.get(name);
+
+      const getDcCombinedCost = (dc?: ScenarioRunResultsDC) => {
+        if (!dc) return 0;
+        if (dc.IsSuppressed === 'Y') return 0;
+        const costs = getAdditionalCostsForDc(dc.DCName);
+        return dc.TotalCost + (dc.Rent ?? costs.Rent) + (dc.ContractLabor ?? costs.ContractLabor) + (dc.ManagementFee ?? costs.ManagementFee);
+      };
+
+      const costA = getDcCombinedCost(dcA);
+      const costB = getDcCombinedCost(dcB);
+
       return {
         ComparisonID: comparisonId,
         DCName: name,
-        Cost_A: dcA?.TotalCost || 0,
-        Cost_B: dcB?.TotalCost || 0,
-        Cost_Delta: (dcB?.TotalCost || 0) - (dcA?.TotalCost || 0),
+        Cost_A: costA,
+        Cost_B: costB,
+        Cost_Delta: costB - costA,
         Util_A: dcA?.UtilPct || 0,
         Util_B: dcB?.UtilPct || 0,
         Util_Delta: (dcB?.UtilPct || 0) - (dcA?.UtilPct || 0),

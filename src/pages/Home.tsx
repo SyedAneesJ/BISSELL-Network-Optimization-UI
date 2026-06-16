@@ -84,7 +84,7 @@ export const Home: React.FC<HomeProps> = ({
   testEmailActive,
 }) => {
   const { trigger: triggerAction, isActive: isActionActive } = useActionFeedback();
-  const disableComparisons = true;
+  const disableComparisons = false;
   const handleRefresh = () => {
     onRefresh();
     triggerAction('refresh_data');
@@ -163,14 +163,14 @@ export const Home: React.FC<HomeProps> = ({
 
   const filteredComparisons = useMemo(() => {
     return comparisonHeaders.filter(comp => {
+      if (workspace === 'All') return true;
       const scenarioA = scenarioRunHeaders.find(s => s.ScenarioRunID === comp.ScenarioRunID_A);
       const scenarioB = scenarioRunHeaders.find(s => s.ScenarioRunID === comp.ScenarioRunID_B);
-
-      if (workspace !== 'All') {
-        if (!scenarioA || !scenarioB) return false;
-        if (scenarioA.Region !== workspace || scenarioB.Region !== workspace) return false;
-      }
-      return true;
+      // Include the comparison if EITHER linked scenario matches the workspace.
+      // If neither can be found in the header list, include it rather than
+      // silently hiding it (the scenario may not be loaded yet).
+      if (!scenarioA && !scenarioB) return true;
+      return scenarioA?.Region === workspace || scenarioB?.Region === workspace;
     });
   }, [comparisonHeaders, scenarioRunHeaders, workspace]);
   const visibleComparisonScenarioIds = useMemo(
@@ -212,18 +212,14 @@ export const Home: React.FC<HomeProps> = ({
     if (comparisonHeaders.length === 0) {
       return 'No comparisons have been created yet.';
     }
-
-    const reasons: string[] = [];
-    if (workspace !== 'All') {
-      reasons.push(`workspace "${workspace}"`);
-    }
-
-    if (reasons.length === 0) {
+    if (filteredComparisons.length === 0) {
+      if (workspace !== 'All') {
+        return `No comparisons match the current filters (workspace "${workspace}").`;
+      }
       return 'No comparisons match the current filters.';
     }
-
-    return `No comparisons match the current filters (${reasons.join(' and ')}).`;
-  }, [comparisonHeaders.length, workspace, searchTerm]);
+    return '';
+  }, [comparisonHeaders.length, filteredComparisons.length, workspace, searchTerm]);
 
   const handleSelectScenario = (scenarioId: string) => {
     const newSelected = new Set(selectedScenarios);
@@ -608,12 +604,10 @@ export const Home: React.FC<HomeProps> = ({
         />
       </div>
 
-      {false && (
-        <HomeAlertsSection
-          alertCounts={alertCounts}
-          dataHealthSnapshot={dataHealthSnapshot}
-        />
-      )}
+      <HomeAlertsSection
+        alertCounts={alertCounts}
+        dataHealthSnapshot={dataHealthSnapshot}
+      />
 
       <Modal
         isOpen={Boolean(pendingDeleteScenario)}

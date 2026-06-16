@@ -262,10 +262,10 @@ export const createScenarioColumns = ({
   },
   {
     key: 'LastRunBy',
-    header: 'Last Run By',
+    header: 'Run By',
     width: '140px',
     sortable: true,
-    render: (row) => formatTextOrNA(row.LastRunBy),
+    render: (row) => formatTextOrNA(row.LastRunBy && row.LastRunBy !== 'NA' ? row.LastRunBy : row.CreatedBy),
   },
   {
     key: 'LatestComment',

@@ -59,9 +59,15 @@ export const ScenarioCapacityTab: React.FC<ScenarioCapacityTabProps> = ({
         <div className="space-y-3">
           {dcResults.map((dc) => {
             const utilSpace = getUtilSpace(dc);
-            const total = Math.max(utilSpace, dc.SpaceRequired, 1);
-            const utilPct = (utilSpace / total) * 100;
-            const requiredPct = (dc.SpaceRequired / total) * 100;
+            const actualSpace = Number(dc.ActualSpace ?? dc.SpaceCore ?? 0);
+            const base = actualSpace > 0 ? actualSpace : Math.max(utilSpace, dc.SpaceRequired, 1);
+            // True (unclamped) percentages against actual DC capacity
+            const utilPct = base > 0 ? (utilSpace / base) * 100 : 0;
+            const requiredPct = base > 0 ? (dc.SpaceRequired / base) * 100 : 0;
+            // Bar widths are capped at 100 for visual display
+            const utilBarPct = Math.min(100, utilPct);
+            const requiredBarPct = Math.min(100, requiredPct);
+            const barTotal = Math.max(utilBarPct, requiredBarPct, 1);
             return (
               <div key={dc.DCName}>
                 <div className="flex justify-between text-sm mb-1">
@@ -71,18 +77,18 @@ export const ScenarioCapacityTab: React.FC<ScenarioCapacityTabProps> = ({
                 <div className="flex h-3 rounded-full overflow-hidden bg-slate-200" title={`Util Space ${utilSpace.toLocaleString('en-US')} vs Space Required ${dc.SpaceRequired.toLocaleString('en-US')}`}>
                   <div
                     className="bg-blue-500"
-                    style={getSegmentStyle(utilSpace, total)}
+                    style={getSegmentStyle(utilBarPct, barTotal)}
                     aria-label={`Util Space ${utilPct.toFixed(2)}%`}
                   />
                   <div
                     className="bg-green-500"
-                    style={getSegmentStyle(dc.SpaceRequired, total)}
+                    style={getSegmentStyle(requiredBarPct, barTotal)}
                     aria-label={`Space Required ${requiredPct.toFixed(2)}%`}
                   />
                 </div>
                 <div className="mt-1 flex justify-between text-[11px] text-slate-500">
                   <span>Util Space: {utilPct.toFixed(2)}%</span>
-                  <span>Space Required: {requiredPct.toFixed(2)}%</span>
+                  <span className={requiredPct > 100 ? 'text-red-600 font-semibold' : ''}>Space Required: {requiredPct.toFixed(2)}%</span>
                 </div>
               </div>
             );

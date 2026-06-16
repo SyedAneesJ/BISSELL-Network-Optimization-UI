@@ -111,11 +111,11 @@ export const HomeHeader: React.FC<HomeHeaderProps> = ({
                     {exportScenarioActive ? 'Exporting Scenario List…' : 'Export Scenario List CSV'}
                   </button>
                   <button
-                    className="w-full text-left px-4 py-2 text-sm text-slate-400 cursor-not-allowed"
-                    disabled
-                    title="Comparison export is temporarily disabled"
+                    className={`w-full text-left px-4 py-2 text-sm transition hover:bg-blue-50/70 ${exportComparisonActive ? 'bg-amber-50 text-amber-800' : 'text-slate-700'} ${comparisonActionsDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    onClick={onExportComparisonList}
+                    disabled={comparisonActionsDisabled}
                   >
-                    Export Comparison List CSV
+                    {exportComparisonActive ? 'Exporting Comparison List…' : 'Export Comparison List CSV'}
                   </button>
                 </div>
               </div>
@@ -200,11 +200,11 @@ export const HomeHeader: React.FC<HomeHeaderProps> = ({
                 {exportScenarioActive ? 'Exporting…' : 'Export Scenario List CSV'}
               </button>
               <button
-                className="w-full text-left px-4 py-2 text-sm text-slate-400 cursor-not-allowed"
-                disabled
-                title="Comparison export is temporarily disabled"
+                className={`w-full text-left px-4 py-2 text-sm transition hover:bg-blue-50/70 ${exportComparisonActive ? 'bg-amber-50 text-amber-800' : 'text-slate-700'} ${comparisonActionsDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                onClick={onExportComparisonList}
+                disabled={comparisonActionsDisabled}
               >
-                Export Comparison List CSV
+                {exportComparisonActive ? 'Exporting Comparison List…' : 'Export Comparison List CSV'}
               </button>
             </div>
           </div>

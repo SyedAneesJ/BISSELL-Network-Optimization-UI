@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ScenarioRunConfig,
   ScenarioRunHeader,
@@ -84,21 +84,22 @@ export const useScenarioDetails = ({
     DCName: formatDcDisplayName(dc.DCName),
   }), [formatDcDisplayName]);
   const entityLabels = useMemo(() => {
-    const entities = new Set<string>();
-    scenarioRunHeaders.forEach((s) => {
-      s.EntityScope?.split('/').forEach((e) => {
-        const trimmed = e.trim();
-        if (trimmed && trimmed.toLowerCase() !== 'unknown' && trimmed.toLowerCase() !== 'na') {
-          entities.add(trimmed);
-        }
-      });
-    });
-    const list = Array.from(entities);
-    return {
-      first: list[0] || 'Entity A',
-      second: list[1] || 'Entity B',
-    };
-  }, [scenarioRunHeaders]);
+    // Derive labels from the CURRENT scenario's EntityScope only.
+    // EntityScope is typically "Core", "Core/BCV", or "BCV/Core+BCV" etc.
+    // We split on '/' and normalise so the Core-side always maps to SpaceCore
+    // and the BCV-side always maps to SpaceBCV, regardless of insertion order.
+    const scopeRaw = scenario?.EntityScope ?? '';
+    const parts = scopeRaw
+      .split('/')
+      .map((e) => e.trim())
+      .filter((e) => e && e.toLowerCase() !== 'unknown' && e.toLowerCase() !== 'na');
+
+    // Prefer the part that does NOT contain 'bcv' for the core label
+    const coreLabel = parts.find((p) => !p.toLowerCase().includes('bcv')) ?? parts[0] ?? 'Core';
+    const bcvLabel  = parts.find((p) =>  p.toLowerCase().includes('bcv')) ?? parts[1] ?? 'BCV';
+
+    return { first: coreLabel, second: bcvLabel };
+  }, [scenario]);
 
   const scenarioConfig = useMemo(
     () => scenarioRunConfigs.find((c) => c.ScenarioRunID === scenarioId),

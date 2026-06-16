@@ -463,6 +463,19 @@
           "children": []
         }
       ]
+    },
+    {
+      "alias": "Bissell_AI_insights",
+      "version": "1.0.3",
+      "parameters": [
+        {
+          "name": "suppressedDC",
+          "aliasedName": "suppressedDC",
+          "type": "text",
+          "list": false,
+          "children": []
+        }
+      ]
     }
   ],
   "proxy": [

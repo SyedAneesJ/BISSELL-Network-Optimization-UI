@@ -27,7 +27,7 @@ interface NewScenarioWizardProps {
   isOpen: boolean;
   onClose: () => void;
   onComplete: (payload: NewScenarioSubmit) => void;
-  dataHealthSnapshot: DataHealthSnapshot;
+  dataHealthSnapshots: Record<'All' | 'US' | 'Canada', DataHealthSnapshot>;
   availableRegions: Array<'All' | 'US' | 'Canada'>;
   missingDataReasons: string[];
   scenarioTemplatesByRegion: Record<'US' | 'Canada', ScenarioTemplateOption[]>;
@@ -152,7 +152,7 @@ export const NewScenarioWizard: React.FC<NewScenarioWizardProps> = ({
   isOpen,
   onClose,
   onComplete,
-  dataHealthSnapshot,
+  dataHealthSnapshots,
   availableRegions,
   missingDataReasons,
   scenarioTemplatesByRegion,
@@ -406,7 +406,7 @@ export const NewScenarioWizard: React.FC<NewScenarioWizardProps> = ({
           <Step5ValidateRun
             formData={formData}
             datasetOptions={effectiveDatasetOptions}
-            dataHealthSnapshot={dataHealthSnapshot}
+            dataHealthSnapshot={dataHealthSnapshots[formData.region] || dataHealthSnapshots.All}
             availableDcsByRegion={{ [formData.region]: regionDcs }}
           />
         );

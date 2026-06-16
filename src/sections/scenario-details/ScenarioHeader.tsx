@@ -1,5 +1,4 @@
-import React from 'react';
-import { ArrowLeft, CheckCircle, MessageSquare } from 'lucide-react';
+import { ArrowLeft, CheckCircle, MessageSquare, Sparkles } from 'lucide-react';
 import { Button, StatusBadge, Tooltip } from '@/components/ui';
 import { ScenarioRunHeader } from '@/data';
 
@@ -14,6 +13,7 @@ interface ScenarioHeaderProps {
   publishActive: boolean;
   approveActive: boolean;
   commentOpenActive: boolean;
+  onOpenCopilot: () => void;
 }
 
 export const ScenarioHeader: React.FC<ScenarioHeaderProps> = ({
@@ -27,6 +27,7 @@ export const ScenarioHeader: React.FC<ScenarioHeaderProps> = ({
   publishActive,
   approveActive,
   commentOpenActive,
+  onOpenCopilot,
 }) => {
   return (
     <div className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8 py-4">
@@ -62,13 +63,25 @@ export const ScenarioHeader: React.FC<ScenarioHeaderProps> = ({
                 {scenario.ApprovedBy && (
                   <span>Approved by {scenario.ApprovedBy}</span>
                 )}
-                {scenario.LastRunBy && (
+                {(scenario.LastRunBy || scenario.CreatedBy) && (
                   <span>
-                    Last run by {scenario.LastRunBy}
+                    Run by {scenario.LastRunBy && scenario.LastRunBy !== 'NA' ? scenario.LastRunBy : scenario.CreatedBy}
                     {scenario.LastRunAt ? ` on ${new Date(scenario.LastRunAt).toLocaleString()}` : ''}
                   </span>
                 )}
               </div>
+            </div>
+
+            <div className="flex flex-shrink-0 items-center sm:self-center">
+              <Button
+                variant="primary"
+                size="small"
+                icon={<Sparkles className="w-4 h-4 animate-pulse text-blue-200" />}
+                onClick={onOpenCopilot}
+                className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-md shadow-blue-500/10 border-none whitespace-nowrap"
+              >
+                AI Copilot
+              </Button>
             </div>
           </div>
 

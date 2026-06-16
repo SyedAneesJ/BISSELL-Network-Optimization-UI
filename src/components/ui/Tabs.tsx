@@ -11,13 +11,18 @@ interface TabsProps {
   tabs: Tab[];
   defaultTab?: string;
   onChange?: (tabId: string) => void;
+  activeTab?: string;
 }
 
-export const Tabs: React.FC<TabsProps> = ({ tabs, defaultTab, onChange }) => {
-  const [activeTab, setActiveTab] = useState(defaultTab || tabs[0]?.id);
+export const Tabs: React.FC<TabsProps> = ({ tabs, defaultTab, onChange, activeTab: controlledActiveTab }) => {
+  const [localActiveTab, setLocalActiveTab] = useState(defaultTab || tabs[0]?.id);
+
+  const activeTab = controlledActiveTab !== undefined ? controlledActiveTab : localActiveTab;
 
   const handleTabChange = (tabId: string) => {
-    setActiveTab(tabId);
+    if (controlledActiveTab === undefined) {
+      setLocalActiveTab(tabId);
+    }
     onChange?.(tabId);
   };
 

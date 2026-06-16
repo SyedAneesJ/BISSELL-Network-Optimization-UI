@@ -1,3 +1,4 @@
+import { getAdditionalCostsForDc } from '@/data';
 import type { ScenarioRunResultsDC, ScenarioRunResultsLane } from '@/data';
 import type { DomoDcCapacityRow } from '@/services';
 import type { ScenarioBuildSummary } from './scenarioModels';
@@ -49,6 +50,7 @@ type AllocationInput = {
   suppressedDcs: string[];
   dcCapacityRows?: DomoDcCapacityRow[];
   utilCap: number;
+  levelLoad?: boolean;
 };
 
 type AllocationResult = {
@@ -91,13 +93,14 @@ const laneGroupKey = (lane: ScenarioRunResultsLane): string =>
   ].join('|');
 
 const laneSpaceRequired = (lane: ScenarioRunResultsLane): number => {
-  const demand = Number(
-    lane.WorkingCapacity ??
-    lane.FootprintContribution ??
-    lane.Threshold ??
-    0,
-  );
-  return Number.isFinite(demand) && demand > 0 ? demand : 1;
+  // Use ?? so that an explicit 0 on WorkingCapacity is NOT skipped —
+  // ?? only skips null/undefined, not 0 or ''.
+  // If the column is present with value 0 or empty we must honour that as 0,
+  // not replace it with an arbitrary fallback of 1.
+  const raw = lane.WorkingCapacity ?? lane.FootprintContribution ?? lane.Threshold;
+  if (raw === null || raw === undefined) return 0; // column genuinely absent
+  const demand = Number(raw);
+  return Number.isFinite(demand) && demand > 0 ? demand : 0;
 };
 
 const inferLaneUnits = (lane: ScenarioRunResultsLane): number => {
@@ -593,18 +596,60 @@ const selectConstrainedRows = (
   const unallocated: LaneGroup[] = [];
   const selectedRows: ScenarioRunResultsLane[] = [];
 
+  const isLevelLoad = Boolean(input.levelLoad) || resolveScenarioTypePolicy(input.scenarioType).defaults.levelLoad;
+
   ordered.forEach((group) => {
     const eligibleCandidates = restrictCandidatesForLane(group.sourceRow, group.candidates, input, suppressedSet);
     const activeCandidates = eligibleCandidates.filter((candidate) => isCandidateActive(candidate.dc, activeSet, suppressedSet));
     const eligible = activeCandidates.length > 0 ? activeCandidates : eligibleCandidates;
-    const fitting = eligible.find((candidate) => {
+
+    // Get all candidates that physically fit within their remaining capacity
+    const fittingCandidates = eligible.filter((candidate) => {
       const remaining = remainingCapacity.get(normalizeDcKey(candidate.dc));
       if (remaining === undefined || !Number.isFinite(remaining)) return true;
       return remaining + 1e-9 >= group.laneSpaceRequired;
     });
-    if (!fitting) {
+
+    if (fittingCandidates.length === 0) {
       unallocated.push(group);
       return;
+    }
+
+    let fitting: LaneCandidate;
+    if (isLevelLoad && fittingCandidates.length > 1) {
+      // Level-load: prefer the cheapest fitting candidate (fittingCandidates[0] is cost-sorted),
+      // but skip it in favour of a cheaper-leaning alternative only when the cheapest DC is
+      // *materially* more loaded than another option (its remaining fraction is >5% of total
+      // capacity below the next candidate's remaining fraction).  This keeps cost-efficiency
+      // while still preventing a single DC from filling disproportionately fast.
+      const cheapest = fittingCandidates[0];
+      const cheapestKey = normalizeDcKey(cheapest.dc);
+      const cheapestCap = capacityMap.get(cheapestKey) ?? Number.POSITIVE_INFINITY;
+      const cheapestRemaining = remainingCapacity.get(cheapestKey) ?? Number.POSITIVE_INFINITY;
+      const cheapestFillFraction = Number.isFinite(cheapestCap) && cheapestCap > 0
+        ? (cheapestCap - cheapestRemaining) / cheapestCap
+        : 0;
+
+      let bestCandidate = cheapest;
+      for (const candidate of fittingCandidates.slice(1)) {
+        const key = normalizeDcKey(candidate.dc);
+        const cap = capacityMap.get(key) ?? Number.POSITIVE_INFINITY;
+        const remaining = remainingCapacity.get(key) ?? Number.POSITIVE_INFINITY;
+        const fillFraction = Number.isFinite(cap) && cap > 0
+          ? (cap - remaining) / cap
+          : 0;
+        // Only prefer this cheaper-by-cost candidate if cheapest is materially more loaded
+        // (>5% fill fraction ahead). Once found, stop — candidates are cost-sorted so the
+        // first one that qualifies is the best cost-aware alternative.
+        if (cheapestFillFraction - fillFraction > 0.05) {
+          bestCandidate = candidate;
+          break;
+        }
+      }
+      fitting = bestCandidate;
+    } else {
+      // Default: pick the cheapest fitting candidate (cost-first greedy)
+      fitting = fittingCandidates[0];
     }
 
     const dcKey = normalizeDcKey(fitting.dc);
@@ -620,7 +665,35 @@ const selectConstrainedRows = (
     const eligibleCandidates = restrictCandidatesForLane(group.sourceRow, group.candidates, input, suppressedSet);
     const activeCandidates = eligibleCandidates.filter((candidate) => isCandidateActive(candidate.dc, activeSet, suppressedSet));
     const eligible = activeCandidates.length > 0 ? activeCandidates : eligibleCandidates;
-    const selected = eligible[0] || group.candidates[0];
+    
+    let selected: LaneCandidate | undefined;
+    
+    // Group candidates into those currently under their utilization cap (> 0 remaining capacity)
+    // and those already at or over their utilization cap (<= 0 remaining capacity)
+    const underCap = eligible.filter((candidate) => {
+      const dcKey = normalizeDcKey(candidate.dc);
+      const remaining = remainingCapacity.get(dcKey);
+      return remaining === undefined || !Number.isFinite(remaining) || remaining > 0;
+    });
+
+    if (underCap.length > 0) {
+      // If there are candidates still under their cap, select the cheapest one (first in the cost-sorted list)
+      selected = underCap[0];
+    } else if (eligible.length > 0) {
+      // If all candidates are over their cap, level-load the spillover by choosing the one with the highest remaining capacity (least negative)
+      let maxRemaining = Number.NEGATIVE_INFINITY;
+      eligible.forEach((candidate) => {
+        const dcKey = normalizeDcKey(candidate.dc);
+        const remaining = remainingCapacity.get(dcKey) ?? Number.POSITIVE_INFINITY;
+        if (remaining > maxRemaining) {
+          maxRemaining = remaining;
+          selected = candidate;
+        }
+      });
+    } else {
+      selected = group.candidates[0];
+    }
+
     if (!selected) return;
     const dcKey = normalizeDcKey(selected.dc);
     const currentRemaining = remainingCapacity.get(dcKey);
@@ -634,24 +707,28 @@ const selectConstrainedRows = (
   return selectedRows;
 };
 
-const buildEmptyDcRow = (scenarioId: string, dcName: string): ScenarioRunResultsDC => ({
-  ScenarioRunID: scenarioId,
-  DCName: dcName,
-  TotalCost: 0,
-  VolumeUnits: 0,
-  AvgDays: 0,
-  AvgTransitDays: null,
-  UtilPct: 0,
-  ActualSpace: 0,
-  SpaceRequired: 0,
-  SpaceCore: 0,
-  SpaceBCV: 0,
-  SLABreachCount: 0,
-  ExcludedBySLACount: 0,
-  RankOverall: 0,
-  IsSuppressed: 'Y',
-  OvercapFlag: 'N',
-});
+const buildEmptyDcRow = (scenarioId: string, dcName: string): ScenarioRunResultsDC => {
+  const costs = getAdditionalCostsForDc(dcName);
+  return {
+    ScenarioRunID: scenarioId,
+    DCName: dcName,
+    TotalCost: 0,
+    VolumeUnits: 0,
+    AvgDays: 0,
+    AvgTransitDays: null,
+    UtilPct: 0,
+    ActualSpace: 0,
+    SpaceRequired: 0,
+    SpaceCore: 0,
+    SpaceBCV: 0,
+    SLABreachCount: 0,
+    ExcludedBySLACount: 0,
+    RankOverall: 0,
+    IsSuppressed: 'Y',
+    OvercapFlag: 'N',
+    ...costs,
+  };
+};
 
 export const annotateCapacityOutputs = (
   scenarioId: string,
@@ -815,6 +892,7 @@ const buildDcRows = (
     const utilPct = Number.isFinite(capacity as number) && Number(capacity) > 0
       ? (acc.spaceRequired / Number(capacity)) * 100
       : 0;
+    const costs = getAdditionalCostsForDc(displayName);
     return {
       ScenarioRunID: scenarioId,
       DCName: displayName,
@@ -830,6 +908,7 @@ const buildDcRows = (
       ExcludedBySLACount: isSuppressed ? 0 : acc.excludedBySlaCount,
       RankOverall: 0,
       IsSuppressed: isSuppressed ? 'Y' : 'N',
+      ...costs,
     } satisfies ScenarioRunResultsDC;
   });
 

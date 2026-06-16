@@ -6,9 +6,33 @@ export const createScenarioDcColumns = (): Column<ScenarioRunResultsDC>[] => [
   { key: 'DCName', header: 'DC Name', sortable: true },
   {
     key: 'TotalCost',
-    header: 'Cost',
+    header: 'Base Cost',
     sortable: true,
     render: (row) => formatCurrencyOrNA(row.TotalCost),
+  },
+  {
+    key: 'Rent',
+    header: 'Rent',
+    sortable: true,
+    render: (row) => formatCurrencyOrNA(row.IsSuppressed === 'N' ? row.Rent : 0),
+  },
+  {
+    key: 'ContractLabor',
+    header: 'Contract Labor',
+    sortable: true,
+    render: (row) => formatCurrencyOrNA(row.IsSuppressed === 'N' ? row.ContractLabor : 0),
+  },
+  {
+    key: 'ManagementFee',
+    header: 'Mgt Fee',
+    sortable: true,
+    render: (row) => formatCurrencyOrNA(row.IsSuppressed === 'N' ? row.ManagementFee : 0),
+  },
+  {
+    key: 'CombinedCost',
+    header: 'Total Cost',
+    sortable: true,
+    render: (row) => formatCurrencyOrNA(row.TotalCost + (row.IsSuppressed === 'N' ? (row.Rent ?? 0) + (row.ContractLabor ?? 0) + (row.ManagementFee ?? 0) : 0)),
   },
   {
     key: 'VolumeUnits',
