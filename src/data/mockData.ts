@@ -247,7 +247,7 @@ export const scenarioRunHeaders: ScenarioRunHeader[] = [
     DataSnapshotVersion: '2026.01.04',
     AssumptionsSummary: 'BCV dims assumed via carton avg',
     AlertFlags: '',
-    TotalCost: 12847320,
+    TotalCost: 43015233,
     CostPerUnit: 6.42,
     AvgDeliveryDays: 4.2,
     SLABreachPct: 2.1,
@@ -626,10 +626,10 @@ export const scenarioRunConfigs: ScenarioRunConfig[] = [
 ];
 
 const rawScenarioRunResultsDC: ScenarioRunResultsDC[] = [
-  { ScenarioRunID: 'SR001', DCName: 'DC1', TotalCost: 2847320, VolumeUnits: 448200, AvgDays: 3.8, UtilPct: 72, SpaceRequired: 78000, SpaceCore: 62000, SpaceBCV: 16000, SLABreachCount: 4, ExcludedBySLACount: 2, RankOverall: 2, IsSuppressed: 'N' },
-  { ScenarioRunID: 'SR001', DCName: 'DC2', TotalCost: 1924800, VolumeUnits: 298400, AvgDays: 4.1, UtilPct: 65, SpaceRequired: 64000, SpaceCore: 52000, SpaceBCV: 12000, SLABreachCount: 3, ExcludedBySLACount: 1, RankOverall: 3, IsSuppressed: 'N' },
-  { ScenarioRunID: 'SR001', DCName: 'DC3', TotalCost: 3124680, VolumeUnits: 512400, AvgDays: 4.5, UtilPct: 78, SpaceRequired: 82000, SpaceCore: 64000, SpaceBCV: 18000, SLABreachCount: 5, ExcludedBySLACount: 4, RankOverall: 1, IsSuppressed: 'N' },
-  { ScenarioRunID: 'SR001', DCName: 'DC4', TotalCost: 2142100, VolumeUnits: 342800, AvgDays: 4.2, UtilPct: 68, SpaceRequired: 58000, SpaceCore: 46000, SpaceBCV: 12000, SLABreachCount: 1, ExcludedBySLACount: 3, RankOverall: 4, IsSuppressed: 'N' },
+  { ScenarioRunID: 'SR001', DCName: 'DC1', TotalCost: 9566589, VolumeUnits: 448200, AvgDays: 3.8, UtilPct: 72, SpaceRequired: 78000, SpaceCore: 62000, SpaceBCV: 16000, SLABreachCount: 4, ExcludedBySLACount: 2, RankOverall: 2, IsSuppressed: 'N' },
+  { ScenarioRunID: 'SR001', DCName: 'DC2', TotalCost: 6278491, VolumeUnits: 298400, AvgDays: 4.1, UtilPct: 65, SpaceRequired: 64000, SpaceCore: 52000, SpaceBCV: 12000, SLABreachCount: 3, ExcludedBySLACount: 1, RankOverall: 3, IsSuppressed: 'N' },
+  { ScenarioRunID: 'SR001', DCName: 'DC3', TotalCost: 12709068, VolumeUnits: 512400, AvgDays: 4.5, UtilPct: 78, SpaceRequired: 82000, SpaceCore: 64000, SpaceBCV: 18000, SLABreachCount: 5, ExcludedBySLACount: 4, RankOverall: 1, IsSuppressed: 'N' },
+  { ScenarioRunID: 'SR001', DCName: 'DC4', TotalCost: 11652665, VolumeUnits: 342800, AvgDays: 4.2, UtilPct: 68, SpaceRequired: 58000, SpaceCore: 46000, SpaceBCV: 12000, SLABreachCount: 1, ExcludedBySLACount: 3, RankOverall: 4, IsSuppressed: 'N' },
   { ScenarioRunID: 'SR001', DCName: 'Pharr TX', TotalCost: 1847220, VolumeUnits: 286800, AvgDays: 4.8, UtilPct: 58, SpaceRequired: 38000, SpaceCore: 28000, SpaceBCV: 10000, SLABreachCount: 2, ExcludedBySLACount: 2, RankOverall: 6, IsSuppressed: 'N' },
   { ScenarioRunID: 'SR001', DCName: 'Stratford CT', TotalCost: 961200, VolumeUnits: 151200, AvgDays: 3.6, UtilPct: 42, SpaceRequired: 22000, SpaceCore: 16000, SpaceBCV: 6000, SLABreachCount: 1, ExcludedBySLACount: 2, RankOverall: 5, IsSuppressed: 'N' },
   { ScenarioRunID: 'SR002', DCName: 'DC1', TotalCost: 3247890, VolumeUnits: 524800, AvgDays: 4.2, UtilPct: 88, SpaceRequired: 94000, SpaceCore: 74000, SpaceBCV: 20000, SLABreachCount: 18, ExcludedBySLACount: 14, RankOverall: 1, IsSuppressed: 'N' },

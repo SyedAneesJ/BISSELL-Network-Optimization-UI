@@ -17,6 +17,7 @@ import {
   HomeScenarioRunsSection,
 } from '@/sections/home';
 import { Button, Modal } from '@/components/ui';
+import { DataSourcesModal } from '@/components/modals';
 
 interface HomeProps {
   onOpenScenario: (scenarioId: string) => void;
@@ -98,6 +99,7 @@ export const Home: React.FC<HomeProps> = ({
   const [runningIconIndex, setRunningIconIndex] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedScenarios, setSelectedScenarios] = useState<Set<string>>(new Set());
+  const [showDataSources, setShowDataSources] = useState(false);
   const hasComparisons = comparisonHeaders.length > 0;
 
   const [statusFilter, setStatusFilter] = useState<string>('All');
@@ -477,6 +479,10 @@ export const Home: React.FC<HomeProps> = ({
       CostDeltaPct: c.CostDeltaPct,
       AvgDaysDelta: c.AvgDaysDelta,
       SLABreachDelta: c.SLABreachDelta,
+      MaxUtilDelta: c.MaxUtilDelta ?? 0,
+      SpaceDelta: c.SpaceDelta ?? 0,
+      Notes: c.Notes || '',
+      DecisionVerdict: c.DecisionVerdict || '',
       Status: c.Status,
       CreatedAt: c.CreatedAt,
       CreatedBy: c.CreatedBy,
@@ -514,6 +520,10 @@ export const Home: React.FC<HomeProps> = ({
       CostDeltaPct: row.CostDeltaPct,
       AvgDaysDelta: row.AvgDaysDelta,
       SLABreachDelta: row.SLABreachDelta,
+      MaxUtilDelta: row.MaxUtilDelta ?? 0,
+      SpaceDelta: row.SpaceDelta ?? 0,
+      Notes: row.Notes || '',
+      DecisionVerdict: row.DecisionVerdict || '',
       Status: row.Status,
       CreatedAt: row.CreatedAt,
       CreatedBy: row.CreatedBy,
@@ -564,6 +574,7 @@ export const Home: React.FC<HomeProps> = ({
           exportScenarioActive={isActionActive('export_scenario_list')}
           exportComparisonActive={isActionActive('export_comparison_list')}
           comparisonActionsDisabled={disableComparisons}
+          onOpenDataSources={() => setShowDataSources(true)}
         />
       }
     >
@@ -753,6 +764,11 @@ export const Home: React.FC<HomeProps> = ({
           <p className="text-slate-600">Scenario status is unavailable right now.</p>
         )}
       </Modal>
+
+      <DataSourcesModal
+        isOpen={showDataSources}
+        onClose={() => setShowDataSources(false)}
+      />
     </AppPage>
   );
 };

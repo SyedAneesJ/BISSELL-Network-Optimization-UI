@@ -1,8 +1,18 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Play, RefreshCw } from 'lucide-react';
-import { Button, DataTable, Column } from '@/components/ui';
-import { compactSelectBaseClass } from '@/components/ui/formStyles';
+import { Play, RefreshCw, Search } from 'lucide-react';
+import { Button, DataTable, Column, Select } from '@/components/ui';
 import { ScenarioRunHeader } from '@/data';
+
+const statusOptions = [
+  { value: 'All', label: 'All' },
+  { value: 'Draft', label: 'Draft' },
+  { value: 'Running', label: 'Running' },
+  { value: 'Completed', label: 'Completed' },
+  { value: 'Failed', label: 'Failed' },
+  { value: 'Reviewed', label: 'Reviewed' },
+  { value: 'Published', label: 'Published' },
+  { value: 'Archived', label: 'Archived' },
+];
 
 interface HomeScenarioRunsSectionProps {
   scenarioColumns: Column<ScenarioRunHeader>[];
@@ -98,49 +108,45 @@ export const HomeScenarioRunsSection: React.FC<HomeScenarioRunsSectionProps> = (
         </div>
       </div>
 
-      <div className="flex flex-col gap-3 mb-4 lg:flex-row lg:items-center lg:justify-between">
+      <div className="flex flex-col gap-3 mb-4 lg:flex-row lg:items-center lg:justify-between border border-slate-200/50 bg-slate-50/50 backdrop-blur-sm p-3.5 rounded-2xl shadow-sm relative z-20">
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2.5">
 
           <div className="flex items-center gap-2">
             <label className="text-sm text-slate-600 whitespace-nowrap">Status:</label>
-            <select
+            <Select
               value={statusFilter}
-              className={`${compactSelectBaseClass} border-white/70 bg-white/80 backdrop-blur-md text-slate-700 focus:border-blue-500`}
-              onChange={(e) => onStatusFilterChange(e.target.value)}
-            >
-              <option value="All">All</option>
-              <option value="Draft">Draft</option>
-              <option value="Running">Running</option>
-              <option value="Completed">Completed</option>
-              <option value="Failed">Failed</option>
-              <option value="Reviewed">Reviewed</option>
-              <option value="Published">Published</option>
-              <option value="Archived">Archived</option>
-            </select>
+              onChange={onStatusFilterChange}
+              options={statusOptions}
+              className="w-36"
+            />
           </div>
 
-          <label className="flex items-center gap-2 rounded-xl border border-white/70 bg-white/75 px-3 py-1 backdrop-blur-md cursor-pointer">
+          <label className={`filter-pill flex items-center gap-2 rounded-xl border px-3.5 py-1.5 text-sm font-medium transition cursor-pointer select-none ${
+            onlyAlerts
+              ? 'bg-blue-50 border-blue-200 text-blue-700 shadow-md shadow-blue-500/10'
+              : 'border-slate-200/60 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900 shadow-sm'
+          }`}>
             <input
               type="checkbox"
               checked={onlyAlerts}
               onChange={(e) => onOnlyAlertsChange(e.target.checked)}
-              className="rounded"
+              className="sr-only"
             />
-            <span className="text-sm text-slate-700 whitespace-nowrap">
+            <span className="whitespace-nowrap">
               Only Runs with Alerts
             </span>
           </label>
 
-          <label className="flex items-center gap-2 rounded-xl border border-white/70 bg-white/75 px-3 py-1 backdrop-blur-md cursor-not-allowed opacity-50">
+          <label className="filter-pill flex items-center gap-2 rounded-xl border border-slate-200/40 bg-white/50 px-3.5 py-1.5 text-sm font-medium text-slate-400 cursor-not-allowed opacity-50 select-none shadow-sm">
             <input
               type="checkbox"
               checked={onlyPublished}
               onChange={(e) => onOnlyPublishedChange(e.target.checked)}
-              className="rounded"
+              className="sr-only"
               disabled
             />
-            <span className="text-sm text-slate-700 whitespace-nowrap">
+            <span className="whitespace-nowrap">
               Only Published
             </span>
           </label>
@@ -151,33 +157,36 @@ export const HomeScenarioRunsSection: React.FC<HomeScenarioRunsSectionProps> = (
             size="small"
             icon={<RefreshCw className={`w-4 h-4 ${refreshActive ? 'animate-spin' : ''}`} />}
             disabled
-            className="opacity-50 cursor-not-allowed"
+            className="opacity-50 cursor-not-allowed shadow-sm"
           >
             Refresh
           </Button>
         </div>
 
         <div className="relative w-full lg:w-[320px]">
+          <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
             value={searchTerm}
             onChange={(e) => onSearchTermChange(e.target.value)}
             placeholder="Search scenario runs..."
-            className="w-full rounded-xl border border-white/70 bg-white/80 px-3 py-2 text-sm shadow-sm backdrop-blur-md focus:outline-none focus:ring-2 focus:ring-blue-500/15"
+            className="w-full rounded-xl border border-slate-200/60 bg-white pl-10 pr-4 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/15"
           />
         </div>
 
-        </div>
+      </div>
 
-      <DataTable
-        columns={scenarioColumns}
-        data={paginatedScenarios}
-        onRowClick={(row) => onOpenScenario(row.ScenarioRunID)}
-        selectedRows={selectedScenarios}
-        onSelectRow={onSelectScenario}
-        getRowId={(row) => row.ScenarioRunID}
-        maxHeight="600px"
-      />
+      <div className="rounded-2xl border border-slate-200/40 bg-slate-50/20 p-1">
+        <DataTable
+          columns={scenarioColumns}
+          data={paginatedScenarios}
+          onRowClick={(row) => onOpenScenario(row.ScenarioRunID)}
+          selectedRows={selectedScenarios}
+          onSelectRow={onSelectScenario}
+          getRowId={(row) => row.ScenarioRunID}
+          maxHeight="600px"
+        />
+      </div>
 
       <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-slate-600">

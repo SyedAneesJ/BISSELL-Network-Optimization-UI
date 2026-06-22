@@ -5,11 +5,11 @@ import { narrateScenario, NarrativeSection } from '../../../services/ai/aiServic
 
 const MOCK_NARRATIVES: Record<string, NarrativeSection[]> = {
   tactical_dallas: [
-    { label: "📊 EXECUTIVE SUMMARY", text: "Dallas suppression creates a cost spike of <strong>$5.1M</strong>, pushing total network spend to <strong>$41.2M</strong>. Elwood and Pharr absorb the majority of the shifted volume, while R Virginia is carrying high capacity risk." },
-    { label: "💰 COST ANALYSIS", text: "Cost per Unit rises by <strong>$1.15 to $8.00</strong>. Out-of-zone shipments from Elwood to CA and TX are driving LTL freight overheads up by <strong>15%</strong>." },
-    { label: "⚡ CAPACITY & RISK", text: "R Virginia utilization spikes to <strong>92.4%</strong>, placing it at high risk of overcapacity. Emergency safety stock should be repositioned." },
-    { label: "📦 SERVICE LEVEL", text: "SLA breach rate reaches <strong>46.0%</strong> due to increased delivery days (average <strong>4.2d</strong> vs <strong>1.69d</strong> baseline) on West Coast lanes." },
-    { label: "✅ RECOMMENDATION", text: "Restore Dallas DC or adjust the Level-Loading cap to redirect 200 daily prepaid shipments to Pharr." }
+    { label: "📊 EXECUTIVE SUMMARY", text: "Tactical Pro Forma represents an optimized active configuration. Total network spend stands at <strong>$36.1M</strong> with average transit of <strong>1.69 days</strong>." },
+    { label: "💰 COST ANALYSIS", text: "Average Cost per Unit is optimized at <strong>$6.85</strong>. No suppression penalties are incurred since all nodes are fully operational." },
+    { label: "⚡ CAPACITY & RISK", text: "Network operates at a balanced capacity. R Virginia and Dallas share regional volume, keeping utilization below critical levels." },
+    { label: "📦 SERVICE LEVEL", text: "SLA breach rate is at <strong>0.0%</strong>. Lead transits are within bounds across all regions." },
+    { label: "✅ RECOMMENDATION", text: "Use this Tactical Pro Forma as the primary active baseline. Simulate suppression of individual DCs to evaluate network redundancy." }
   ],
   baseline: [
     { label: "📊 EXECUTIVE SUMMARY", text: "All 4 major DCs are active. Total network spend stands at <strong>$97.5M</strong> with average transit of <strong>1.69 days</strong>." },
@@ -35,7 +35,7 @@ const MOCK_NARRATIVES: Record<string, NarrativeSection[]> = {
 };
 
 const SCENARIOS_LIST = [
-  { key: "tactical_dallas", label: "Tactical — Dallas Suppressed", primary: true },
+  { key: "tactical_dallas", label: "Tactical Pro Forma", primary: true },
   { key: "baseline",        label: "US Baseline",                   primary: false },
   { key: "strategic",       label: "Strategic Pro Forma",            primary: false },
   { key: "consolidation",   label: "Consolidation Tactical",         primary: false },
@@ -46,13 +46,48 @@ interface AIScenarioNarratorProps {
   selectedKey: string;
   onSelectedKeyChange: (key: string) => void;
   onGoToSuppression?: () => void;
+  defaultInsightResult?: any;
+  isDefaultInsightLoading?: boolean;
 }
+
+const MOCK_DEFAULT_NARRATIVE: Record<string, NarrativeSection[]> = {
+  tactical_dallas: [
+    { label: "📊 EXECUTIVE SUMMARY (DEFAULT WORKFLOW)", text: "Tactical Pro Forma represents an optimized active configuration. Total network spend stands at <strong>$36.1M</strong> with average transit of <strong>1.69 days</strong>." },
+    { label: "💰 COST ANALYSIS", text: "Average Cost per Unit is optimized at <strong>$6.85</strong>. No suppression penalties are incurred since all nodes are fully operational." },
+    { label: "⚡ CAPACITY & RISK", text: "Network operates at a balanced capacity. R Virginia and Dallas share regional volume, keeping utilization below critical levels." },
+    { label: "📦 SERVICE LEVEL", text: "SLA breach rate is at <strong>0.0%</strong>. Lead transits are within bounds across all regions." },
+    { label: "✅ RECOMMENDATION", text: "Use this Tactical Pro Forma as the primary active baseline. Simulate suppression of individual DCs to evaluate network redundancy." }
+  ],
+  baseline: [
+    { label: "📊 EXECUTIVE SUMMARY (DEFAULT WORKFLOW)", text: "All 4 major DCs are active. Total network spend stands at <strong>$97.5M</strong> with average transit of <strong>1.69 days</strong>." },
+    { label: "💰 COST ANALYSIS", text: "Average Cost per Unit is optimized at <strong>$4.91</strong>. B2B LTL spend represents <strong>3.6%</strong> of total routing spend." },
+    { label: "⚡ CAPACITY & RISK", text: "Network operates at a balanced <strong>66.8%</strong> maximum utilization. R Virginia has comfortable headroom at <strong>66.8%</strong>." },
+    { label: "📦 SERVICE LEVEL", text: "SLA breaches are at <strong>0.0%</strong> with optimal carrier coverage across all core lanes." },
+    { label: "✅ RECOMMENDATION", text: "Maintain current configuration as the baseline benchmark for tactical changes." }
+  ],
+  strategic: [
+    { label: "📊 EXECUTIVE SUMMARY (DEFAULT WORKFLOW)", text: "Running an unconstrained footprint scenario shows potential optimization opportunities. Total cost is <strong>$51.5M</strong>." },
+    { label: "💰 COST ANALYSIS", text: "Cost per Unit is <strong>$8.39</strong>. B2C transit routes are minimized through high-volume lane consolidation." },
+    { label: "⚡ CAPACITY & RISK", text: "Overutilization detected on unconstrained modes due to high volume accumulation." },
+    { label: "📦 SERVICE LEVEL", text: "SLA breaches rise to <strong>46.0%</strong> due to lead time caps and long transits on collect terms." },
+    { label: "✅ RECOMMENDATION", text: "Constrain utilization to <strong>85%</strong> to stabilize the footprint." }
+  ],
+  consolidation: [
+    { label: "📊 EXECUTIVE SUMMARY (DEFAULT WORKFLOW)", text: "Consolidation scenario with Pharr TX and Stratford CT active. Total network spend is <strong>$8.8M</strong>." },
+    { label: "💰 COST ANALYSIS", text: "Cost per Unit is <strong>$11.39</strong> due to lower volume efficiencies and longer regional transits." },
+    { label: "⚡ CAPACITY & RISK", text: "High capacity utilization on Stratford CT, reaching peak thresholds." },
+    { label: "📦 SERVICE LEVEL", text: "SLA breaches are low at <strong>5.24%</strong> with average delivery days at <strong>3.15 days</strong>." },
+    { label: "✅ RECOMMENDATION", text: "Balance load across Pharr and Elwood to release Stratford bottleneck." }
+  ]
+};
 
 export const AIScenarioNarrator: React.FC<AIScenarioNarratorProps> = ({
   activeScenarioName = '',
   selectedKey,
   onSelectedKeyChange,
   onGoToSuppression,
+  defaultInsightResult,
+  isDefaultInsightLoading = false,
 }) => {
   const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [sections, setSections] = useState<NarrativeSection[]>([]);
@@ -65,6 +100,25 @@ export const AIScenarioNarrator: React.FC<AIScenarioNarratorProps> = ({
     setHasKey(!!key);
   }, []);
 
+  useEffect(() => {
+    if (isDefaultInsightLoading) {
+      setStatus("loading");
+      setSections([]);
+    } else if (defaultInsightResult) {
+      const responseSections = defaultInsightResult.narrative || 
+                               (Array.isArray(defaultInsightResult) ? defaultInsightResult : null);
+      if (responseSections && responseSections.length > 0) {
+        setSections(responseSections);
+      } else {
+        const fallback = MOCK_DEFAULT_NARRATIVE[selectedKey] || MOCK_NARRATIVES[selectedKey] || [];
+        setSections(fallback);
+      }
+      setStatus("done");
+    } else {
+      setStatus("idle");
+    }
+  }, [defaultInsightResult, isDefaultInsightLoading, selectedKey]);
+
   const activeScenario = SCENARIOS[selectedKey];
 
   async function handleNarrate() {
@@ -76,7 +130,7 @@ export const AIScenarioNarrator: React.FC<AIScenarioNarratorProps> = ({
     if (!hasKey) {
       // Demo mode fallback
       setTimeout(() => {
-        setSections(MOCK_NARRATIVES[selectedKey] || []);
+        setSections(MOCK_DEFAULT_NARRATIVE[selectedKey] || MOCK_NARRATIVES[selectedKey] || []);
         setStatus("done");
       }, 1500);
       return;

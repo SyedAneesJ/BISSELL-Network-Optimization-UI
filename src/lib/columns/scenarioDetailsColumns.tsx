@@ -1,38 +1,69 @@
 import { Column } from '@/components/ui';
-import { ScenarioRunResultsDC, ScenarioRunResultsLane } from '@/data';
+import { ScenarioRunResultsDC, ScenarioRunResultsLane, getAdditionalCostsForDc } from '@/data';
 import { formatCurrencyOrNA, formatDecimalOrNA, formatNumberOrNA, formatPercentOrNA, formatTextOrNA } from '@/utils';
 
-export const createScenarioDcColumns = (): Column<ScenarioRunResultsDC>[] => [
+export const createScenarioDcColumns = (isBaseline = false): Column<ScenarioRunResultsDC>[] => [
   { key: 'DCName', header: 'DC Name', sortable: true },
   {
     key: 'TotalCost',
     header: 'Base Cost',
     sortable: true,
-    render: (row) => formatCurrencyOrNA(row.TotalCost),
+    render: (row) => {
+      if (isBaseline) {
+        const dcCosts = getAdditionalCostsForDc(row.DCName);
+        const rentVal = row.Rent ?? dcCosts.Rent;
+        const laborVal = row.ContractLabor ?? dcCosts.ContractLabor;
+        const feeVal = row.ManagementFee ?? dcCosts.ManagementFee;
+        const addCost = rentVal + laborVal + feeVal;
+        return formatCurrencyOrNA(Math.max(0, row.TotalCost - addCost));
+      }
+      return formatCurrencyOrNA(row.TotalCost);
+    },
   },
   {
     key: 'Rent',
     header: 'Rent',
     sortable: true,
-    render: (row) => formatCurrencyOrNA(row.IsSuppressed === 'N' ? row.Rent : 0),
+    render: (row) => {
+      const dcCosts = getAdditionalCostsForDc(row.DCName);
+      const rentVal = row.Rent ?? dcCosts.Rent;
+      return formatCurrencyOrNA(row.IsSuppressed === 'N' ? rentVal : 0);
+    },
   },
   {
     key: 'ContractLabor',
     header: 'Contract Labor',
     sortable: true,
-    render: (row) => formatCurrencyOrNA(row.IsSuppressed === 'N' ? row.ContractLabor : 0),
+    render: (row) => {
+      const dcCosts = getAdditionalCostsForDc(row.DCName);
+      const laborVal = row.ContractLabor ?? dcCosts.ContractLabor;
+      return formatCurrencyOrNA(row.IsSuppressed === 'N' ? laborVal : 0);
+    },
   },
   {
     key: 'ManagementFee',
     header: 'Mgt Fee',
     sortable: true,
-    render: (row) => formatCurrencyOrNA(row.IsSuppressed === 'N' ? row.ManagementFee : 0),
+    render: (row) => {
+      const dcCosts = getAdditionalCostsForDc(row.DCName);
+      const feeVal = row.ManagementFee ?? dcCosts.ManagementFee;
+      return formatCurrencyOrNA(row.IsSuppressed === 'N' ? feeVal : 0);
+    },
   },
   {
     key: 'CombinedCost',
     header: 'Total Cost',
     sortable: true,
-    render: (row) => formatCurrencyOrNA(row.TotalCost + (row.IsSuppressed === 'N' ? (row.Rent ?? 0) + (row.ContractLabor ?? 0) + (row.ManagementFee ?? 0) : 0)),
+    render: (row) => {
+      const dcCosts = getAdditionalCostsForDc(row.DCName);
+      const rentVal = row.Rent ?? dcCosts.Rent;
+      const laborVal = row.ContractLabor ?? dcCosts.ContractLabor;
+      const feeVal = row.ManagementFee ?? dcCosts.ManagementFee;
+      const addCost = rentVal + laborVal + feeVal;
+      
+      const totalCostDisplay = isBaseline ? row.TotalCost : row.TotalCost + (row.IsSuppressed === 'N' ? addCost : 0);
+      return formatCurrencyOrNA(totalCostDisplay);
+    },
   },
   {
     key: 'VolumeUnits',
@@ -98,7 +129,7 @@ export const createScenarioDcColumns = (): Column<ScenarioRunResultsDC>[] => [
 
 export const createScenarioLaneColumns = (): Column<ScenarioRunResultsLane>[] => [
   { key: 'Dest3Zip', header: '3-Zip', width: '80px', sortable: true },
-  { key: 'DestState', header: 'State', width: '60px', sortable: true },
+  // { key: 'DestState', header: 'State', width: '60px', sortable: true },
   { key: 'Channel', header: 'Channel', width: '80px', sortable: true },
   { key: 'Terms', header: 'Terms', width: '80px', sortable: true },
   { key: 'AssignedDC', header: 'Assigned DC', width: '120px', sortable: true },
@@ -135,7 +166,14 @@ export const createScenarioLaneColumns = (): Column<ScenarioRunResultsLane>[] =>
     header: 'LTL Spend',
     width: '100px',
     sortable: true,
-    render: (row) => formatCurrencyOrNA(row.LtlSpend ?? null, 2),
+    render: (row) => formatCurrencyOrNA(row.LtlSpend ?? 0, 2),
+  },
+  {
+    key: 'TlSpend',
+    header: 'TL Spend',
+    width: '100px',
+    sortable: true,
+    render: (row) => formatCurrencyOrNA(row.TlSpend ?? 0, 2),
   },
   {
     key: 'CostPerUnit',

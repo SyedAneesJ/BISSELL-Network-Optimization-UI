@@ -19,6 +19,19 @@ export const ComparisonDcTab: React.FC<ComparisonDcTabProps> = ({
 }) => {
   return (
     <div className="space-y-6">
+      <div className="flex justify-end">
+        <Button
+          variant="secondary"
+          size="small"
+          icon={<Download className="w-4 h-4" />}
+          onClick={onExportDcDiff}
+          disabled={exportDcActive}
+          className={exportDcActive ? 'bg-amber-50 text-amber-800' : ''}
+        >
+          {exportDcActive ? 'Exporting...' : 'Export DC Diff CSV'}
+        </Button>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white border border-slate-200 rounded-lg p-4">
           <h3 className="text-lg font-semibold text-slate-900 mb-4">Utilization Comparison</h3>
@@ -80,17 +93,6 @@ export const ComparisonDcTab: React.FC<ComparisonDcTabProps> = ({
           columns={dcComparisonColumns}
           data={dcComparison}
         />
-      </div>
-
-      <div className="flex justify-end">
-        <Button
-          variant="secondary"
-          icon={<Download className="w-4 h-4" />}
-          onClick={onExportDcDiff}
-          className={exportDcActive ? 'bg-amber-100 text-amber-800' : ''}
-        >
-          {exportDcActive ? 'Exporting...' : 'Export DC Diff CSV'}
-        </Button>
       </div>
     </div>
   );

@@ -1,7 +1,6 @@
 import React, { useMemo, useRef, useEffect, useState } from 'react';
-import { Download, Plus, X, ChevronDown, Lock } from 'lucide-react';
-import { Button, NotificationBell } from '@/components';
-import { compactSelectBaseClass } from '@/components/ui/formStyles';
+import { Database, Download, Plus, X, ChevronDown } from 'lucide-react';
+import { Button, NotificationBell, Select } from '@/components';
 
 interface WorkspaceOption {
   value: 'All' | 'US' | 'Canada';
@@ -26,6 +25,7 @@ interface HomeHeaderProps {
   onExportComparisonList: () => void;
   onNewScenario: () => void;
   onNewComparison: () => void;
+  onOpenDataSources: () => void;
   hasComparisons: boolean;
   exportScenarioActive: boolean;
   exportComparisonActive: boolean;
@@ -43,6 +43,7 @@ export const HomeHeader: React.FC<HomeHeaderProps> = ({
   onExportComparisonList,
   onNewScenario,
   onNewComparison,
+  onOpenDataSources,
   hasComparisons,
   exportScenarioActive,
   exportComparisonActive,
@@ -80,20 +81,12 @@ export const HomeHeader: React.FC<HomeHeaderProps> = ({
             <img src="/Bissell.png" alt="Bissell Logo" className="h-10 sm:h-12 object-contain" />
             <div className="hidden sm:block h-6 w-px bg-slate-300" />
             <span className="text-sm font-semibold text-slate-900">Workspace</span>
-            <div className="relative group">
-              <select
-                value={workspace}
-                onChange={(e) => onWorkspaceChange(e.target.value as 'All' | 'US' | 'Canada')}
-                className={`${compactSelectBaseClass} appearance-none pr-9 border-white/70 bg-white/80 text-slate-700 font-medium shadow-[0_6px_18px_rgba(15,23,42,0.05)] backdrop-blur-md transition focus:border-blue-400`}
-              >
-                {workspaceOptions.map((option) => (
-                  <option key={option.value} value={option.value} disabled={option.disabled}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            </div>
+            <Select
+              value={workspace}
+              onChange={(val) => onWorkspaceChange(val as 'All' | 'US' | 'Canada')}
+              options={workspaceOptions}
+              className="w-44"
+            />
           </div>
 
           <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
@@ -119,6 +112,16 @@ export const HomeHeader: React.FC<HomeHeaderProps> = ({
                   </button>
                 </div>
               </div>
+
+              <Button
+                onClick={onOpenDataSources}
+                variant="secondary"
+                size="small"
+                icon={<Database className="w-4 h-4" />}
+                title="View all Domo data sources"
+              >
+                Data Sources
+              </Button>
 
               <Button
                 onClick={onNewComparison}

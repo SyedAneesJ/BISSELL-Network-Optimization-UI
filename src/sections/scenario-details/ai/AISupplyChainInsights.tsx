@@ -3,18 +3,61 @@ import { InsightCard } from './InsightCard';
 import { ZIP_DATA, ZipFootprintItem, SCENARIOS } from '../../../data/aiMockData';
 import { AnimatedNumber } from './AnimatedNumber';
 import { ProgressBar } from './ProgressBar';
+import { WorkflowInsight } from './AICopilotDrawer';
 
 interface AISupplyChainInsightsProps {
   selectedKey: string;
+  workflowInsights: WorkflowInsight[];
+  defaultInsightResult?: any;
 }
 
-export const AISupplyChainInsights: React.FC<AISupplyChainInsightsProps> = ({ selectedKey }) => {
+export const AISupplyChainInsights: React.FC<AISupplyChainInsightsProps> = ({
+  selectedKey,
+  workflowInsights,
+  defaultInsightResult,
+}) => {
   const activeScenario = SCENARIOS[selectedKey] || SCENARIOS.tactical_dallas;
   const totalCost = activeScenario.totalCost;
   const scaleFactor = totalCost / 97500000;
 
+  // Determine the single active live insight
+  const activeLiveInsight = workflowInsights.length > 0
+    ? workflowInsights[0]
+    : defaultInsightResult
+      ? {
+          id: "default-workflow-insight",
+          title: defaultInsightResult.title || `Default Network Optimization Analysis for ${selectedKey === 'tactical_dallas' ? 'Tactical Pro Forma' : (selectedKey === 'baseline' ? 'US Baseline' : selectedKey)}`,
+          category: defaultInsightResult.category || "AI Workflow Output · Baseline Assessment",
+          stats: defaultInsightResult.stats || [
+            { value: "4 Active", color: "#3B82F6", label: "DC Count" },
+            { value: "1.69 days", color: "#10B981", label: "Avg Lead Time" },
+            { value: "0.0% SLA", color: "#10B981", label: "Breach Rate" }
+          ],
+          body: defaultInsightResult.body || "The default network assessment has run successfully. All nodes are functioning within normal capacity constraints. Click any DC Suppression simulator to evaluate alternate network assignments.",
+          action: defaultInsightResult.action || "<strong>Recommendation:</strong> Proceed with testing individual node suppression to check redundancy limits.",
+          actionType: defaultInsightResult.actionType || "blue",
+        }
+      : null;
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 fade-in">
+      {/* Show exactly one live insight at a time */}
+      {activeLiveInsight && (
+        <InsightCard
+          key={activeLiveInsight.id || "live-insight"}
+          number="LIVE"
+          numberBg="#8B5CF6"
+          title={activeLiveInsight.title}
+          category={activeLiveInsight.category}
+          stats={activeLiveInsight.stats}
+          body={activeLiveInsight.body}
+          action={activeLiveInsight.action}
+          actionType={activeLiveInsight.actionType || "blue"}
+          fullWidth
+        />
+      )}
+
+      {/* Static Mock Insights (Max 3) */}
       <InsightCard
         number="3"
         numberBg="#3B82F6"
@@ -42,36 +85,6 @@ export const AISupplyChainInsights: React.FC<AISupplyChainInsightsProps> = ({ se
         ]}
         body="<strong>341 high-freight B2B lanes</strong> currently assigned to Elwood could be served more cheaply from Dallas. This isn't because Elwood serves harder customers — it's a routing decision. Elwood LTL = 9.8% of its total cost vs Dallas at 3.6%."
         action="<strong>Action:</strong> Run a Tactical Pro Forma with the top 50 high-LTL Elwood lanes reassigned to Dallas. Top offenders: ZIP 989 ($783K LTL), ZIP 924 ($475K), ZIP 957 ($370K)."
-        actionType="amber"
-      />
-
-      <InsightCard
-        number="7A"
-        numberBg="#EF4444"
-        title="D2C orders are the reason your DCs are over capacity — not B2B"
-        category="Capacity · Space Utilisation · D2C Footprint"
-        stats={[
-          { value: "70%",    color: "#EF4444", label: "DC floor space consumed by D2C" },
-          { value: "0.15 sqft", color: "#F59E0B", label: "D2C space per order" },
-          { value: <AnimatedNumber value={5.2 * scaleFactor} suffix="M" decimals={1} />,   color: "#3B82F6", label: "D2C orders (56% more than B2B)" },
-        ]}
-        body={`D2C occupies <strong>${Math.round(198280 * scaleFactor).toLocaleString()} sq ft</strong> across the network vs B2B's ${Math.round(85451 * scaleFactor).toLocaleString()} sq ft — even though D2C drives only 7% of total cost. Every D2C volume increase pushes utilisation bars faster than expected.`}
-        action="<strong>Action:</strong> Reroute the 10 highest-footprint D2C ZIPs from R Virginia to Dallas. Clears Overcap flags at zero cost penalty. See Ocean Exposure tab for the full ZIP list."
-        actionType="red"
-      />
-
-      <InsightCard
-        number="7B"
-        numberBg="#6366F1"
-        title="93% of network cost is B2B — and the tool only moves 28 cents of every dollar"
-        category="Cost Risk · B2B Inbound Freight · Strategic"
-        stats={[
-          { value: "93%",  color: "#6366F1", label: "Network cost that is B2B" },
-          { value: "72%",  color: "#EF4444", label: "B2B cost that is inbound ocean" },
-          { value: "28%",  color: "#10B981", label: "B2B cost routing can influence" },
-        ]}
-        body={`<strong>$${(63.3 * scaleFactor).toFixed(1)}M of every $${(87.7 * scaleFactor).toFixed(1)}M</strong> in B2B cost is inbound ocean freight — decisions made upstream. The entire optimization engine is moving the 28%. A <strong>10% ocean rate increase = $${(6.7 * scaleFactor).toFixed(1)}M overnight</strong> with no DC routing lever to offset it.`}
-        action="<strong>Action:</strong> Surface ocean freight sensitivity on the Summary screen. A 5% and 10% rate increase impact should be visible alongside total cost — giving leadership the full picture, not just the routing story."
         actionType="amber"
       />
 

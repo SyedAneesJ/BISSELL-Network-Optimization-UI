@@ -30,8 +30,8 @@ export const ScenarioHeader: React.FC<ScenarioHeaderProps> = ({
   onOpenCopilot,
 }) => {
   return (
-    <div className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8 py-4">
-      <div className="surface-panel mb-4 px-5 py-4">
+    <div className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8 pt-4 pb-0">
+      <div className="surface-panel mb-0 px-5 py-4">
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4">
             <div className="flex items-center gap-3">
@@ -72,7 +72,7 @@ export const ScenarioHeader: React.FC<ScenarioHeaderProps> = ({
               </div>
             </div>
 
-            <div className="flex flex-shrink-0 items-center sm:self-center">
+            {/* <div className="flex flex-shrink-0 items-center sm:self-center">
               <Button
                 variant="primary"
                 size="small"
@@ -82,7 +82,7 @@ export const ScenarioHeader: React.FC<ScenarioHeaderProps> = ({
               >
                 AI Copilot
               </Button>
-            </div>
+            </div> */}
           </div>
 
           <div className="flex flex-wrap items-center gap-2 border-t border-white/70 pt-4">

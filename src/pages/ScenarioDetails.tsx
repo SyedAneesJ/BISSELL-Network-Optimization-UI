@@ -30,6 +30,7 @@ import { ScenarioCommentModal } from '@/components/modals';
 import { useScenarioDetails } from '@/hooks';
 import { loadScenarioLaneSnapshotsFromAppDb, ScenarioRunHistoryEntry } from '@/services/scenario';
 import { AICopilotDrawer } from '@/sections/scenario-details/ai';
+import { startWorkflow } from '@/services/domo/domoWorkflow';
 
 interface ScenarioDetailsProps {
   scenarioId: string;
@@ -58,6 +59,38 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = (props) => {
   const [isTabSwitching, setIsTabSwitching] = useState(false);
   const [isCopilotOpen, setIsCopilotOpen] = useState(false);
   const tabSwitchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [defaultInsightResult, setDefaultInsightResult] = useState<any>(null);
+  const [isDefaultInsightLoading, setIsDefaultInsightLoading] = useState(false);
+
+  useEffect(() => {
+    setIsDefaultInsightLoading(true);
+    setDefaultInsightResult(null);
+
+    let isSubscribed = true;
+
+    const runDefaultWorkflow = async () => {
+      try {
+        const res = await startWorkflow('Bissell_AI_insights_default', {});
+        console.log('[Bissell_AI_insights_default] Response:', res);
+        if (isSubscribed) {
+          setDefaultInsightResult(res);
+        }
+      } catch (err) {
+        console.warn('Default insights workflow start failed or not in Domo. Using fallback.', err);
+      } finally {
+        if (isSubscribed) {
+          setIsDefaultInsightLoading(false);
+        }
+      }
+    };
+
+    void runDefaultWorkflow();
+
+    return () => {
+      isSubscribed = false;
+    };
+  }, [props.scenarioId]);
 
   useEffect(() => {
     return () => {
@@ -339,13 +372,13 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = (props) => {
             }}
           />
 
-          <div className="mx-0 mt-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="mb-3 flex items-center justify-between gap-3">
+          <div className="mx-0 mt-4 surface-panel p-5">
+            <div className="mb-4 flex items-center justify-between gap-3">
               <div>
                 <h3 className="text-lg font-semibold text-slate-900">Recent Runs</h3>
-                <p className="text-sm text-slate-500">Loaded from the persisted scenario repository.</p>
+                <p className="text-sm text-slate-600">Loaded from the persisted scenario repository.</p>
               </div>
-              <span className="rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-600">
+              <span className="rounded-full bg-slate-100/80 px-2.5 py-1 text-xs font-medium text-slate-600 border border-slate-200/50">
                 {props.recentRuns.length} entries
               </span>
             </div>
@@ -353,36 +386,47 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = (props) => {
               <p className="text-sm text-slate-500">No run history available yet.</p>
             ) : (
               <div className="space-y-3">
-                {props.recentRuns.slice(0, 5).map((run) => (
-                  <div
-                    key={run.runId}
-                    className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 sm:flex-row sm:items-center sm:justify-between"
-                  >
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-medium text-slate-900">{run.status}</span>
-                        <span className="rounded-full border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600">
-                          {run.executionId || 'No execution id'}
-                        </span>
+                {props.recentRuns.slice(0, 5).map((run) => {
+                  const borderClass =
+                    run.status === 'Completed'
+                      ? 'border-l-4 border-l-emerald-500'
+                      : run.status === 'Running'
+                      ? 'border-l-4 border-l-blue-500'
+                      : run.status === 'Failed'
+                      ? 'border-l-4 border-l-rose-500'
+                      : 'border-l-4 border-l-slate-400';
+
+                  return (
+                    <div
+                      key={run.runId}
+                      className={`flex flex-col gap-3 surface-card p-4 sm:flex-row sm:items-center sm:justify-between hover-lift ${borderClass}`}
+                    >
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-medium text-slate-900">{run.status}</span>
+                          <span className="rounded-full border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600">
+                            {run.executionId || 'No execution id'}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-sm text-slate-600">
+                          Triggered by {run.triggeredBy} on {new Date(run.startedAt).toLocaleString()}
+                          {run.completedAt ? `, completed ${new Date(run.completedAt).toLocaleString()}` : ''}
+                        </p>
+                        {run.message && (
+                          <p className="mt-1 text-sm text-slate-500">{run.message}</p>
+                        )}
                       </div>
-                      <p className="mt-1 text-sm text-slate-600">
-                        Triggered by {run.triggeredBy} on {new Date(run.startedAt).toLocaleString()}
-                        {run.completedAt ? `, completed ${new Date(run.completedAt).toLocaleString()}` : ''}
-                      </p>
-                      {run.message && (
-                        <p className="mt-1 text-sm text-slate-500">{run.message}</p>
-                      )}
+                      <div className="text-xs text-slate-500 sm:text-right">
+                        <p>Dataflow: {run.dataflowId || 'NA'}</p>
+                        <p>
+                          Duration: {typeof run.durationMs === 'number'
+                            ? `${Math.max(0, Math.round(run.durationMs / 1000))}s`
+                            : 'NA'}
+                        </p>
+                      </div>
                     </div>
-                    <div className="text-xs text-slate-500 sm:text-right">
-                      <p>Dataflow: {run.dataflowId || 'NA'}</p>
-                      <p>
-                        Duration: {typeof run.durationMs === 'number'
-                          ? `${Math.max(0, Math.round(run.durationMs / 1000))}s`
-                          : 'NA'}
-                      </p>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -405,20 +449,22 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = (props) => {
       />
 
       {/* Floating Action Button for AI Copilot */}
-      <button
+      {/* <button
         onClick={() => setIsCopilotOpen(true)}
         className="fixed bottom-12 right-6 z-40 flex h-12 items-center gap-2 rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 px-5 text-white shadow-lg shadow-blue-500/20 hover:shadow-xl hover:shadow-blue-500/30 transition-all duration-200 hover:scale-105 active:scale-95 border border-white/10"
       >
         <Sparkles className="w-4 h-4 animate-pulse" />
         <span className="text-xs font-semibold tracking-wide">AI Copilot</span>
-      </button>
+      </button> */}
 
       {/* AI Copilot Slide-over Drawer */}
-      <AICopilotDrawer
+      {/* <AICopilotDrawer
         isOpen={isCopilotOpen}
         onClose={() => setIsCopilotOpen(false)}
         activeScenarioName={scenario.RunName}
-      />
+        defaultInsightResult={defaultInsightResult}
+        isDefaultInsightLoading={isDefaultInsightLoading}
+      /> */}
     </AppPage>
   );
 };

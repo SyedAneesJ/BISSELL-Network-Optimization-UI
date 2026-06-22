@@ -1,4 +1,4 @@
-﻿import DatasetApi from './datasetApi';
+import DatasetApi from './datasetApi';
 import { csvToObjects, toCSV } from '@/utils';
 import {
   ScenarioRunResultsLane,
@@ -392,6 +392,7 @@ const normalizeRawLaneRow = (
   const freightTerms = readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.terms]);
   const distributionCost = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.distributionCost]));
   const tlSpend = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.tlSpend]));
+  const ltlSpend = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.ltlSpend]));
   // Use readRegistryFieldRaw so that an empty laneSpaceSqFt cell is honoured as 0
   // rather than falling through to the next alias ('3-zip x Channel Containers x Origin').
   const workingCapacityRaw = readRegistryFieldRaw(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.workingCapacity]);
@@ -411,7 +412,7 @@ const normalizeRawLaneRow = (
   const rawTotalCost = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.totalCost]));
   const breachFlag = normalizeLaneBreachFlag(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.breachFlag]));
   const assignedDc = costingWarehouse || defaultShipFrom || '';
-  const laneCost = rawTotalCost > 0 ? rawTotalCost : Math.max(0, distributionCost + inboundSpend + parcelSpend + tlSpend);
+  const laneCost = rawTotalCost > 0 ? rawTotalCost : Math.max(0, distributionCost + inboundSpend + parcelSpend + ltlSpend + tlSpend);
   const deliveryDays = avgDeliveryDays > 0
     ? avgDeliveryDays
     : avgTransitDays > 0
@@ -463,13 +464,13 @@ const normalizeRawLaneRow = (
     DefaultShipFrom: defaultShipFrom || undefined,
     InboundSpend: inboundSpend,
     ParcelSpend: parcelSpend,
-    LtlSpend: tlSpend,
+    LtlSpend: ltlSpend,
     TotalCost: rawTotalCost || laneCost,
     CostRank: 0,
     CostPerUnit: costPerUnit > 0 ? costPerUnit : undefined,
     WorkingCapacity: hasWorkingCapacityColumn ? workingCapacity : (workingCapacity || undefined),
     DistributionCost: distributionCost || undefined,
-    TlSpend: tlSpend || undefined,
+    TlSpend: tlSpend,
     BreachFlag: breachFlag,
     OrderToDeliverCalendarDays: orderToDeliverDays || undefined,
     ShipToDeliverCalendarDays: shipToDeliverDays || undefined,
@@ -583,7 +584,7 @@ const normalizeNormalizedLaneRow = (row: DomoLaneRow): ScenarioRunResultsLane | 
       return normalized.WorkingCapacity;
     })(),
     DistributionCost: asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.distributionCost]), normalized.DistributionCost || 0) || undefined,
-    TlSpend: asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.tlSpend]), normalized.TlSpend || 0) || undefined,
+    TlSpend: asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.tlSpend]), normalized.TlSpend || 0),
     BreachFlag: readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.breachFlag]) || normalized.BreachFlag,
     OrderToDeliverCalendarDays: asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.orderToDeliverDays]), normalized.OrderToDeliverCalendarDays || 0) || undefined,
     ShipToDeliverCalendarDays: asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.shipToDeliverDays]), normalized.ShipToDeliverCalendarDays || 0) || undefined,

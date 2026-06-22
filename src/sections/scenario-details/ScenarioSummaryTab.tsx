@@ -75,10 +75,10 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
     null as ScenarioRunResultsDC | null,
   );
   const additionalCost = dcResults.reduce((sum, dc) => {
-    if (dc.IsSuppressed === 'Y') return sum;
-    const costs = getAdditionalCostsForDc(dc.DCName);
-    return sum + (dc.Rent ?? costs.Rent) + (dc.ContractLabor ?? costs.ContractLabor) + (dc.ManagementFee ?? costs.ManagementFee);
-  }, 0);
+        if (dc.IsSuppressed === 'Y') return sum;
+        const costs = getAdditionalCostsForDc(dc.DCName);
+        return sum + (dc.Rent ?? costs.Rent) + (dc.ContractLabor ?? costs.ContractLabor) + (dc.ManagementFee ?? costs.ManagementFee);
+      }, 0);
 
   const baseCost = Math.max(0, scenario.TotalCost - additionalCost);
 
@@ -175,44 +175,55 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
       <div>
         <h3 className="mb-4 text-lg font-semibold text-slate-900">DC Scorecard</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {dcResults.map((dc) => (
-            <div key={dc.DCName} className="surface-card p-4 hover-lift">
-              <div className="flex items-center justify-between mb-3">
-                <h4 className="font-semibold text-slate-900">{dc.DCName}</h4>
-                {dc.IsSuppressed === 'Y' ? (
-                  <span className="text-xs px-2 py-1 bg-red-100 text-red-700 rounded">Suppressed</span>
-                ) : (
-                  <span className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded">Active</span>
-                )}
-              </div>
+          {dcResults.map((dc) => {
+            const isBaseline = scenario.ScenarioRunID === 'SR001' || String(scenario.ScenarioType || '').toLowerCase().includes('baseline');
+            const dcCosts = getAdditionalCostsForDc(dc.DCName);
+            const rentVal = dc.Rent ?? dcCosts.Rent;
+            const laborVal = dc.ContractLabor ?? dcCosts.ContractLabor;
+            const feeVal = dc.ManagementFee ?? dcCosts.ManagementFee;
+            const addCost = rentVal + laborVal + feeVal;
 
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between border-b border-slate-100 pb-1 font-medium">
-                  <span className="text-slate-600">Base Cost:</span>
-                  <span>${dc.TotalCost.toLocaleString('en-US')}</span>
+            const baseCostDisplay = isBaseline ? Math.max(0, dc.TotalCost - addCost) : dc.TotalCost;
+            const totalCostDisplay = isBaseline ? dc.TotalCost : dc.TotalCost + (dc.IsSuppressed === 'N' ? addCost : 0);
+
+            return (
+              <div key={dc.DCName} className="surface-card p-4 hover-lift">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="font-semibold text-slate-900">{dc.DCName}</h4>
+                  {dc.IsSuppressed === 'Y' ? (
+                    <span className="text-xs px-2 py-1 bg-red-100 text-red-700 rounded">Suppressed</span>
+                  ) : (
+                    <span className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded">Active</span>
+                  )}
                 </div>
-                {dc.IsSuppressed === 'N' && (
-                  <div className="space-y-1 pl-2 border-l-2 border-blue-200 text-xs my-1 text-slate-500">
-                    <div className="flex justify-between">
-                      <span>Rent:</span>
-                      <span>${(dc.Rent ?? 0).toLocaleString('en-US')}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Contract Labor:</span>
-                      <span>${(dc.ContractLabor ?? 0).toLocaleString('en-US')}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Management Fee:</span>
-                      <span>${(dc.ManagementFee ?? 0).toLocaleString('en-US')}</span>
-                    </div>
+
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between border-b border-slate-100 pb-1 font-medium">
+                    <span className="text-slate-600">Base Cost:</span>
+                    <span>${baseCostDisplay.toLocaleString('en-US')}</span>
                   </div>
-                )}
-                <div className="flex justify-between font-semibold text-slate-900 pt-1 border-t border-slate-100 mb-2">
-                  <span>Total Cost:</span>
-                  <span>
-                    ${(dc.TotalCost + (dc.IsSuppressed === 'N' ? (dc.Rent ?? 0) + (dc.ContractLabor ?? 0) + (dc.ManagementFee ?? 0) : 0)).toLocaleString('en-US')}
-                  </span>
-                </div>
+                  {dc.IsSuppressed === 'N' && (
+                    <div className="space-y-1 pl-2 border-l-2 border-blue-200 text-xs my-1 text-slate-500">
+                      <div className="flex justify-between">
+                        <span>Rent:</span>
+                        <span>${rentVal.toLocaleString('en-US')}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Contract Labor:</span>
+                        <span>${laborVal.toLocaleString('en-US')}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Management Fee:</span>
+                        <span>${feeVal.toLocaleString('en-US')}</span>
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex justify-between font-semibold text-slate-900 pt-1 border-t border-slate-100 mb-2">
+                    <span>Total Cost:</span>
+                    <span>
+                      ${totalCostDisplay.toLocaleString('en-US')}
+                    </span>
+                  </div>
                 <div className="flex justify-between">
                   <span className="text-slate-600">Avg Days:</span>
                   <span className="font-medium">{formatDecimalOrNA(dc.AvgDays, 2)}</span>
@@ -279,7 +290,8 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
                 </div>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 

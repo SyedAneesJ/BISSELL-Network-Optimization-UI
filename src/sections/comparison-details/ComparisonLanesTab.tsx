@@ -1,8 +1,24 @@
 import React from 'react';
 import { Download } from 'lucide-react';
 import { FileSpreadsheet } from 'lucide-react';
-import { Button, DataTable, Column } from '@/components/ui';
+import { Button, DataTable, Column, Select } from '@/components/ui';
 import { ComparisonDetailLane } from '@/data';
+
+const diffFilterOptions = [
+  { value: 'Only Changed Lanes', label: 'Only Changed Lanes' },
+  { value: 'All Lanes', label: 'All Lanes' },
+  { value: 'Only SLA Worsened', label: 'Only SLA Worsened' },
+  { value: 'Only Capacity Improved', label: 'Only Capacity Improved' },
+  { value: 'Top 50 Cost Impact', label: 'Top 50 Cost Impact' },
+  { value: 'Top 100 Cost Impact', label: 'Top 100 Cost Impact' },
+];
+
+const channelFilterOptions = [
+  { value: 'All Channels', label: 'All Channels' },
+  { value: 'B2C', label: 'B2C' },
+  { value: 'B2B', label: 'B2B' },
+  { value: 'D2C', label: 'D2C' },
+];
 
 interface ComparisonLanesTabProps {
   laneDiffFilter: string;
@@ -43,30 +59,20 @@ export const ComparisonLanesTab: React.FC<ComparisonLanesTabProps> = ({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-2">
-        <select
+      <div className="flex flex-wrap items-center gap-2">
+        <Select
           value={laneDiffFilter}
-          onChange={(e) => onLaneDiffFilterChange(e.target.value)}
-          className="px-3 py-2 border border-slate-300 rounded-lg text-sm"
-        >
-          <option>Only Changed Lanes</option>
-          <option>All Lanes</option>
-          <option>Only SLA Worsened</option>
-          <option>Only Capacity Improved</option>
-          <option>Top 50 Cost Impact</option>
-          <option>Top 100 Cost Impact</option>
-        </select>
+          onChange={onLaneDiffFilterChange}
+          options={diffFilterOptions}
+          className="w-56"
+        />
 
-        <select
+        <Select
           value={laneChannelFilter}
-          onChange={(e) => onLaneChannelFilterChange(e.target.value)}
-          className="px-3 py-2 border border-slate-300 rounded-lg text-sm"
-        >
-          <option>All Channels</option>
-          <option>B2C</option>
-          <option>B2B</option>
-          <option>D2C</option>
-        </select>
+          onChange={onLaneChannelFilterChange}
+          options={channelFilterOptions}
+          className="w-44"
+        />
       </div>
 
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">

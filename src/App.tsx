@@ -858,29 +858,123 @@ function App() {
   const hydratedScenarioHeaders = useMemo(() => {
     return scenarioState.headers.map((header) => {
       const dcs = scenarioState.resultsDC.filter((dc) => dc.ScenarioRunID === header.ScenarioRunID);
+      const isBaseline = header.ScenarioRunID === 'SR001' || String(header.ScenarioType || '').toLowerCase().includes('baseline');
       const additionalCost = dcs.reduce((sum, dc) => {
         if (dc.IsSuppressed === 'Y') return sum;
         const costs = getAdditionalCostsForDc(dc.DCName);
         return sum + (dc.Rent ?? costs.Rent) + (dc.ContractLabor ?? costs.ContractLabor) + (dc.ManagementFee ?? costs.ManagementFee);
       }, 0);
 
-      const totalCombinedCost = header.TotalCost + additionalCost;
+      const totalCombinedCost = isBaseline
+        ? header.TotalCost
+        : header.TotalCost + additionalCost;
       const totalCount = Number(header.TotalCount || 1);
       const combinedCostPerUnit = totalCount > 0 ? totalCombinedCost / totalCount : header.CostPerUnit;
+
+      let calculatedChangedLanes = header.ChangedLaneCountVsBaseline || 0;
+      if (!isBaseline) {
+        const baselineId = header.BaselineScenarioID || scenarioState.headers.find(
+          (h) => h.Region === header.Region && (h.ScenarioRunID === 'SR001' || String(h.ScenarioType || '').toLowerCase().includes('baseline'))
+        )?.ScenarioRunID;
+
+        if (baselineId && baselineId !== header.ScenarioRunID) {
+          const scenarioLanes = scenarioState.resultsLanes.filter((lane) => lane.ScenarioRunID === header.ScenarioRunID);
+          const baselineLanes = scenarioState.resultsLanes.filter((lane) => lane.ScenarioRunID === baselineId);
+          if (scenarioLanes.length > 0 && baselineLanes.length > 0) {
+            const laneKey = (l: ScenarioRunResultsLane) => `${l.Dest3Zip || ''}|${l.Channel || ''}|${l.Terms || ''}|${l.CustomerGroup || ''}`;
+            const baselineMap = new Map(baselineLanes.map((l) => [laneKey(l), l]));
+            let diffCount = 0;
+            scenarioLanes.forEach((lane) => {
+              const baseLane = baselineMap.get(laneKey(lane));
+              if (!baseLane || lane.AssignedDC !== baseLane.AssignedDC) {
+                diffCount++;
+              }
+            });
+            calculatedChangedLanes = diffCount;
+          }
+        }
+      } else {
+        calculatedChangedLanes = 0;
+      }
+
+      const scenarioLanesForOverride = scenarioState.resultsLanes.filter((lane) => lane.ScenarioRunID === header.ScenarioRunID);
+      const calculatedOverrideCount = scenarioLanesForOverride.length > 0
+        ? scenarioLanesForOverride.filter((lane) => lane.OverrideAppliedFlag === 'Y').length
+        : (header.OverrideCount || 0);
 
       return {
         ...header,
         TotalCost: Number(totalCombinedCost.toFixed(2)),
         CostPerUnit: Number(combinedCostPerUnit.toFixed(2)),
+        ChangedLaneCountVsBaseline: calculatedChangedLanes,
+        OverrideCount: calculatedOverrideCount,
       };
     });
-  }, [scenarioState.headers, scenarioState.resultsDC]);
+  }, [scenarioState.headers, scenarioState.resultsDC, scenarioState.resultsLanes]);
 
   const comparisonModalScenarioHeaders = useMemo(() => {
     if (!comparisonScenarioIds || comparisonScenarioIds.length === 0) return hydratedScenarioHeaders;
     const allowed = new Set(comparisonScenarioIds);
     return hydratedScenarioHeaders.filter((scenario) => allowed.has(scenario.ScenarioRunID));
   }, [comparisonScenarioIds, hydratedScenarioHeaders]);
+
+  const hydratedComparisonHeaders = useMemo(() => {
+    return comparisonState.headers.map((comparison) => {
+      const scenarioA = hydratedScenarioHeaders.find(s => s.ScenarioRunID === comparison.ScenarioRunID_A);
+      const scenarioB = hydratedScenarioHeaders.find(s => s.ScenarioRunID === comparison.ScenarioRunID_B);
+      console.log('[DEBUG hydratedComparisonHeaders]', comparison.ComparisonName, {
+        ScenarioRunID_A: comparison.ScenarioRunID_A,
+        scenarioAFound: !!scenarioA,
+        scenarioATotalCost: scenarioA?.TotalCost,
+        ScenarioRunID_B: comparison.ScenarioRunID_B,
+        scenarioBFound: !!scenarioB,
+        scenarioBTotalCost: scenarioB?.TotalCost,
+        originalCostDelta: comparison.CostDelta,
+        originalCostDeltaPct: comparison.CostDeltaPct,
+      });
+      if (!scenarioA || !scenarioB) return comparison;
+
+      const costDelta = (scenarioB.TotalCost || 0) - (scenarioA.TotalCost || 0);
+      const costDeltaPct = scenarioA.TotalCost ? (costDelta / scenarioA.TotalCost) * 100 : 0;
+      const avgDaysDelta = (scenarioB.AvgDeliveryDays || 0) - (scenarioA.AvgDeliveryDays || 0);
+      const slaDelta = (scenarioB.SLABreachPct || 0) - (scenarioA.SLABreachPct || 0);
+      const maxUtilDelta = (scenarioB.MaxUtilPct || 0) - (scenarioA.MaxUtilPct || 0);
+      const spaceDelta = (scenarioB.TotalSpaceRequired || 0) - (scenarioA.TotalSpaceRequired || 0);
+      const spaceCoreDelta = (scenarioB.SpaceCore || 0) - (scenarioA.SpaceCore || 0);
+      const spaceBCVDelta = (scenarioB.SpaceBCV || 0) - (scenarioA.SpaceBCV || 0);
+
+      const compareLaneKeys = (lane: ScenarioRunResultsLane) =>
+        `${lane.Dest3Zip || ''}|${lane.Channel || ''}|${lane.Terms || ''}|${lane.CustomerGroup || ''}`;
+      const runALanes = scenarioState.resultsLanes.filter((lane) => lane.ScenarioRunID === comparison.ScenarioRunID_A);
+      const runBLanes = scenarioState.resultsLanes.filter((lane) => lane.ScenarioRunID === comparison.ScenarioRunID_B);
+      let changedLaneDelta = comparison.ChangedLaneDelta;
+      if (runALanes.length > 0 || runBLanes.length > 0) {
+        const laneMapA = new Map(runALanes.map((lane) => [compareLaneKeys(lane), lane]));
+        const laneMapB = new Map(runBLanes.map((lane) => [compareLaneKeys(lane), lane]));
+        changedLaneDelta = Array.from(new Set([...laneMapA.keys(), ...laneMapB.keys()])).reduce((count, key) => {
+          const laneA = laneMapA.get(key);
+          const laneB = laneMapB.get(key);
+          if (!laneA || !laneB) return count + 1;
+          return laneA.AssignedDC !== laneB.AssignedDC || laneA.LaneCost !== laneB.LaneCost || laneA.DeliveryDays !== laneB.DeliveryDays
+            ? count + 1
+            : count;
+        }, 0);
+      }
+
+      return {
+        ...comparison,
+        CostDelta: Math.round(costDelta),
+        CostDeltaPct: Number(costDeltaPct.toFixed(2)),
+        AvgDaysDelta: Number(avgDaysDelta.toFixed(2)),
+        SLABreachDelta: Number(slaDelta.toFixed(2)),
+        MaxUtilDelta: Math.round(maxUtilDelta),
+        SpaceDelta: Math.round(spaceDelta),
+        SpaceCoreDelta: Math.round(spaceCoreDelta),
+        SpaceBCVDelta: Math.round(spaceBCVDelta),
+        ChangedLaneDelta: Math.round(changedLaneDelta),
+      };
+    });
+  }, [comparisonState.headers, hydratedScenarioHeaders, scenarioState.resultsLanes]);
 
   const setScenarioRepositoryCache = useCallback(
     (records: ScenarioRepositoryRecord[], source: 'AppDB' | 'localStorage' | 'unknown') => {
@@ -3014,8 +3108,8 @@ function App() {
       .toUpperCase() || 'ANON';
     const comparisonId = `CMP-${ownerPrefix}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
 
-    const scenarioA = scenarioState.headers.find(s => s.ScenarioRunID === payload.runA);
-    const scenarioB = scenarioState.headers.find(s => s.ScenarioRunID === payload.runB);
+    const scenarioA = hydratedScenarioHeaders.find(s => s.ScenarioRunID === payload.runA);
+    const scenarioB = hydratedScenarioHeaders.find(s => s.ScenarioRunID === payload.runB);
 
     const costDelta = (scenarioB?.TotalCost || 0) - (scenarioA?.TotalCost || 0);
     const costDeltaPct = scenarioA?.TotalCost ? (costDelta / scenarioA.TotalCost) * 100 : 0;
@@ -3026,7 +3120,7 @@ function App() {
     const spaceCoreDelta = (scenarioB?.SpaceCore || 0) - (scenarioA?.SpaceCore || 0);
     const spaceBCVDelta = (scenarioB?.SpaceBCV || 0) - (scenarioA?.SpaceBCV || 0);
     const compareLaneKeys = (lane: ScenarioRunResultsLane) =>
-      `${lane.Dest3Zip || ''}|${lane.Channel || ''}`;
+      `${lane.Dest3Zip || ''}|${lane.Channel || ''}|${lane.Terms || ''}|${lane.CustomerGroup || ''}`;
     const runALanes = scenarioState.resultsLanes.filter((lane) => lane.ScenarioRunID === payload.runA);
     const runBLanes = scenarioState.resultsLanes.filter((lane) => lane.ScenarioRunID === payload.runB);
     const laneMapA = new Map(runALanes.map((lane) => [compareLaneKeys(lane), lane]));
@@ -3642,7 +3736,7 @@ function App() {
             onWorkspaceChange={setWorkspace}
             scenarioRunHeaders={hydratedScenarioHeaders}
             scenarioRunResultsDC={scenarioState.resultsDC}
-            comparisonHeaders={comparisonState.headers}
+            comparisonHeaders={hydratedComparisonHeaders}
             dataHealthSnapshot={dataHealthSnapshots[workspace]}
             onDuplicateScenario={duplicateScenario}
             onArchiveScenario={archiveScenario}
@@ -3702,7 +3796,7 @@ function App() {
             comparisonId={appState.selectedComparisonId}
             onBack={navigateToHome}
             scenarioRunHeaders={hydratedScenarioHeaders}
-            comparisonHeaders={comparisonState.headers}
+            comparisonHeaders={hydratedComparisonHeaders}
             comparisonDetailDC={comparisonState.detailDC}
             comparisonDetailLanes={comparisonState.detailLanes}
             scenarioRunResultsDC={scenarioState.resultsDC}

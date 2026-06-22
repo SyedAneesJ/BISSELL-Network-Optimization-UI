@@ -65,6 +65,9 @@ export const useComparisonDetails = ({
       const getDcCombinedCost = (dc?: ScenarioRunResultsDC) => {
         if (!dc) return 0;
         if (dc.IsSuppressed === 'Y') return 0;
+        const scenario = scenarioRunHeaders.find(s => s.ScenarioRunID === dc.ScenarioRunID);
+        const isBaseline = dc.ScenarioRunID === 'SR001' || (scenario && String(scenario.ScenarioType || '').toLowerCase().includes('baseline'));
+        if (isBaseline) return dc.TotalCost;
         const costs = getAdditionalCostsForDc(dc.DCName);
         return dc.TotalCost + (dc.Rent ?? costs.Rent) + (dc.ContractLabor ?? costs.ContractLabor) + (dc.ManagementFee ?? costs.ManagementFee);
       };
@@ -97,7 +100,7 @@ export const useComparisonDetails = ({
     if (a.length === 0 && b.length === 0) return laneComparisonStored;
 
     const key = (lane: ScenarioRunResultsLane) =>
-      `${lane.Dest3Zip}|${lane.Channel}`;
+      `${lane.Dest3Zip || ''}|${lane.Channel || ''}|${lane.Terms || ''}|${lane.CustomerGroup || ''}`;
     const byA = new Map(a.map(l => [key(l), l]));
     const byB = new Map(b.map(l => [key(l), l]));
     const keys = Array.from(new Set([...byA.keys(), ...byB.keys()]));
@@ -107,7 +110,12 @@ export const useComparisonDetails = ({
       const laneB = byB.get(k);
       const flags: string[] = [];
       if (laneA?.AssignedDC && laneB?.AssignedDC && laneA.AssignedDC !== laneB.AssignedDC) flags.push('DCChange');
-      if ((laneB?.DeliveryDays || 0) - (laneA?.DeliveryDays || 0) > 0.5) flags.push('SLA');
+
+      const daysA = laneA?.DeliveryDays || laneA?.AvgDeliveryDays || (typeof laneA?.AvgTransitDays === 'number' ? laneA.AvgTransitDays : 0) || 0;
+      const daysB = laneB?.DeliveryDays || laneB?.AvgDeliveryDays || (typeof laneB?.AvgTransitDays === 'number' ? laneB.AvgTransitDays : 0) || 0;
+      const daysDelta = Math.round((daysB - daysA) * 100) / 100;
+
+      if (daysDelta > 0.5) flags.push('SLA');
       if (laneB?.OverrideAppliedFlag === 'Y' || laneA?.OverrideAppliedFlag === 'Y') flags.push('Override');
 
       return {
@@ -121,9 +129,9 @@ export const useComparisonDetails = ({
         Cost_A: laneA?.LaneCost || 0,
         Cost_B: laneB?.LaneCost || 0,
         Cost_Delta: (laneB?.LaneCost || 0) - (laneA?.LaneCost || 0),
-        Days_A: laneA?.DeliveryDays || 0,
-        Days_B: laneB?.DeliveryDays || 0,
-        Days_Delta: Math.round(((laneB?.DeliveryDays || 0) - (laneA?.DeliveryDays || 0)) * 100) / 100,
+        Days_A: daysA,
+        Days_B: daysB,
+        Days_Delta: daysDelta,
         UtilImpact_A: laneA?.UtilImpactPct || 0,
         UtilImpact_B: laneB?.UtilImpactPct || 0,
         Flags: flags.join(','),

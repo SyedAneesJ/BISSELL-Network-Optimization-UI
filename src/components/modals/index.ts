@@ -1,4 +1,5 @@
 export { DataHealthModal } from './DataHealthModal';
+export { DataSourcesModal } from './DataSourcesModal';
 export { NewComparisonModal } from './NewComparisonModal';
 export { ScenarioLaneDetailsModal } from './ScenarioLaneDetailsModal';
 export { ScenarioCommentModal } from './ScenarioCommentModal';

@@ -22,6 +22,19 @@ export const ComparisonKpiTab: React.FC<ComparisonKpiTabProps> = ({
 }) => {
   return (
     <div className="space-y-6">
+      <div className="flex justify-end">
+        <Button
+          variant="secondary"
+          size="small"
+          icon={<Download className="w-4 h-4" />}
+          onClick={onExportKpiComparison}
+          disabled={exportKpiActive}
+          className={exportKpiActive ? 'bg-amber-50 text-amber-800' : ''}
+        >
+          {exportKpiActive ? 'Exporting...' : 'Export KPI Compare CSV'}
+        </Button>
+      </div>
+
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
         <KPICard
           label="Cost Delta"
@@ -41,17 +54,6 @@ export const ComparisonKpiTab: React.FC<ComparisonKpiTabProps> = ({
           format="number"
           size="medium"
         />
-      </div>
-
-      <div className="flex justify-end">
-        <Button
-          variant="secondary"
-          icon={<Download className="w-4 h-4" />}
-          onClick={onExportKpiComparison}
-          className={exportKpiActive ? 'bg-amber-100 text-amber-800' : ''}
-        >
-          {exportKpiActive ? 'Exporting...' : 'Export KPI Compare CSV'}
-        </Button>
       </div>
 
       <div className="surface-panel overflow-auto">

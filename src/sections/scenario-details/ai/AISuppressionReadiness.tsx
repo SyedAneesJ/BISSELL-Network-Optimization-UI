@@ -5,19 +5,19 @@ import { AnimatedNumber } from './AnimatedNumber';
 
 interface AISuppressionReadinessProps {
   selectedKey: string;
+  onTriggerWorkflow: (dcName: string) => void;
+  runningWorkflows: Record<string, boolean>;
 }
 
-export const AISuppressionReadiness: React.FC<AISuppressionReadinessProps> = ({ selectedKey }) => {
+export const AISuppressionReadiness: React.FC<AISuppressionReadinessProps> = ({
+  selectedKey,
+  onTriggerWorkflow,
+  runningWorkflows,
+}) => {
   const [suppressedDCs, setSuppressedDCs] = useState<string[]>([]);
 
   useEffect(() => {
-    if (selectedKey === 'tactical_dallas') {
-      setSuppressedDCs(['Dallas']);
-    } else if (selectedKey === 'consolidation') {
-      setSuppressedDCs(['Pharr TX']);
-    } else {
-      setSuppressedDCs([]);
-    }
+    setSuppressedDCs([]);
   }, [selectedKey]);
 
   function toggleSuppress(dc: string) {
@@ -64,6 +64,8 @@ export const AISuppressionReadiness: React.FC<AISuppressionReadinessProps> = ({ 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {SUPPRESSION_DATA.map((dc: SuppressionItem) => {
               const isSuppressed = suppressedDCs.includes(dc.dc);
+              const isRunning = runningWorkflows[dc.dc] || false;
+
               return (
                 <div
                   key={dc.dc}
@@ -100,17 +102,16 @@ export const AISuppressionReadiness: React.FC<AISuppressionReadinessProps> = ({ 
                   </div>
 
                   <button
-                    onClick={() => toggleSuppress(dc.dc)}
-                    className={`w-full mt-4 py-2 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition duration-200 border ${
-                      isSuppressed
-                        ? 'bg-red-600 hover:bg-red-700 text-white border-transparent'
-                        : 'bg-transparent border-blue-200 hover:border-blue-300 text-blue-600'
+                    onClick={() => onTriggerWorkflow(dc.dc)}
+                    disabled={isRunning}
+                    className={`w-full mt-4 py-2 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition duration-200 border bg-transparent border-blue-200 hover:border-blue-300 text-blue-600 ${
+                      isRunning ? 'opacity-60 cursor-not-allowed' : ''
                     }`}
                   >
-                    {isSuppressed ? (
+                    {isRunning ? (
                       <>
-                        <RefreshCw className="w-3.5 h-3.5" />
-                        Restore DC
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        Triggering AI...
                       </>
                     ) : (
                       <>

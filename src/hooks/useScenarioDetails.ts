@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ScenarioRunConfig,
   ScenarioRunHeader,
@@ -408,7 +408,11 @@ export const useScenarioDetails = ({
         dcEntity: scenario.EntityScope,
         dcRegion: scenario.Region,
         scenarioType: scenario.ScenarioType,
-        totalCost: dc.TotalCost,
+        baseCost: dc.TotalCost,
+        rent: dc.IsSuppressed === 'N' ? (dc.Rent ?? 0) : 0,
+        contractLabor: dc.IsSuppressed === 'N' ? (dc.ContractLabor ?? 0) : 0,
+        managementFee: dc.IsSuppressed === 'N' ? (dc.ManagementFee ?? 0) : 0,
+        totalCost: dc.TotalCost + (dc.IsSuppressed === 'N' ? ((dc.Rent ?? 0) + (dc.ContractLabor ?? 0) + (dc.ManagementFee ?? 0)) : 0),
         costPerUnit: dc.VolumeUnits > 0 ? Number((dc.TotalCost / dc.VolumeUnits).toFixed(2)) : 0,
         averageDeliveryDays: Number(dc.AvgDays.toFixed(2)),
         averageTransitDays: dc.AvgTransitDays == null ? '' : Number(dc.AvgTransitDays.toFixed(2)),
@@ -442,10 +446,12 @@ export const useScenarioDetails = ({
         DestState: lane.DestState,
         Channel: lane.Channel,
         Terms: lane.Terms,
+        FreightTerms: lane.FreightTerms || '',
 
         AssignedDC: lane.AssignedDC,
         CostRank: lane.CostRank ?? '',
         LaneCost: lane.LaneCost,
+        CostDeltaVsBest: lane.CostDeltaVsBest ?? 0,
         CostPerUnit: lane.CostPerUnit ?? '',
         DeliveryDays: lane.DeliveryDays,
         AvgDeliveryDays: lane.AvgDeliveryDays ?? '',
@@ -484,6 +490,7 @@ export const useScenarioDetails = ({
         DestState: lane.DestState,
         Channel: lane.Channel,
         Terms: lane.Terms,
+        FreightTerms: lane.FreightTerms || '',
 
         AssignedDC: lane.AssignedDC,
         RankedOption1DC: lane.RankedOption1DC,
@@ -546,8 +553,10 @@ export const useScenarioDetails = ({
           DestState: lane.DestState,
           Channel: lane.Channel,
           Terms: lane.Terms,
+          FreightTerms: lane.FreightTerms || '',
 
           AssignedDC: lane.AssignedDC,
+          CostDeltaVsBest: lane.CostDeltaVsBest ?? 0,
           CostPerUnit: lane.CostPerUnit ?? '',
           OvercapFlag: lane.OvercapFlag ?? '',
           SLABreachFlag: lane.SLABreachFlag,
@@ -677,7 +686,9 @@ export const useScenarioDetails = ({
       onArchiveScenario(scenarioId);
       triggerAction('scenario_archive');
     },
-    dcColumns: createScenarioDcColumns(),
+    dcColumns: createScenarioDcColumns(
+      scenarioId === 'SR001' || String(scenario?.ScenarioType || '').toLowerCase().includes('baseline')
+    ),
     laneColumns: createScenarioLaneColumns(),
     rankedOptionsColumns: createScenarioRankedOptionsColumns(),
   };

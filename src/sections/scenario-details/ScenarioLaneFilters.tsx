@@ -1,5 +1,6 @@
 import React from 'react';
 import { ReactNode } from 'react';
+import { Select } from '@/components/ui';
 
 interface ScenarioLaneFiltersProps {
   laneZipSearch: string;
@@ -25,14 +26,21 @@ export const ScenarioLaneFilters: React.FC<ScenarioLaneFiltersProps> = ({
   onLaneChannelFilterChange,
   laneTermsFilter,
   onLaneTermsFilterChange,
-  laneFlagFilter,
-  onLaneFlagFilterChange,
-  showFlagFilter = false,
   rightActions,
 }) => {
+  const channelSelectOptions = [
+    { value: 'All', label: 'All Channels' },
+    ...channelOptions.map((c) => ({ value: c, label: c })),
+  ];
+
+  const termsSelectOptions = [
+    { value: 'All', label: 'All Terms' },
+    ...termsOptions.map((t) => ({ value: t, label: t })),
+  ];
+
   return (
     <div className="flex flex-wrap items-end justify-between gap-2">
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <input
           type="search"
           className="px-3 py-2 border border-slate-300 rounded-lg text-sm min-w-[180px]"
@@ -41,27 +49,19 @@ export const ScenarioLaneFilters: React.FC<ScenarioLaneFiltersProps> = ({
           placeholder="Search ZIP"
         />
 
-        <select
-          className="px-3 py-2 border border-slate-300 rounded-lg text-sm"
+        <Select
           value={laneChannelFilter}
-          onChange={(e) => onLaneChannelFilterChange(e.target.value)}
-        >
-          <option value="All">All Channels</option>
-          {channelOptions.map((channel) => (
-            <option key={channel} value={channel}>{channel}</option>
-          ))}
-        </select>
+          onChange={onLaneChannelFilterChange}
+          options={channelSelectOptions}
+          className="w-40"
+        />
 
-        <select
-          className="px-3 py-2 border border-slate-300 rounded-lg text-sm"
+        <Select
           value={laneTermsFilter}
-          onChange={(e) => onLaneTermsFilterChange(e.target.value)}
-        >
-          <option value="All">All Terms</option>
-          {termsOptions.map((term) => (
-            <option key={term} value={term}>{term}</option>
-          ))}
-        </select>
+          onChange={onLaneTermsFilterChange}
+          options={termsSelectOptions}
+          className="w-40"
+        />
 
         {/* {showFlagFilter && laneFlagFilter && onLaneFlagFilterChange && (
         <select
