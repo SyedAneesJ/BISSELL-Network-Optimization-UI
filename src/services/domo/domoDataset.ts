@@ -5,6 +5,8 @@ import {
   ScenarioRunHeader,
   ScenarioRunResultsDC,
   DataHealthSnapshot,
+  DomoCostComponentRow,
+  DomoSpaceOverrideRow,
 } from '@/data';
 import { DEFAULT_SCENARIO_DATASET_REGISTRY, ScenarioDatasetRegistryItem } from './datasetRegistry';
 
@@ -1784,3 +1786,68 @@ export const buildDataHealthSnapshotFromRows = (rows: DomoDcRow[]): DataHealthSn
     Notes: 'Derived from dataset completeness (avg days, SLA%, capacity, square footage).',
   };
 };
+
+const COST_COMPONENTS_FIELD_ALIASES = {
+  costingWarehouse: ['Costing Warehouse', 'CostingWarehouse', 'costingWarehouse'],
+  zip3: ['3-zip', '3Zip', '3-Zip', 'Dest3Zip', 'dest3Zip', 'zip3'],
+  channel: ['Channel', 'channel'],
+  inboundSpend: ['Inbound Spend', 'InboundSpend', 'inboundSpend'],
+  distributionCost: ['3-zip x Channel Distribution Cost', '3-zip x Channel Distribution Cost ', 'distributionCost', 'distribution_cost', 'DistributionCost'],
+  parcelSpend: ['Parcel Spend', 'ParcelSpend', 'parcelSpend'],
+  ltlSpend: ['LTL Spend x 3-zip x Channel', 'LTL Spend x 3-zip x Channel ', 'LtlSpend', 'ltlSpend'],
+  tlSpend: ['3-zip x Channel TL Spend', '3-zip x Channel TL Spend ', 'tlSpend', 'tlspend', 'TlSpend'],
+  totalCost: ['totalCost', 'TotalCost', 'total_cost'],
+};
+
+export const loadCostComponentsDataset = async (datasetId: string): Promise<DomoCostComponentRow[]> => {
+  if (!datasetId) return [];
+  try {
+    const token = await DatasetApi.fetchAccessToken();
+    const rawCsv = await DatasetApi.getDatasetDataCsv(datasetId, token, 100000, 0);
+    const rawRows = csvToObjects(rawCsv);
+    return rawRows.map((row: any) => {
+      return {
+        CostingWarehouse: asText(getField(row, COST_COMPONENTS_FIELD_ALIASES.costingWarehouse)),
+        Zip3: asText(getField(row, COST_COMPONENTS_FIELD_ALIASES.zip3)),
+        Channel: asText(getField(row, COST_COMPONENTS_FIELD_ALIASES.channel)),
+        InboundSpend: asNumber(getField(row, COST_COMPONENTS_FIELD_ALIASES.inboundSpend)),
+        DistributionCost: asNumber(getField(row, COST_COMPONENTS_FIELD_ALIASES.distributionCost)),
+        ParcelSpend: asNumber(getField(row, COST_COMPONENTS_FIELD_ALIASES.parcelSpend)),
+        LtlSpend: asNumber(getField(row, COST_COMPONENTS_FIELD_ALIASES.ltlSpend)),
+        TlSpend: asNumber(getField(row, COST_COMPONENTS_FIELD_ALIASES.tlSpend)),
+        TotalCost: asNumber(getField(row, COST_COMPONENTS_FIELD_ALIASES.totalCost)),
+      };
+    });
+  } catch (error) {
+    console.warn('[Cost Components] Failed to load cost components dataset', error);
+    return [];
+  }
+};
+
+const SPACE_OVERRIDE_FIELD_ALIASES = {
+  location: ['Ship From', 'ShipFrom', 'Location', 'location', 'ship_from', 'DCName', 'DC Name'],
+  contractedSqFt: ['Contracted Square Footage', 'ContractedSquareFootage', 'contracted_square_footage', 'contractedSqFt'],
+  workingCapacitySqFt: ['Working Capacity Sq. Ft. dyn', 'WorkingCapacitySqFtDyn', 'workingCapacitySqFt', 'WorkingCapacitySqFt', 'Working Capacity Sq Ft', 'working_capacity_sq_ft', 'Working Capacity Sq. Ft. dyn '],
+  palletUtilization: ['Pallet Positition Utilization dyn', 'Pallet Position Utilization dyn', 'PalletPositionUtilizationDyn', 'palletUtilization', 'pallet_utilization'],
+};
+
+export const loadSpaceOverridesDataset = async (datasetId: string): Promise<DomoSpaceOverrideRow[]> => {
+  if (!datasetId) return [];
+  try {
+    const token = await DatasetApi.fetchAccessToken();
+    const rawCsv = await DatasetApi.getDatasetDataCsv(datasetId, token, 10000, 0);
+    const rawRows = csvToObjects(rawCsv);
+    return rawRows.map((row: any) => {
+      return {
+        Location: asText(getField(row, SPACE_OVERRIDE_FIELD_ALIASES.location)),
+        ContractedSquareFootage: asNumber(getField(row, SPACE_OVERRIDE_FIELD_ALIASES.contractedSqFt)),
+        WorkingCapacitySqFt: asNumber(getField(row, SPACE_OVERRIDE_FIELD_ALIASES.workingCapacitySqFt)),
+        PalletUtilization: asNumber(getField(row, SPACE_OVERRIDE_FIELD_ALIASES.palletUtilization)),
+      };
+    });
+  } catch (error) {
+    console.warn('[Space Overrides] Failed to load space overrides dataset', error);
+    return [];
+  }
+};
+

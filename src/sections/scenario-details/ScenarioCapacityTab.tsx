@@ -1,6 +1,51 @@
-import React from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { Loader2 } from 'lucide-react';
 import { DataTable, Column } from '@/components/ui';
+
+interface AnimatedBarSegmentProps {
+  value: number;
+  total: number;
+  className: string;
+  ariaLabel: string;
+}
+
+const AnimatedBarSegment: React.FC<AnimatedBarSegmentProps> = ({
+  value,
+  total,
+  className,
+  ariaLabel,
+}) => {
+  const [animatedValue, setAnimatedValue] = useState(0);
+
+  useEffect(() => {
+    setAnimatedValue(0);
+    const id = requestAnimationFrame(() => {
+      const id2 = requestAnimationFrame(() => {
+        setAnimatedValue(value);
+      });
+      return () => cancelAnimationFrame(id2);
+    });
+    return () => cancelAnimationFrame(id);
+  }, [value]);
+
+  const style = useMemo(() => {
+    if (animatedValue <= 0 || total <= 0) {
+      return {
+        flex: '0 0 0%',
+        minWidth: '0px',
+        transition: 'flex 800ms cubic-bezier(0.4, 0, 0.2, 1)',
+      };
+    }
+    const pct = (animatedValue / total) * 100;
+    return {
+      flex: `${Math.max(pct, 0.5)} 1 0%`,
+      minWidth: '8px',
+      transition: 'flex 800ms cubic-bezier(0.4, 0, 0.2, 1)',
+    };
+  }, [animatedValue, total]);
+
+  return <div className={className} style={style} aria-label={ariaLabel} />;
+};
 import { ScenarioRunConfig, ScenarioRunHeader, ScenarioRunResultsDC, ScenarioRunResultsLane } from '@/data';
 
 interface ScenarioCapacityTabProps {
@@ -75,15 +120,17 @@ export const ScenarioCapacityTab: React.FC<ScenarioCapacityTabProps> = ({
                   <span className="font-medium">{utilSpace.toLocaleString('en-US')} / {dc.SpaceRequired.toLocaleString('en-US')} sq ft</span>
                 </div>
                 <div className="flex h-3 rounded-full overflow-hidden bg-slate-200" title={`Util Space ${utilSpace.toLocaleString('en-US')} vs Space Required ${dc.SpaceRequired.toLocaleString('en-US')}`}>
-                  <div
+                  <AnimatedBarSegment
                     className="bg-blue-500"
-                    style={getSegmentStyle(utilBarPct, barTotal)}
-                    aria-label={`Util Space ${utilPct.toFixed(2)}%`}
+                    value={utilBarPct}
+                    total={barTotal}
+                    ariaLabel={`Util Space ${utilPct.toFixed(2)}%`}
                   />
-                  <div
+                  <AnimatedBarSegment
                     className="bg-green-500"
-                    style={getSegmentStyle(requiredBarPct, barTotal)}
-                    aria-label={`Space Required ${requiredPct.toFixed(2)}%`}
+                    value={requiredBarPct}
+                    total={barTotal}
+                    ariaLabel={`Space Required ${requiredPct.toFixed(2)}%`}
                   />
                 </div>
                 <div className="mt-1 flex justify-between text-[11px] text-slate-500">

@@ -85,7 +85,7 @@ export const ScenarioHeader: React.FC<ScenarioHeaderProps> = ({
             </div> */}
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 border-t border-white/70 pt-4">
+          <div className="flex flex-wrap items-center gap-3 border-t border-white/70 pt-4">
             {/* {scenario.Status !== 'Published' && (
               <Button
                 variant="primary"
@@ -117,8 +117,17 @@ export const ScenarioHeader: React.FC<ScenarioHeaderProps> = ({
               onClick={onOpenComment}
               className={commentOpenActive ? 'bg-amber-100 text-amber-800' : ''}
             >
-              {commentOpenActive ? 'Adding...' : 'Add Comment'}
+              {commentOpenActive 
+                ? 'Adding...' 
+                : (scenario.LatestComment && scenario.LatestComment !== 'NA' ? 'Update Comment' : 'Add Comment')}
             </Button>
+
+            {scenario.LatestComment && scenario.LatestComment !== 'NA' && (
+              <div className="flex items-center gap-2 bg-slate-100/60 border border-slate-200/70 rounded-full px-3 py-1 text-xs text-slate-600 max-w-[60%] sm:max-w-[70%] shadow-sm" title={scenario.LatestComment}>
+                <span className="font-medium text-slate-500 uppercase tracking-wider text-[10px] bg-slate-200/60 rounded px-1.5 py-0.5 flex-shrink-0">Note</span>
+                <span className="truncate text-slate-700 font-medium">{scenario.LatestComment}</span>
+              </div>
+            )}
 
             <span className="ml-auto text-xs font-medium tracking-wide text-slate-500">
               {laneResultsCount} lane rows

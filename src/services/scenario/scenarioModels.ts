@@ -4,6 +4,7 @@ import {
   ScenarioRunResultsDC,
   ScenarioRunResultsLane,
   ScenarioOverride,
+  DomoCostComponentRow,
 } from '@/data';
 import type { DomoDcCapacityRow } from '@/services';
 import type { ScenarioExecutionPlan } from './scenarioLogicTypes';
@@ -52,6 +53,7 @@ export interface ScenarioBuildContext {
   scenarioResultsLanes: ScenarioRunResultsLane[];
   laneRowsByScenarioId?: Record<string, ScenarioRunResultsLane[]>;
   dcCapacityRows?: DomoDcCapacityRow[];
+  costComponentRows?: DomoCostComponentRow[];
   scenarioPlan?: ScenarioExecutionPlan;
   scenarioTypePolicy?: ScenarioTypePolicy;
   currentUserDisplayName: string;

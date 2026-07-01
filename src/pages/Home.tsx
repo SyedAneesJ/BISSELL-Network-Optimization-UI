@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Loader2, Activity, Sparkles, CheckCircle2 } from 'lucide-react';
+import { Loader2, Activity, Sparkles, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { downloadBlob, toCSV, useActionFeedback } from '@/utils';
 import {
   ScenarioRunHeader,
@@ -108,6 +108,15 @@ export const Home: React.FC<HomeProps> = ({
   const [onlyPublished, setOnlyPublished] = useState(false);
   const [pendingDeleteScenario, setPendingDeleteScenario] = useState<ScenarioRunHeader | null>(null);
   const [pendingDeleteComparison, setPendingDeleteComparison] = useState<ComparisonHeader | null>(null);
+
+  const referencingComparisons = useMemo(() => {
+    if (!pendingDeleteScenario) return [];
+    return comparisonHeaders.filter(
+      (c) =>
+        c.ScenarioRunID_A === pendingDeleteScenario.ScenarioRunID ||
+        c.ScenarioRunID_B === pendingDeleteScenario.ScenarioRunID
+    );
+  }, [pendingDeleteScenario, comparisonHeaders]);
   const visibleScenarioRunHeaders = useMemo(() => {
     const isOriginalScenario = (scenario: ScenarioRunHeader) =>
       !String(scenario.CreatedBy || '').trim() || String(scenario.CreatedBy || '').trim() === 'NA';
@@ -644,6 +653,25 @@ export const Home: React.FC<HomeProps> = ({
             </span>
             .
           </p>
+          {referencingComparisons.length > 0 && (
+            <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-amber-800 space-y-1.5">
+              <p className="font-medium flex items-center gap-1.5">
+                <AlertTriangle className="h-4 w-4 text-amber-600 flex-shrink-0" />
+                ⚠️ Warning: Cascade Deletion
+              </p>
+              <p className="text-xs text-amber-700">
+                This scenario is used in the following comparison(s):
+              </p>
+              <ul className="list-disc list-inside text-xs font-semibold pl-1">
+                {referencingComparisons.map((c) => (
+                  <li key={c.ComparisonID} className="truncate">{c.ComparisonName}</li>
+                ))}
+              </ul>
+              <p className="text-xs text-amber-700">
+                Proceeding will also permanently delete these comparisons.
+              </p>
+            </div>
+          )}
           <p className="text-slate-500">
             Only custom scenarios can be deleted. Original ETL scenarios stay protected.
           </p>

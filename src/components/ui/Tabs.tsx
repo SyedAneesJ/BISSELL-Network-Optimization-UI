@@ -50,7 +50,7 @@ export const Tabs: React.FC<TabsProps> = ({ tabs, defaultTab, onChange, activeTa
           ))}
         </nav>
       </div>
-      <div className="py-6 fade-in">
+      <div key={activeTab} className="py-6 fade-in">
         {activeTabContent}
       </div>
     </div>

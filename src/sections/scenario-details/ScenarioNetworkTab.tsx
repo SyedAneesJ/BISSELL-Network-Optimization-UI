@@ -1,5 +1,32 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Button } from '@/components/ui';
+
+interface ProgressBarProps {
+  widthPercent: number;
+  className?: string;
+}
+
+const ProgressBar: React.FC<ProgressBarProps> = ({ widthPercent, className }) => {
+  const [width, setWidth] = useState(0);
+
+  useEffect(() => {
+    setWidth(0);
+    const rafId = requestAnimationFrame(() => {
+      const rafId2 = requestAnimationFrame(() => {
+        setWidth(widthPercent);
+      });
+      return () => cancelAnimationFrame(rafId2);
+    });
+    return () => cancelAnimationFrame(rafId);
+  }, [widthPercent]);
+
+  return (
+    <div
+      className={`h-2 rounded-full transition-[width] duration-[800ms] ease-[cubic-bezier(0.4,0,0.2,1)] ${className || ''}`}
+      style={{ width: `${width}%` }}
+    />
+  );
+};
 
 interface ScenarioNetworkTabProps {
   networkView: 'current' | 'baseline' | 'difference';
@@ -89,9 +116,9 @@ export const ScenarioNetworkTab: React.FC<ScenarioNetworkTabProps> = ({
                     </span>
                   </div>
                   <div className="w-full bg-slate-200 rounded-full h-2">
-                    <div
-                      className={`h-2 rounded-full ${row.delta >= 0 ? 'bg-green-600' : 'bg-red-600'}`}
-                      style={{ width: `${(Math.abs(row.delta) / maxAbs) * 100}%` }}
+                    <ProgressBar
+                      className={row.delta >= 0 ? 'bg-green-600' : 'bg-red-600'}
+                      widthPercent={(Math.abs(row.delta) / maxAbs) * 100}
                     />
                   </div>
                 </div>
@@ -106,9 +133,9 @@ export const ScenarioNetworkTab: React.FC<ScenarioNetworkTabProps> = ({
                       <span className="font-medium">{(row.value || 0).toLocaleString('en-US')} units</span>
                     </div>
                     <div className="w-full bg-slate-200 rounded-full h-2">
-                      <div
-                        className="bg-blue-600 h-2 rounded-full"
-                        style={{ width: `${((row.value || 0) / total) * 100}%` }}
+                      <ProgressBar
+                        className="bg-blue-600"
+                        widthPercent={((row.value || 0) / total) * 100}
                       />
                     </div>
                   </div>
@@ -132,9 +159,9 @@ export const ScenarioNetworkTab: React.FC<ScenarioNetworkTabProps> = ({
                     </span>
                   </div>
                   <div className="w-full bg-slate-200 rounded-full h-2">
-                    <div
-                      className={`h-2 rounded-full ${row.delta >= 0 ? 'bg-red-600' : 'bg-green-600'}`}
-                      style={{ width: `${(Math.abs(row.delta) / maxAbs) * 100}%` }}
+                    <ProgressBar
+                      className={row.delta >= 0 ? 'bg-red-600' : 'bg-green-600'}
+                      widthPercent={(Math.abs(row.delta) / maxAbs) * 100}
                     />
                   </div>
                 </div>
@@ -149,9 +176,9 @@ export const ScenarioNetworkTab: React.FC<ScenarioNetworkTabProps> = ({
                       <span className="font-medium">{(row.value || 0).toFixed(1)} days</span>
                     </div>
                     <div className="w-full bg-slate-200 rounded-full h-2">
-                      <div
-                        className="bg-green-600 h-2 rounded-full"
-                        style={{ width: `${((row.value || 0) / maxDays) * 100}%` }}
+                      <ProgressBar
+                        className="bg-green-600"
+                        widthPercent={((row.value || 0) / maxDays) * 100}
                       />
                     </div>
                   </div>

@@ -39,7 +39,7 @@ export const useComparisonDetails = ({
   const [decisionVerdict, setDecisionVerdict] = useState('');
   const [decisionReason, setDecisionReason] = useState('');
   const [laneDiffFilter, setLaneDiffFilter] = useState('Only Changed Lanes');
-  const [laneChannelFilter, setLaneChannelFilter] = useState('All Channels');
+  const [laneChannelFilter, setLaneChannelFilter] = useState('All');
 
   const comparison = comparisonHeaders.find(c => c.ComparisonID === comparisonId);
   const dcComparisonStored = comparisonDetailDC.filter(dc => dc.ComparisonID === comparisonId);
@@ -145,6 +145,10 @@ export const useComparisonDetails = ({
     ).length
   ), [laneComparison]);
 
+  const channelOptions = useMemo(() => {
+    return Array.from(new Set(laneComparison.map((lane) => lane.Channel).filter(Boolean))).sort();
+  }, [laneComparison]);
+
   const filteredLaneComparison = useMemo(() => {
     let rows = laneComparison;
     if (laneDiffFilter === 'Only Changed Lanes') {
@@ -159,7 +163,7 @@ export const useComparisonDetails = ({
       rows = [...rows].sort((a, b) => Math.abs(b.Cost_Delta) - Math.abs(a.Cost_Delta)).slice(0, 100);
     }
 
-    if (laneChannelFilter !== 'All Channels') {
+    if (laneChannelFilter !== 'All') {
       rows = rows.filter(l => l.Channel === laneChannelFilter);
     }
     return rows;
@@ -327,5 +331,6 @@ export const useComparisonDetails = ({
     dcComparisonColumns,
     laneComparisonColumns,
     changedLaneCount,
+    channelOptions,
   };
 };

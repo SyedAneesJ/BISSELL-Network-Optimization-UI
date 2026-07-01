@@ -3,7 +3,9 @@ import {
   ScenarioRunHeader,
   ScenarioRunResultsDC,
   ScenarioRunResultsLane,
+  DomoCostComponentRow,
 } from '@/data';
+import { normalizeZip3, normalizeWarehouseName } from '@/utils';
 import { allocateScenarioOutputs, annotateCapacityOutputs, buildCapacityMap } from './scenarioAllocator';
 import {
   ScenarioBuildContext,
@@ -721,12 +723,36 @@ export const buildScenarioArtifacts = (
   const baselineDcRows = baseline
     ? context.scenarioResultsDC.filter((row) => row.ScenarioRunID === baseline.ScenarioRunID)
     : context.scenarioResultsDC;
-  const baselineLaneRows = getBaselineLaneRows(
+  let baselineLaneRows = getBaselineLaneRows(
     context,
     normalizedPayload.input.scenarioType,
     normalizedPayload.input.region,
     laneSourceBaseline?.ScenarioRunID ?? baseline?.ScenarioRunID ?? (scenarioTypeIsBaseline ? null : normalizedPayload.input.baselineScenarioId) ?? null,
   );
+
+  if (normalizedPayload.input.region === 'US' && context.costComponentRows && context.costComponentRows.length > 0) {
+    const lookup = new Map<string, DomoCostComponentRow>();
+    context.costComponentRows.forEach((row) => {
+      const key = `${normalizeWarehouseName(row.CostingWarehouse)}|${normalizeZip3(row.Zip3)}|${row.Channel.trim().toLowerCase()}`;
+      lookup.set(key, row);
+    });
+    baselineLaneRows = baselineLaneRows.map((lane) => {
+      const warehouse = lane.CostingWarehouse || lane.AssignedDC || lane.DefaultShipFrom || '';
+      const key = `${normalizeWarehouseName(warehouse)}|${normalizeZip3(lane.Dest3Zip)}|${lane.Channel.trim().toLowerCase()}`;
+      const match = lookup.get(key);
+      if (match) {
+        return {
+          ...lane,
+          InboundSpend: match.InboundSpend,
+          DistributionCost: match.DistributionCost,
+          ParcelSpend: match.ParcelSpend,
+          LtlSpend: match.LtlSpend,
+          TlSpend: match.TlSpend,
+        };
+      }
+      return lane;
+    });
+  }
 
   if (shouldLogLaneSource) {
     const laneSourceId = laneSourceBaseline?.ScenarioRunID ?? baseline?.ScenarioRunID ?? (scenarioTypeIsBaseline ? null : normalizedPayload.input.baselineScenarioId) ?? null;

@@ -1,7 +1,33 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Download } from 'lucide-react';
-import { DataTable, Column } from '@/components/ui';
-import { Button } from '@/components/ui';
+import { DataTable, Column, Button } from '@/components/ui';
+
+interface ProgressBarProps {
+  widthPercent: number;
+  className?: string;
+}
+
+const ProgressBar: React.FC<ProgressBarProps> = ({ widthPercent, className }) => {
+  const [width, setWidth] = useState(0);
+
+  useEffect(() => {
+    setWidth(0);
+    const rafId = requestAnimationFrame(() => {
+      const rafId2 = requestAnimationFrame(() => {
+        setWidth(widthPercent);
+      });
+      return () => cancelAnimationFrame(rafId2);
+    });
+    return () => cancelAnimationFrame(rafId);
+  }, [widthPercent]);
+
+  return (
+    <div
+      className={`h-2 rounded-full transition-[width] duration-[800ms] ease-[cubic-bezier(0.4,0,0.2,1)] ${className || ''}`}
+      style={{ width: `${width}%` }}
+    />
+  );
+};
 import { ComparisonDetailDC } from '@/data';
 
 interface ComparisonDcTabProps {
@@ -44,10 +70,10 @@ export const ComparisonDcTab: React.FC<ComparisonDcTabProps> = ({
                 </div>
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
                   <div className="bg-slate-200 rounded h-2 overflow-hidden">
-                    <div className="bg-blue-500 h-2" style={{ width: `${dc.Util_A}%` }} />
+                    <ProgressBar className="bg-blue-500" widthPercent={dc.Util_A} />
                   </div>
                   <div className="bg-slate-200 rounded h-2 overflow-hidden">
-                    <div className="bg-green-500 h-2" style={{ width: `${dc.Util_B}%` }} />
+                    <ProgressBar className="bg-green-500" widthPercent={dc.Util_B} />
                   </div>
                 </div>
               </div>
@@ -71,10 +97,10 @@ export const ComparisonDcTab: React.FC<ComparisonDcTabProps> = ({
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <div className="bg-slate-200 rounded h-2 overflow-hidden">
-                      <div className="bg-blue-500 h-2" style={{ width: `${(dc.Cost_A / maxCost) * 100}%` }} />
+                      <ProgressBar className="bg-blue-500" widthPercent={(dc.Cost_A / maxCost) * 100} />
                     </div>
                     <div className="bg-slate-200 rounded h-2 overflow-hidden">
-                      <div className="bg-green-500 h-2" style={{ width: `${(dc.Cost_B / maxCost) * 100}%` }} />
+                      <ProgressBar className="bg-green-500" widthPercent={(dc.Cost_B / maxCost) * 100} />
                     </div>
                   </div>
                 </div>

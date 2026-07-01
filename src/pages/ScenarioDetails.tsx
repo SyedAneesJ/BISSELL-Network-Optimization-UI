@@ -15,6 +15,8 @@ import {
   ScenarioRunResultsDC,
   ScenarioRunResultsLane,
   ScenarioOverride,
+  DomoCostComponentRow,
+  DomoSpaceOverrideRow,
 } from '@/data';
 import { AppPage } from '@/layouts';
 import {
@@ -47,6 +49,8 @@ interface ScenarioDetailsProps {
   onArchiveScenario: (scenarioId: string) => void;
   onAddComment: (scenarioId: string, comment: string) => void;
   onApplyOverride: (scenarioId: string, override: Omit<ScenarioOverride, 'ScenarioRunID' | 'OverrideVersion' | 'UpdatedAt' | 'UpdatedBy'>) => void;
+  costComponentRows?: DomoCostComponentRow[];
+  spaceOverrideRows?: DomoSpaceOverrideRow[];
 }
 
 export const ScenarioDetails: React.FC<ScenarioDetailsProps> = (props) => {
@@ -54,6 +58,35 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = (props) => {
     () => props.scenarioRunResultsLanes.filter((lane) => lane.ScenarioRunID === props.scenarioId),
     [props.scenarioId, props.scenarioRunResultsLanes],
   );
+
+  const currentScenario = useMemo(
+    () => props.scenarioRunHeaders.find((s) => s.ScenarioRunID === props.scenarioId),
+    [props.scenarioId, props.scenarioRunHeaders],
+  );
+
+  const baselineScenario = useMemo(() => {
+    if (!currentScenario) return null;
+    const candidates = props.scenarioRunHeaders.filter(
+      (s) => s.Region === currentScenario.Region
+        && (
+          String(s.ScenarioType || '').toLowerCase().includes('baseline')
+          || String(s.RunName || '').toLowerCase().includes('baseline')
+        )
+    );
+    if (candidates.length === 0) return null;
+    const sorted = [...candidates].sort(
+      (a, b) => new Date(b.LastUpdatedAt).getTime() - new Date(a.LastUpdatedAt).getTime()
+    );
+    return sorted[0];
+  }, [currentScenario, props.scenarioRunHeaders]);
+
+  const resolvedBaselineScenarioId = baselineScenario?.ScenarioRunID;
+
+  const baselineLanes = useMemo(() => {
+    if (!resolvedBaselineScenarioId || resolvedBaselineScenarioId === props.scenarioId) return [];
+    return props.scenarioRunResultsLanes.filter((lane) => lane.ScenarioRunID === resolvedBaselineScenarioId);
+  }, [resolvedBaselineScenarioId, props.scenarioId, props.scenarioRunResultsLanes]);
+
   const [hydratedLaneResults, setHydratedLaneResults] = useState<ScenarioRunResultsLane[]>(baseLaneResults);
   const [isLaneDataLoading, setIsLaneDataLoading] = useState(false);
   const [isTabSwitching, setIsTabSwitching] = useState(false);
@@ -187,8 +220,13 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = (props) => {
     scenarioRunHeaders: props.scenarioRunHeaders,
     scenarioRunConfigs: props.scenarioRunConfigs,
     scenarioRunResultsDC: props.scenarioRunResultsDC,
-    scenarioRunResultsLanes: laneResultsForDetails,
+    scenarioRunResultsLanes: useMemo(() => [
+      ...laneResultsForDetails,
+      ...baselineLanes
+    ], [laneResultsForDetails, baselineLanes]),
     scenarioOverrides: props.scenarioOverrides,
+    costComponentRows: props.costComponentRows,
+    spaceOverrideRows: props.spaceOverrideRows,
     onPublishScenario: props.onPublishScenario,
     onApproveScenario: props.onApproveScenario,
     onAddComment: props.onAddComment,

@@ -81,6 +81,30 @@ export interface ScenarioRunResultsDC {
   Rent?: number;
   ContractLabor?: number;
   ManagementFee?: number;
+  InboundSpend?: number;
+  ParcelSpend?: number;
+  LtlSpend?: number;
+  TlSpend?: number;
+  DistributionCost?: number;
+}
+
+export interface DomoCostComponentRow {
+  CostingWarehouse: string;
+  Zip3: string;
+  Channel: string;
+  InboundSpend: number;
+  DistributionCost: number;
+  ParcelSpend: number;
+  LtlSpend: number;
+  TlSpend: number;
+  TotalCost: number;
+}
+
+export interface DomoSpaceOverrideRow {
+  Location: string;
+  ContractedSquareFootage: number;
+  WorkingCapacitySqFt: number;
+  PalletUtilization: number; // decimal e.g. 0.92 → 92%
 }
 
 export interface ScenarioRunResultsLane {

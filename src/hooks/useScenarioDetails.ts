@@ -5,8 +5,11 @@ import {
   ScenarioRunResultsDC,
   ScenarioRunResultsLane,
   ScenarioOverride,
+  DomoCostComponentRow,
+  DomoSpaceOverrideRow,
+  getAdditionalCostsForDc,
 } from '@/data';
-import { downloadBlob, toCSV, useActionFeedback } from '@/utils';
+import { downloadBlob, toCSV, useActionFeedback, normalizeZip3, normalizeWarehouseName } from '@/utils';
 import { createScenarioDcColumns, createScenarioLaneColumns, createScenarioRankedOptionsColumns } from '@/lib';
 import { ScenarioLaneOption } from '@/components/modals';
 
@@ -17,6 +20,8 @@ interface UseScenarioDetailsParams {
   scenarioRunResultsDC: ScenarioRunResultsDC[];
   scenarioRunResultsLanes: ScenarioRunResultsLane[];
   scenarioOverrides: ScenarioOverride[];
+  costComponentRows?: DomoCostComponentRow[];
+  spaceOverrideRows?: DomoSpaceOverrideRow[];
   onDuplicateScenario: (scenarioId: string) => void;
   onPublishScenario: (scenarioId: string) => void;
   onApproveScenario: (scenarioId: string) => void;
@@ -32,6 +37,8 @@ export const useScenarioDetails = ({
   scenarioRunResultsDC,
   scenarioRunResultsLanes,
   scenarioOverrides,
+  costComponentRows,
+  spaceOverrideRows,
   onDuplicateScenario,
   onPublishScenario,
   onApproveScenario,
@@ -60,10 +67,59 @@ export const useScenarioDetails = ({
   const [isLaneFiltering, setIsLaneFiltering] = useState(false);
   const laneFilteringTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const scenario = useMemo(
+  const rawScenario = useMemo(
     () => scenarioRunHeaders.find((s) => s.ScenarioRunID === scenarioId),
     [scenarioId, scenarioRunHeaders],
   );
+
+  const isUsBaseline = useMemo(() => {
+    if (!rawScenario) return false;
+    return (
+      rawScenario.Region === 'US' &&
+      (rawScenario.ScenarioRunID === 'SR001' ||
+        String(rawScenario.ScenarioType || '').toLowerCase().includes('baseline') ||
+        String(rawScenario.RunName || '').toLowerCase().includes('baseline'))
+    );
+  }, [rawScenario]);
+
+  // Broader flag: includes Tactical + Consolidation US scenarios
+  const isUsSpaceOverrideScenario = useMemo(() => {
+    if (!rawScenario) return false;
+    if (rawScenario.Region !== 'US') return false;
+    if (isUsBaseline) return true;
+    const type = String(rawScenario.ScenarioType || '').toLowerCase();
+    const name = String(rawScenario.RunName || '').toLowerCase();
+    return (
+      type.includes('tactical') ||
+      type.includes('consolidation') ||
+      name.includes('tactical') ||
+      name.includes('consolidation')
+    );
+  }, [rawScenario, isUsBaseline]);
+
+  const scenario = useMemo(
+    () => {
+      if (!rawScenario || !isUsSpaceOverrideScenario || !spaceOverrideRows || spaceOverrideRows.length === 0) {
+        return rawScenario;
+      }
+      const activeDcNames = new Set(
+        scenarioRunResultsDC
+          .filter((dc) => dc.ScenarioRunID === scenarioId && dc.IsSuppressed !== 'Y')
+          .map((dc) => normalizeWarehouseName(dc.DCName))
+      );
+      const matchingOverrides = spaceOverrideRows.filter((r) => activeDcNames.has(normalizeWarehouseName(r.Location)));
+
+      const totalSpaceRequired = matchingOverrides.reduce((sum, r) => sum + r.ContractedSquareFootage, 0);
+      const spaceCore = matchingOverrides.reduce((sum, r) => sum + r.WorkingCapacitySqFt, 0);
+      return {
+        ...rawScenario,
+        TotalSpaceRequired: Math.round(totalSpaceRequired),
+        SpaceCore: Math.round(spaceCore),
+      };
+    },
+    [rawScenario, isUsSpaceOverrideScenario, spaceOverrideRows, scenarioRunResultsDC, scenarioId]
+  );
+
   const formatDcDisplayName = useCallback((value: unknown) => {
     const text = String(value || '').trim();
     if (!text) return '';
@@ -105,15 +161,222 @@ export const useScenarioDetails = ({
     () => scenarioRunConfigs.find((c) => c.ScenarioRunID === scenarioId),
     [scenarioId, scenarioRunConfigs],
   );
-  const dcResults = useMemo(() => Array.from(
-    scenarioRunResultsDC
-      .filter((dc) => dc.ScenarioRunID === scenarioId)
-      .reduce<Map<string, ScenarioRunResultsDC>>((acc, row) => {
-        if (!acc.has(row.DCName)) acc.set(row.DCName, row);
-        return acc;
-      }, new Map())
-      .values(),
-  ).map(normalizeDcDisplay), [normalizeDcDisplay, scenarioId, scenarioRunResultsDC]);
+
+  const overriddenLaneResults = useMemo(() => {
+    const baselineLaneResults = scenarioRunResultsLanes.filter((lane) => lane.ScenarioRunID === scenarioId);
+    
+    const shouldTrace = String(import.meta.env.VITE_ENABLE_DATA_TRACE ?? 'true').toLowerCase() !== 'false';
+    if (shouldTrace && isUsBaseline) {
+      console.log('[Cost Component Override] US Baseline scenario detected:', {
+        scenarioId,
+        baselineLaneResultsCount: baselineLaneResults.length,
+        hasCostComponentRows: Boolean(costComponentRows && costComponentRows.length > 0),
+        costComponentRowsCount: costComponentRows?.length ?? 0
+      });
+    }
+
+    if (!isUsBaseline || !costComponentRows || costComponentRows.length === 0) {
+      return baselineLaneResults;
+    }
+    const lookup = new Map<string, DomoCostComponentRow>();
+    costComponentRows.forEach((row) => {
+      const key = `${normalizeWarehouseName(row.CostingWarehouse)}|${normalizeZip3(row.Zip3)}|${row.Channel.trim().toLowerCase()}`;
+      lookup.set(key, row);
+    });
+
+    if (shouldTrace) {
+      console.log('[Cost Component Override] First 20 lookup keys in registry:', Array.from(lookup.keys()).slice(0, 20));
+      console.log('[Cost Component Override] First 5 raw rows in registry:', costComponentRows.slice(0, 5));
+    }
+
+    let matchedCount = 0;
+    let unmatchedCount = 0;
+    const unmatchedKeys = new Set<string>();
+    const matchedSample: any[] = [];
+
+    const mapped = baselineLaneResults.map((lane) => {
+      const warehouse = lane.CostingWarehouse || lane.AssignedDC || lane.DefaultShipFrom || '';
+      const key = `${normalizeWarehouseName(warehouse)}|${normalizeZip3(lane.Dest3Zip)}|${lane.Channel.trim().toLowerCase()}`;
+      const match = lookup.get(key);
+      if (match) {
+        matchedCount++;
+        if (matchedSample.length < 3) {
+          matchedSample.push({
+            key,
+            laneWarehouse: warehouse,
+            laneDest3Zip: lane.Dest3Zip,
+            laneChannel: lane.Channel,
+            overrideInbound: match.InboundSpend,
+            overrideDist: match.DistributionCost,
+            overrideParcel: match.ParcelSpend,
+            overrideLtl: match.LtlSpend,
+            overrideTl: match.TlSpend
+          });
+        }
+        return {
+          ...lane,
+          InboundSpend: match.InboundSpend,
+          DistributionCost: match.DistributionCost,
+          ParcelSpend: match.ParcelSpend,
+          LtlSpend: match.LtlSpend,
+          TlSpend: match.TlSpend,
+        };
+      }
+      unmatchedCount++;
+      unmatchedKeys.add(key);
+      return lane;
+    });
+
+    if (shouldTrace) {
+      console.groupCollapsed(`[Cost Component Override Trace] Matches for scenario: ${scenarioId}`);
+      console.log('Summary stats:', {
+        totalLanes: baselineLaneResults.length,
+        matchedCount,
+        unmatchedCount,
+        lookupSize: lookup.size
+      });
+      console.log('Sample matches:', matchedSample);
+      if (unmatchedKeys.size > 0) {
+        console.log('Sample unmatched keys:', Array.from(unmatchedKeys).slice(0, 10));
+      }
+      console.groupEnd();
+    }
+
+    return mapped;
+  }, [scenarioRunResultsLanes, scenarioId, isUsBaseline, costComponentRows]);
+
+  const dcResults = useMemo(() => {
+    const standardDcRows = Array.from(
+      scenarioRunResultsDC
+        .filter((dc) => dc.ScenarioRunID === scenarioId)
+        .reduce<Map<string, ScenarioRunResultsDC>>((acc, row) => {
+          if (!acc.has(row.DCName)) acc.set(row.DCName, row);
+          return acc;
+        }, new Map())
+        .values()
+    ).map(normalizeDcDisplay);
+
+    const compTotalsByDc = new Map<string, {
+      inbound: number;
+      parcel: number;
+      ltl: number;
+      tl: number;
+      dist: number;
+    }>();
+
+    if (isUsBaseline && costComponentRows && costComponentRows.length > 0) {
+      // Option 2: Direct dataset aggregation filtered by channel and zip search
+      const filteredCostComponentRows = costComponentRows.filter((row) => {
+        if (appliedLaneChannelFilter !== 'All') {
+          if (row.Channel.trim().toLowerCase() !== appliedLaneChannelFilter.trim().toLowerCase()) {
+            return false;
+          }
+        }
+        if (appliedLaneZipSearch) {
+          const cleanSearch = appliedLaneZipSearch.trim().toLowerCase();
+          const rowZip = normalizeZip3(row.Zip3);
+          if (!rowZip.includes(cleanSearch)) {
+            return false;
+          }
+        }
+        return true;
+      });
+
+      filteredCostComponentRows.forEach((row) => {
+        const norm = normalizeWarehouseName(row.CostingWarehouse);
+        let dcName = formatDcDisplayName(row.CostingWarehouse);
+        if (norm === 'virginia') {
+          dcName = 'R Virginia';
+        } else if (norm === 'dallas') {
+          dcName = 'Dallas';
+        } else if (norm === 'elwood') {
+          dcName = 'Elwood';
+        } else if (norm === 'losangeles') {
+          dcName = 'Los Angeles';
+        }
+        
+        const existing = compTotalsByDc.get(dcName) || { inbound: 0, parcel: 0, ltl: 0, tl: 0, dist: 0 };
+        existing.inbound += Number(row.InboundSpend ?? 0);
+        existing.parcel += Number(row.ParcelSpend ?? 0);
+        existing.ltl += Number(row.LtlSpend ?? 0);
+        existing.tl += Number(row.TlSpend ?? 0);
+        existing.dist += Number(row.DistributionCost ?? 0);
+        compTotalsByDc.set(dcName, existing);
+      });
+    } else {
+      // Default lane-level aggregation (original logic preserved)
+      overriddenLaneResults.forEach((lane) => {
+        const dcName = formatDcDisplayName(lane.AssignedDC || lane.CostingWarehouse || lane.DefaultShipFrom);
+        if (!dcName) return;
+        const existing = compTotalsByDc.get(dcName) || { inbound: 0, parcel: 0, ltl: 0, tl: 0, dist: 0 };
+        existing.inbound += Number(lane.InboundSpend ?? 0);
+        existing.parcel += Number(lane.ParcelSpend ?? 0);
+        existing.ltl += Number(lane.LtlSpend ?? 0);
+        existing.tl += Number(lane.TlSpend ?? 0);
+        existing.dist += Number(lane.DistributionCost ?? 0);
+        compTotalsByDc.set(dcName, existing);
+      });
+    }
+
+    const spaceLookup = new Map<string, DomoSpaceOverrideRow>();
+    if (isUsSpaceOverrideScenario && spaceOverrideRows && spaceOverrideRows.length > 0) {
+      spaceOverrideRows.forEach((row) => {
+        spaceLookup.set(normalizeWarehouseName(row.Location), row);
+      });
+    }
+
+    return standardDcRows.map((dc) => {
+      const totals = compTotalsByDc.get(dc.DCName);
+      const spaceOverride = spaceLookup.get(normalizeWarehouseName(dc.DCName));
+      // ActualSpace + SpaceCore always come from the dataset for all US scenario types.
+      // UtilPct + SpaceRequired are only overridden for Baseline (uses dataset pallet utilization);
+      // Tactical/Consolidation keep their engine-computed SpaceRequired and recalculate UtilPct to match overridden ActualSpace.
+      const spaceFields = spaceOverride ? {
+        ActualSpace: spaceOverride.ContractedSquareFootage,
+        SpaceCore: spaceOverride.WorkingCapacitySqFt,
+        ...(isUsBaseline ? {
+          UtilPct: Number((spaceOverride.PalletUtilization * 100).toFixed(2)),
+          SpaceRequired: Number((spaceOverride.ContractedSquareFootage * spaceOverride.PalletUtilization).toFixed(2)),
+        } : {
+          UtilPct: spaceOverride.ContractedSquareFootage > 0
+            ? Number(((dc.SpaceRequired / spaceOverride.ContractedSquareFootage) * 100).toFixed(2))
+            : 0,
+        }),
+      } : {};
+
+      if (totals) {
+        return {
+          ...dc,
+          InboundSpend: Number(totals.inbound.toFixed(2)),
+          ParcelSpend: Number(totals.parcel.toFixed(2)),
+          LtlSpend: Number(totals.ltl.toFixed(2)),
+          TlSpend: Number(totals.tl.toFixed(2)),
+          DistributionCost: Number(totals.dist.toFixed(2)),
+          ...spaceFields,
+        };
+      }
+      return {
+        ...dc,
+        InboundSpend: 0,
+        ParcelSpend: 0,
+        LtlSpend: 0,
+        TlSpend: 0,
+        DistributionCost: 0,
+        ...spaceFields,
+      };
+    });
+  }, [
+    normalizeDcDisplay,
+    scenarioId,
+    scenarioRunResultsDC,
+    overriddenLaneResults,
+    isUsBaseline,
+    costComponentRows,
+    spaceOverrideRows,
+    appliedLaneChannelFilter,
+    appliedLaneZipSearch,
+    formatDcDisplayName,
+  ]);
 
   useEffect(() => {
     const shouldTrace = String(import.meta.env.VITE_ENABLE_DATA_TRACE ?? 'true').toLowerCase() !== 'false';
@@ -184,11 +447,10 @@ export const useScenarioDetails = ({
     return `${warehouse}`;
   };
 
-  const laneResults = useMemo(() => scenarioRunResultsLanes
-    .filter((lane) => lane.ScenarioRunID === scenarioId)
+  const laneResults = useMemo(() => overriddenLaneResults
     .slice()
     .sort((a, b) => laneGroupKey(a).localeCompare(laneGroupKey(b)) || laneOptionSort(a, b)),
-  [laneGroupKey, laneOptionSort, scenarioId, scenarioRunResultsLanes]);
+  [laneGroupKey, laneOptionSort, overriddenLaneResults]);
 
   const uniqueLaneResults = useMemo(() => laneResults.filter((lane, index, rows) =>
     rows.findIndex((item) => laneGroupKey(item) === laneGroupKey(lane)) === index,
@@ -402,37 +664,54 @@ export const useScenarioDetails = ({
   const handleExportDCDetails = () => {
     if (!scenario) return;
     scheduleExport('scenario_export_dc_details', () => {
-      const rows = dcResults.map((dc) => ({
-        ScenarioRunID: dc.ScenarioRunID,
-        DC: dc.DCName,
-        dcEntity: scenario.EntityScope,
-        dcRegion: scenario.Region,
-        scenarioType: scenario.ScenarioType,
-        baseCost: dc.TotalCost,
-        rent: dc.IsSuppressed === 'N' ? (dc.Rent ?? 0) : 0,
-        contractLabor: dc.IsSuppressed === 'N' ? (dc.ContractLabor ?? 0) : 0,
-        managementFee: dc.IsSuppressed === 'N' ? (dc.ManagementFee ?? 0) : 0,
-        totalCost: dc.TotalCost + (dc.IsSuppressed === 'N' ? ((dc.Rent ?? 0) + (dc.ContractLabor ?? 0) + (dc.ManagementFee ?? 0)) : 0),
-        costPerUnit: dc.VolumeUnits > 0 ? Number((dc.TotalCost / dc.VolumeUnits).toFixed(2)) : 0,
-        averageDeliveryDays: Number(dc.AvgDays.toFixed(2)),
-        averageTransitDays: dc.AvgTransitDays == null ? '' : Number(dc.AvgTransitDays.toFixed(2)),
-        maxUtilization: Number(dc.UtilPct.toFixed(2)),
-        actualSpace: dc.ActualSpace ?? '',
-        coreSpace: dc.SpaceCore,
-        bcvSpace: dc.SpaceBCV,
-        spaceRequired: dc.SpaceRequired,
-        overcapFlag: dc.OvercapFlag ?? '',
-        sqft: dc.SpaceCore,
-        slaBreach: dc.SLABreachCount,
-        'slaBreach%': (() => {
-          const typedDc = dc as { SLABreachPct?: number | null; SLABreachCount: number; VolumeUnits: number };
-          const breachPct =
-            typedDc.SLABreachPct ??
-            (typedDc.VolumeUnits > 0 ? (typedDc.SLABreachCount / typedDc.VolumeUnits) * 100 : null);
-          return breachPct == null ? '' : Number(breachPct.toFixed(2));
-        })(),
-        totalcount: dc.VolumeUnits,
-      }));
+      const isBaseline = scenario.ScenarioRunID === 'SR001' || String(scenario.ScenarioType || '').toLowerCase().includes('baseline');
+      const rows = dcResults.map((dc) => {
+        const dcCosts = getAdditionalCostsForDc(dc.DCName);
+        const rentVal = dc.Rent ?? dcCosts.Rent;
+        const laborVal = dc.ContractLabor ?? dcCosts.ContractLabor;
+        const feeVal = dc.ManagementFee ?? dcCosts.ManagementFee;
+        const addCost = rentVal + laborVal + feeVal;
+
+        const baseCostDisplay = isBaseline ? Math.max(0, dc.TotalCost - addCost) : dc.TotalCost;
+        const totalCostDisplay = isBaseline ? dc.TotalCost : dc.TotalCost + (dc.IsSuppressed === 'N' ? addCost : 0);
+
+        return {
+          ScenarioRunID: dc.ScenarioRunID,
+          DC: dc.DCName,
+          dcEntity: scenario.EntityScope,
+          dcRegion: scenario.Region,
+          scenarioType: scenario.ScenarioType,
+          baseCost: baseCostDisplay,
+          rent: dc.IsSuppressed === 'N' ? rentVal : 0,
+          contractLabor: dc.IsSuppressed === 'N' ? laborVal : 0,
+          managementFee: dc.IsSuppressed === 'N' ? feeVal : 0,
+          totalCost: totalCostDisplay,
+          costPerUnit: dc.VolumeUnits > 0 ? Number((totalCostDisplay / dc.VolumeUnits).toFixed(2)) : 0,
+          averageDeliveryDays: Number(dc.AvgDays.toFixed(2)),
+          averageTransitDays: dc.AvgTransitDays == null ? '' : Number(dc.AvgTransitDays.toFixed(2)),
+          maxUtilization: Number(dc.UtilPct.toFixed(2)),
+          actualSpace: dc.ActualSpace ?? '',
+          coreSpace: dc.SpaceCore,
+          bcvSpace: dc.SpaceBCV,
+          spaceRequired: dc.SpaceRequired,
+          overcapFlag: dc.OvercapFlag ?? '',
+          sqft: dc.SpaceCore,
+          inboundCost: dc.InboundSpend ?? 0,
+          distributionCost: dc.DistributionCost ?? 0,
+          parcelCost: dc.ParcelSpend ?? 0,
+          ltlCost: dc.LtlSpend ?? 0,
+          tlCost: dc.TlSpend ?? 0,
+          slaBreach: dc.SLABreachCount,
+          'slaBreach%': (() => {
+            const typedDc = dc as { SLABreachPct?: number | null; SLABreachCount: number; VolumeUnits: number };
+            const breachPct =
+              typedDc.SLABreachPct ??
+              (typedDc.VolumeUnits > 0 ? (typedDc.SLABreachCount / typedDc.VolumeUnits) * 100 : null);
+            return breachPct == null ? '' : Number(breachPct.toFixed(2));
+          })(),
+          totalcount: dc.VolumeUnits,
+        };
+      });
       const csv = toCSV(rows);
       downloadBlob(csv, `${scenario.ScenarioRunID}_dc_details.csv`, 'text/csv;charset=utf-8;');
     });
@@ -587,12 +866,16 @@ export const useScenarioDetails = ({
     });
   };
 
-  const handleSaveComment = () => {
-    if (commentText.trim()) {
-      onAddComment(scenarioId, commentText.trim());
-      triggerAction('scenario_comment_save');
+  useEffect(() => {
+    if (showCommentModal) {
+      setCommentText(scenario?.LatestComment && scenario.LatestComment !== 'NA' ? scenario.LatestComment : '');
     }
-    setCommentText('');
+  }, [showCommentModal, scenario?.LatestComment]);
+
+  const handleSaveComment = () => {
+    const trimmed = commentText.trim();
+    onAddComment(scenarioId, trimmed || 'NA');
+    triggerAction('scenario_comment_save');
     setShowCommentModal(false);
   };
 
@@ -687,7 +970,12 @@ export const useScenarioDetails = ({
       triggerAction('scenario_archive');
     },
     dcColumns: createScenarioDcColumns(
-      scenarioId === 'SR001' || String(scenario?.ScenarioType || '').toLowerCase().includes('baseline')
+      scenarioId === 'SR001' || String(scenario?.ScenarioType || '').toLowerCase().includes('baseline'),
+      (scenarioId === 'SR001' || String(scenario?.ScenarioType || '').toLowerCase().includes('baseline'))
+        ? 100
+        : (typeof scenario?.UtilizationCap === 'number'
+            ? scenario.UtilizationCap
+            : Number(String(scenario?.UtilizationCap || '').replace(/[^0-9.-]/g, '')) || 85)
     ),
     laneColumns: createScenarioLaneColumns(),
     rankedOptionsColumns: createScenarioRankedOptionsColumns(),

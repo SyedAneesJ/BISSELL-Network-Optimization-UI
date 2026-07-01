@@ -1,8 +1,85 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+
+export const useAnimatedValue = (targetValue: number | string, duration = 800) => {
+  const [currentValue, setCurrentValue] = useState<number | string>(() => {
+    if (typeof targetValue === 'number') return 0;
+    const cleanStr = String(targetValue).replace(/[^\d.-]/g, '');
+    const num = parseFloat(cleanStr);
+    if (!isNaN(num)) return 0;
+    return targetValue;
+  });
+
+  useEffect(() => {
+    if (typeof targetValue === 'number') {
+      let startTimestamp: number | null = null;
+      const startValue = 0;
+      const endValue = targetValue;
+      if (endValue === 0) {
+        setCurrentValue(0);
+        return;
+      }
+      let animationFrameId: number;
+      const step = (timestamp: number) => {
+        if (!startTimestamp) startTimestamp = timestamp;
+        const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+        const easedProgress = progress * (2 - progress); // easeOutQuad
+        const current = startValue + easedProgress * (endValue - startValue);
+        setCurrentValue(current);
+        if (progress < 1) {
+          animationFrameId = requestAnimationFrame(step);
+        } else {
+          setCurrentValue(endValue);
+        }
+      };
+      animationFrameId = requestAnimationFrame(step);
+      return () => cancelAnimationFrame(animationFrameId);
+    } else {
+      const prefix = String(targetValue).match(/^[^\d.-]*/)?.[0] || '';
+      const suffix = String(targetValue).match(/[^\d%]*$/)?.[0] || '';
+      const cleanStr = String(targetValue).replace(/[^\d.-]/g, '');
+      const endValue = parseFloat(cleanStr);
+      if (isNaN(endValue)) {
+        setCurrentValue(targetValue);
+        return;
+      }
+      if (endValue === 0) {
+        setCurrentValue(targetValue);
+        return;
+      }
+      const decPlaces = cleanStr.includes('.') ? cleanStr.split('.')[1].length : 0;
+
+      let startTimestamp: number | null = null;
+      const startValue = 0;
+      let animationFrameId: number;
+      const step = (timestamp: number) => {
+        if (!startTimestamp) startTimestamp = timestamp;
+        const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+        const easedProgress = progress * (2 - progress);
+        const current = startValue + easedProgress * (endValue - startValue);
+        
+        const formattedNum = current.toLocaleString('en-US', {
+          minimumFractionDigits: decPlaces,
+          maximumFractionDigits: decPlaces,
+        });
+        setCurrentValue(`${prefix}${formattedNum}${suffix}`);
+
+        if (progress < 1) {
+          animationFrameId = requestAnimationFrame(step);
+        } else {
+          setCurrentValue(targetValue);
+        }
+      };
+      animationFrameId = requestAnimationFrame(step);
+      return () => cancelAnimationFrame(animationFrameId);
+    }
+  }, [targetValue, duration]);
+
+  return currentValue;
+};
 
 interface KPICardProps {
   label: string;
-  value: string | number;
+  value: string | number | React.ReactNode;
   delta?: number;
   deltaLabel?: string;
   format?: 'currency' | 'percent' | 'number' | 'decimal';
@@ -19,19 +96,25 @@ export const KPICard: React.FC<KPICardProps> = ({
   size = 'medium',
   tooltip,
 }) => {
-  const formatValue = (val: string | number): string => {
-    if (typeof val === 'string') return val;
+  const isAnimatable = typeof value === 'string' || typeof value === 'number';
+  const animatedValue = isAnimatable ? useAnimatedValue(value as string | number) : value;
 
-    switch (format) {
-      case 'currency':
-        return `$${val.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
-      case 'percent':
-        return `${val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
-      case 'decimal':
-        return val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-      default:
-        return val.toLocaleString('en-US');
+  const formatValue = (val: any): any => {
+    if (React.isValidElement(val)) return val;
+    if (typeof val === 'string') return val;
+    if (typeof val === 'number') {
+      switch (format) {
+        case 'currency':
+          return `$${val.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
+        case 'percent':
+          return `${val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
+        case 'decimal':
+          return val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        default:
+          return val.toLocaleString('en-US');
+      }
     }
+    return val;
   };
 
   const sizeClasses = {
@@ -59,14 +142,14 @@ export const KPICard: React.FC<KPICardProps> = ({
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                 </div>
-                <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block w-64 p-2 bg-slate-900 text-white text-xs rounded shadow-lg z-10">
+                <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block w-64 p-2 bg-slate-900 text-white text-xs rounded shadow-lg z-10 whitespace-pre-line">
                   {tooltip}
                 </div>
               </div>
             )}
           </div>
           <p className={`${valueSizeClasses[size]} font-semibold text-slate-900 mt-2 leading-tight break-words`}>
-            {formatValue(value)}
+            {formatValue(animatedValue)}
           </p>
           {delta !== undefined && (
             <div className="mt-2 flex items-center gap-1">

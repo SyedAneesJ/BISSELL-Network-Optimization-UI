@@ -63,6 +63,7 @@ export const ComparisonDetails: React.FC<ComparisonDetailsProps> = (props) => {
     dcComparisonColumns,
     laneComparisonColumns,
     changedLaneCount,
+    channelOptions,
   } = useComparisonDetails({
     comparisonId: props.comparisonId,
     scenarioRunHeaders: props.scenarioRunHeaders,
@@ -132,6 +133,7 @@ export const ComparisonDetails: React.FC<ComparisonDetailsProps> = (props) => {
           hasLaneData={laneComparison.length > 0}
           onExportLaneDiff={handleExportLaneDiff}
           exportLaneActive={isActionActive('comparison_export_lane')}
+          channelOptions={channelOptions}
         />
       ),
     },

@@ -17,6 +17,8 @@ import {
   ScenarioRunHeader,
   ScenarioRunResultsDC,
   ScenarioRunResultsLane,
+  DomoCostComponentRow,
+  DomoSpaceOverrideRow,
 } from '@/data';
 import { getAdditionalCostsForDc } from '@/data';
 import {
@@ -33,6 +35,8 @@ import {
   loadDcCapacityDataset,
   loadScenarioLaneDataset,
   loadTacticalConsolidationScenarioLaneDataset,
+  loadCostComponentsDataset,
+  loadSpaceOverridesDataset,
   getEntityOrder,
   mapDcResultsFromRows,
   resolveRegistryItemFromMeta,
@@ -74,6 +78,7 @@ import {
   upsertCollectionDocumentByField,
 } from '@/services/domo';
 import { Toast } from '@/components/ui';
+import { normalizeWarehouseName } from '@/utils';
 import { AppNotification, NotificationStatus } from '@/types/notifications';
 import { ScenarioRunHistoryEntry } from '@/services/scenario';
 
@@ -821,6 +826,8 @@ function App() {
     },
   }));
   const [rawScenarioLaneRows, setRawScenarioLaneRows] = useState<ScenarioRunResultsLane[]>([]);
+  const [costComponentRows, setCostComponentRows] = useState<DomoCostComponentRow[]>([]);
+  const [spaceOverrideRows, setSpaceOverrideRows] = useState<DomoSpaceOverrideRow[]>([]);
   const [preselectedRuns, setPreselectedRuns] = useState<{ a?: string; b?: string }>({});
   const [comparisonScenarioIds, setComparisonScenarioIds] = useState<string[] | null>(null);
   const [archivedScenarioPrevStatus, setArchivedScenarioPrevStatus] = useState<Record<string, ScenarioRunHeader['Status']>>({});
@@ -902,15 +909,87 @@ function App() {
         ? scenarioLanesForOverride.filter((lane) => lane.OverrideAppliedFlag === 'Y').length
         : (header.OverrideCount || 0);
 
+      const isUsSpaceOverrideHeader = header.Region === 'US' && (
+        header.ScenarioRunID === 'SR001' ||
+        String(header.ScenarioType || '').toLowerCase().includes('baseline') ||
+        String(header.RunName || '').toLowerCase().includes('baseline') ||
+        String(header.ScenarioType || '').toLowerCase().includes('tactical') ||
+        String(header.ScenarioType || '').toLowerCase().includes('consolidation') ||
+        String(header.RunName || '').toLowerCase().includes('tactical') ||
+        String(header.RunName || '').toLowerCase().includes('consolidation')
+      );
+
+      let spaceRequiredOverride = header.TotalSpaceRequired;
+      let spaceCoreOverride = header.SpaceCore;
+
+      if (isUsSpaceOverrideHeader && spaceOverrideRows && spaceOverrideRows.length > 0) {
+        const activeDcNames = new Set(
+          dcs
+            .filter((dc) => dc.IsSuppressed !== 'Y')
+            .map((dc) => normalizeWarehouseName(dc.DCName))
+        );
+        const matchingOverrides = spaceOverrideRows.filter((r) => activeDcNames.has(normalizeWarehouseName(r.Location)));
+        if (matchingOverrides.length > 0) {
+          spaceRequiredOverride = Math.round(matchingOverrides.reduce((sum, r) => sum + r.ContractedSquareFootage, 0));
+          spaceCoreOverride = Math.round(matchingOverrides.reduce((sum, r) => sum + r.WorkingCapacitySqFt, 0));
+        }
+      }
+
+      // For space-override scenarios, derive MaxUtilPct from the DC-level UtilPct
+      // so the table aligns with scenario details (which also derives from dcResults).
+      // For US Baseline: DCs have UtilPct from the space override dataset (PalletUtilization × 100).
+      // For Tactical/Consolidation: DCs have engine-computed UtilPct.
+      const isUsBaselineHeader = header.Region === 'US' && (
+        header.ScenarioRunID === 'SR001' ||
+        String(header.ScenarioType || '').toLowerCase().includes('baseline') ||
+        String(header.RunName || '').toLowerCase().includes('baseline')
+      );
+
+      let maxUtilOverride = header.MaxUtilPct;
+      if (isUsSpaceOverrideHeader && dcs.length > 0 && spaceOverrideRows && spaceOverrideRows.length > 0) {
+        const spaceLookup = new Map<string, DomoSpaceOverrideRow>();
+        spaceOverrideRows.forEach((row) => {
+          spaceLookup.set(normalizeWarehouseName(row.Location), row);
+        });
+
+        const activeDcUtilPcts = dcs
+          .filter((dc) => dc.IsSuppressed !== 'Y')
+          .map((dc) => {
+            const spaceOverride = spaceLookup.get(normalizeWarehouseName(dc.DCName));
+            if (spaceOverride) {
+              if (isUsBaselineHeader) {
+                return Number((spaceOverride.PalletUtilization * 100).toFixed(2));
+              } else {
+                return spaceOverride.ContractedSquareFootage > 0
+                  ? Number(((dc.SpaceRequired / spaceOverride.ContractedSquareFootage) * 100).toFixed(2))
+                  : 0;
+              }
+            }
+            return Number(dc.UtilPct || 0);
+          });
+
+        if (activeDcUtilPcts.length > 0) {
+          maxUtilOverride = Number(Math.max(...activeDcUtilPcts).toFixed(2));
+        }
+      }
+
+      // For US Baseline there is no utilization cap — the stored value is incorrectly
+      // mapped from the dataset's maxUtilization column. Force it to 100%.
+      const utilizationCapOverride = isUsBaselineHeader ? 100 : header.UtilizationCap;
+
       return {
         ...header,
         TotalCost: Number(totalCombinedCost.toFixed(2)),
         CostPerUnit: Number(combinedCostPerUnit.toFixed(2)),
         ChangedLaneCountVsBaseline: calculatedChangedLanes,
         OverrideCount: calculatedOverrideCount,
+        TotalSpaceRequired: spaceRequiredOverride,
+        SpaceCore: spaceCoreOverride,
+        MaxUtilPct: maxUtilOverride,
+        UtilizationCap: utilizationCapOverride,
       };
     });
-  }, [scenarioState.headers, scenarioState.resultsDC, scenarioState.resultsLanes]);
+  }, [scenarioState.headers, scenarioState.resultsDC, scenarioState.resultsLanes, spaceOverrideRows]);
 
   const comparisonModalScenarioHeaders = useMemo(() => {
     if (!comparisonScenarioIds || comparisonScenarioIds.length === 0) return hydratedScenarioHeaders;
@@ -1746,19 +1825,33 @@ function App() {
       const usLaneScenarioRunIdLookup = buildLaneScenarioRunIdLookup('US');
       const canadaLaneScenarioRunIdLookup = buildLaneScenarioRunIdLookup('Canada');
 
+      const costComponentsDatasetId = String(import.meta.env.VITE_COST_COMPONENTS_DATASET_ID || '').trim();
+      const spaceOverrideDatasetId = String(import.meta.env.VITE_SPACE_OVERRIDE_DATASET_ID || '').trim();
       const [
         laneDatasetRows,
         bcvLaneDatasetRows,
         tacticalConsolidationLaneDatasetRows,
         canadaBaselineLaneDatasetRows,
         canadaStratfordLaneDatasetRows,
+        loadedCostCompRows,
+        loadedSpaceOverrideRows,
       ] = await Promise.all([
         loadScenarioLaneDataset(usLaneScenarioRunIdLookup),
         loadBcvScenarioLaneDataset(usLaneScenarioRunIdLookup),
         loadTacticalConsolidationScenarioLaneDataset(usLaneScenarioRunIdLookup),
         loadCanadaScenarioLaneDataset(canadaLaneScenarioRunIdLookup),
         loadCanadaStratfordScenarioLaneDataset(buildLaneScenarioRunIdLookup('Canada')),
+        costComponentsDatasetId ? loadCostComponentsDataset(costComponentsDatasetId) : Promise.resolve([]),
+        spaceOverrideDatasetId ? loadSpaceOverridesDataset(spaceOverrideDatasetId) : Promise.resolve([]),
       ]);
+      setCostComponentRows(loadedCostCompRows);
+      setSpaceOverrideRows(loadedSpaceOverrideRows);
+      console.log('[Domo Cost Components] loaded', {
+        rows: loadedCostCompRows.length,
+      });
+      console.log('[Domo Space Overrides] loaded', {
+        rows: loadedSpaceOverrideRows.length,
+      });
       const combinedLaneDatasetRows = [
         ...laneDatasetRows,
         ...bcvLaneDatasetRows,
@@ -2377,6 +2470,7 @@ function App() {
         scenarioResultsLanes: scenarioState.resultsLanes,
         laneRowsByScenarioId: scopedLaneRowsByScenarioId,
         dcCapacityRows: scopedDcCapacityRows,
+        costComponentRows,
         scenarioTypePolicy: familyPolicy,
         currentUserDisplayName,
         dataSnapshotVersion: dataHealthSnapshots[payload.input.region]?.SnapshotTime || dataHealthSnapshots.All.SnapshotTime || 'NA',
@@ -2800,12 +2894,30 @@ function App() {
       return;
     }
 
+    const referencingComparisons = comparisonState.headers.filter(
+      (c) => c.ScenarioRunID_A === scenarioId || c.ScenarioRunID_B === scenarioId
+    );
+
     setUiBusyMessage('Deleting scenario...');
     try {
       const deleted = await deleteScenarioRecordFromPrimaryStore(scenarioId);
       if (!deleted) {
         pushToast('Scenario could not be deleted.', 'error');
         return;
+      }
+
+      // Cascade delete referencing comparisons from primary store
+      const referencingIds = new Set(referencingComparisons.map((c) => c.ComparisonID));
+      for (const comp of referencingComparisons) {
+        try {
+          await deleteCollectionDocumentsByField(
+            APPDB_COLLECTIONS.comparisons,
+            'comparisonId',
+            comp.ComparisonID
+          );
+        } catch (error) {
+          console.warn(`Failed to cascade delete comparison ${comp.ComparisonID} from AppDB`, error);
+        }
       }
 
       setScenarioState((prev) => ({
@@ -2825,10 +2937,31 @@ function App() {
         delete next[scenarioId];
         return next;
       });
+
+      // Update comparisonState to remove cascade-deleted comparisons
+      setComparisonState((prev) => ({
+        headers: prev.headers.filter((c) => !referencingIds.has(c.ComparisonID)),
+        detailDC: prev.detailDC.filter((row) => !referencingIds.has(row.ComparisonID)),
+        detailLanes: prev.detailLanes.filter((row) => !referencingIds.has(row.ComparisonID)),
+      }));
+      setArchivedComparisonPrevStatus((prev) => {
+        const next = { ...prev };
+        referencingIds.forEach((id) => delete next[id]);
+        return next;
+      });
+
       if (appState.selectedScenarioId === scenarioId) {
         navigateToHome();
       }
-      pushToast(`Deleted ${target.RunName}.`, 'success');
+
+      if (appState.selectedComparisonId && referencingIds.has(appState.selectedComparisonId)) {
+        navigateToHome();
+      }
+
+      const cascadeMsg = referencingComparisons.length > 0
+        ? ` and its ${referencingComparisons.length} linked comparison(s)`
+        : '';
+      pushToast(`Deleted ${target.RunName}${cascadeMsg}.`, 'success');
     } finally {
       setUiBusyMessage(null);
     }
@@ -3774,13 +3907,15 @@ function App() {
             scenarioRunHeaders={hydratedScenarioHeaders}
             scenarioRunConfigs={scenarioState.configs}
             scenarioRunResultsDC={scenarioState.resultsDC}
-          scenarioRunResultsLanes={scenarioState.resultsLanes}
-          scenarioOverrides={scenarioState.overrides}
-          recentRuns={scenarioHistoryState[appState.selectedScenarioId] || []}
-          onDuplicateScenario={duplicateScenario}
-          onPublishScenario={publishScenario}
-          onApproveScenario={approveScenario}
-          onArchiveScenario={archiveScenario}
+            scenarioRunResultsLanes={scenarioState.resultsLanes}
+            costComponentRows={costComponentRows}
+            spaceOverrideRows={spaceOverrideRows}
+            scenarioOverrides={scenarioState.overrides}
+            recentRuns={scenarioHistoryState[appState.selectedScenarioId] || []}
+            onDuplicateScenario={duplicateScenario}
+            onPublishScenario={publishScenario}
+            onApproveScenario={approveScenario}
+            onArchiveScenario={archiveScenario}
             onAddComment={addScenarioComment}
             onApplyOverride={applyOverride}
           />

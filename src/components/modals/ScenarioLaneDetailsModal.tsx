@@ -28,10 +28,10 @@ export const ScenarioLaneDetailsModal: React.FC<ScenarioLaneDetailsModalProps> =
             <span className="text-slate-600">3-Zip:</span>
             <span className="ml-2 font-medium">{lane.Dest3Zip}</span>
           </div>
-          <div>
+          {/* <div>
             <span className="text-slate-600">State:</span>
             <span className="ml-2 font-medium">{lane.DestState}</span>
-          </div>
+          </div> */}
           <div>
             <span className="text-slate-600">Channel:</span>
             <span className="ml-2 font-medium">{lane.Channel}</span>
@@ -40,10 +40,10 @@ export const ScenarioLaneDetailsModal: React.FC<ScenarioLaneDetailsModalProps> =
             <span className="text-slate-600">Terms:</span>
             <span className="ml-2 font-medium">{lane.Terms}</span>
           </div>
-          <div>
+          {/* <div>
             <span className="text-slate-600">Customer Group:</span>
             <span className="ml-2 font-medium">{lane.CustomerGroup}</span>
-          </div>
+          </div> */}
           <div>
             <span className="text-slate-600">Assigned DC:</span>
             <span className="ml-2 font-medium text-blue-600">{lane.AssignedDC}</span>

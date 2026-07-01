@@ -9,15 +9,8 @@ const diffFilterOptions = [
   { value: 'All Lanes', label: 'All Lanes' },
   { value: 'Only SLA Worsened', label: 'Only SLA Worsened' },
   { value: 'Only Capacity Improved', label: 'Only Capacity Improved' },
-  { value: 'Top 50 Cost Impact', label: 'Top 50 Cost Impact' },
-  { value: 'Top 100 Cost Impact', label: 'Top 100 Cost Impact' },
-];
-
-const channelFilterOptions = [
-  { value: 'All Channels', label: 'All Channels' },
-  { value: 'B2C', label: 'B2C' },
-  { value: 'B2B', label: 'B2B' },
-  { value: 'D2C', label: 'D2C' },
+  // { value: 'Top 50 Cost Impact', label: 'Top 50 Cost Impact' },
+  // { value: 'Top 100 Cost Impact', label: 'Top 100 Cost Impact' },
 ];
 
 interface ComparisonLanesTabProps {
@@ -30,6 +23,7 @@ interface ComparisonLanesTabProps {
   hasLaneData: boolean;
   onExportLaneDiff: () => void;
   exportLaneActive: boolean;
+  channelOptions?: string[];
 }
 
 export const ComparisonLanesTab: React.FC<ComparisonLanesTabProps> = ({
@@ -42,7 +36,14 @@ export const ComparisonLanesTab: React.FC<ComparisonLanesTabProps> = ({
   hasLaneData,
   onExportLaneDiff,
   exportLaneActive,
+  channelOptions = [],
 }) => {
+  const channelFilterOptions = React.useMemo(() => {
+    return [
+      { value: 'All', label: 'All Channels' },
+      ...channelOptions.map((c) => ({ value: c, label: c })),
+    ];
+  }, [channelOptions]);
   if (!hasLaneData) {
     return (
       <div className="flex flex-col items-center justify-center py-16 bg-white border border-slate-200 rounded-lg shadow-sm">

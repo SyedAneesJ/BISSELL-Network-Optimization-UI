@@ -191,15 +191,20 @@ export const createScenarioColumns = ({
     header: 'Max Util %',
     width: '100px',
     sortable: true,
-    render: (row) => (
-      <span className={row.MaxUtilPct > 85 ? 'text-amber-600 font-medium' : ''}>
-        {formatPercentOrNA(row.MaxUtilPct, 2)}
-      </span>
-    ),
+    render: (row) => {
+      const cap = typeof row.UtilizationCap === 'number'
+        ? row.UtilizationCap
+        : Number(String(row.UtilizationCap || '').replace(/[^0-9.-]/g, '')) || 85;
+      return (
+        <span className={row.MaxUtilPct > cap ? 'text-amber-600 font-medium' : ''}>
+          {formatPercentOrNA(row.MaxUtilPct, 2)}
+        </span>
+      );
+    },
   },
   {
     key: 'TotalSpaceRequired',
-    header: 'Total Space Required',
+    header: 'Total Space',
     width: '110px',
     sortable: true,
     render: (row) => formatNumberOrNA(row.TotalSpaceRequired),

@@ -40,6 +40,11 @@ type DcAccumulator = {
   slaBreachCount: number;
   excludedBySlaCount: number;
   actualSpace: number;
+  inboundSpend: number;
+  parcelSpend: number;
+  ltlSpend: number;
+  tlSpend: number;
+  distributionCost: number;
 };
 
 type AllocationInput = {
@@ -366,6 +371,15 @@ const buildSelectedLaneRow = (
   );
   const selectedRank = selectedCandidateRank(sourceRow, selected.dc);
 
+  const baseTotalCost = Number(sourceRow.TotalCost ?? sourceRow.LaneCost ?? 0) || 1;
+  const ratio = selectedTotal / baseTotalCost;
+
+  const inboundSpend = typeof sourceRow.InboundSpend === 'number' ? Number((sourceRow.InboundSpend * ratio).toFixed(2)) : undefined;
+  const distributionCost = typeof sourceRow.DistributionCost === 'number' ? Number((sourceRow.DistributionCost * ratio).toFixed(2)) : undefined;
+  const parcelSpend = typeof sourceRow.ParcelSpend === 'number' ? Number((sourceRow.ParcelSpend * ratio).toFixed(2)) : undefined;
+  const ltlSpend = typeof sourceRow.LtlSpend === 'number' ? Number((sourceRow.LtlSpend * ratio).toFixed(2)) : undefined;
+  const tlSpend = typeof sourceRow.TlSpend === 'number' ? Number((sourceRow.TlSpend * ratio).toFixed(2)) : undefined;
+
   return {
     ...sourceRow,
     ScenarioRunID: scenarioId,
@@ -390,6 +404,11 @@ const buildSelectedLaneRow = (
         : 0
     ).toFixed(2)),
     OvercapFlag: Number.isFinite(selectedCapacity) && selectedCapacity > 0 && demand > selectedCapacity ? 'Y' : 'N',
+    InboundSpend: inboundSpend,
+    DistributionCost: distributionCost,
+    ParcelSpend: parcelSpend,
+    LtlSpend: ltlSpend,
+    TlSpend: tlSpend,
   } as ScenarioRunResultsLane & CollectRelocationDebugRow;
 };
 
@@ -835,6 +854,12 @@ const buildDcRows = (
       spaceBCV: 0,
       slaBreachCount: 0,
       excludedBySlaCount: 0,
+      actualSpace: 0,
+      inboundSpend: 0,
+      parcelSpend: 0,
+      ltlSpend: 0,
+      tlSpend: 0,
+      distributionCost: 0,
     });
   });
 
@@ -852,6 +877,12 @@ const buildDcRows = (
       spaceBCV: 0,
       slaBreachCount: 0,
       excludedBySlaCount: 0,
+      actualSpace: 0,
+      inboundSpend: 0,
+      parcelSpend: 0,
+      ltlSpend: 0,
+      tlSpend: 0,
+      distributionCost: 0,
     };
     const laneUnits = inferLaneUnits(row);
     acc.totalCost += Number(row.TotalCost ?? row.LaneCost ?? 0);
@@ -869,6 +900,11 @@ const buildDcRows = (
       acc.slaBreachCount += laneUnits;
       acc.excludedBySlaCount += laneUnits;
     }
+    acc.inboundSpend += Number(row.InboundSpend ?? 0);
+    acc.parcelSpend += Number(row.ParcelSpend ?? 0);
+    acc.ltlSpend += Number(row.LtlSpend ?? 0);
+    acc.tlSpend += Number(row.TlSpend ?? 0);
+    acc.distributionCost += Number(row.DistributionCost ?? 0);
     dcAccum.set(dcKey, acc);
   });
 
@@ -887,6 +923,12 @@ const buildDcRows = (
       spaceBCV: 0,
       slaBreachCount: 0,
       excludedBySlaCount: 0,
+      actualSpace: 0,
+      inboundSpend: 0,
+      parcelSpend: 0,
+      ltlSpend: 0,
+      tlSpend: 0,
+      distributionCost: 0,
     };
     const isSuppressed = suppressedSet.has(dcKey) || (activeSet.size > 0 && !activeSet.has(dcKey));
     const utilPct = Number.isFinite(capacity as number) && Number(capacity) > 0
@@ -906,6 +948,11 @@ const buildDcRows = (
       SpaceBCV: isSuppressed ? 0 : Number(acc.spaceBCV.toFixed(2)),
       SLABreachCount: isSuppressed ? 0 : acc.slaBreachCount,
       ExcludedBySLACount: isSuppressed ? 0 : acc.excludedBySlaCount,
+      InboundSpend: isSuppressed ? 0 : Number(acc.inboundSpend.toFixed(2)),
+      ParcelSpend: isSuppressed ? 0 : Number(acc.parcelSpend.toFixed(2)),
+      LtlSpend: isSuppressed ? 0 : Number(acc.ltlSpend.toFixed(2)),
+      TlSpend: isSuppressed ? 0 : Number(acc.tlSpend.toFixed(2)),
+      DistributionCost: isSuppressed ? 0 : Number(acc.distributionCost.toFixed(2)),
       RankOverall: 0,
       IsSuppressed: isSuppressed ? 'Y' : 'N',
       ...costs,

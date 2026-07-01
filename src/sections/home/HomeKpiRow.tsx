@@ -33,7 +33,7 @@ export const HomeKpiRow: React.FC<HomeKpiRowProps> = ({ aggregateKPIs }) => {
         size="small"
       />
       <KPICard
-        label="Total Space Required"
+        label="Total Space"
         value={aggregateKPIs.totalSpaceRequired}
         format="number"
         size="small"

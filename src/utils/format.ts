@@ -60,3 +60,23 @@ export const formatPercentOrNA = (value: unknown, decimals = 2): string => {
     maximumFractionDigits: decimals,
   })}%`;
 };
+
+export const normalizeZip3 = (zip: string | number | null | undefined): string => {
+  const str = String(zip ?? '').trim();
+  if (/^\d+$/.test(str)) {
+    return str.padStart(3, '0');
+  }
+  return str.toLowerCase();
+};
+
+export const normalizeWarehouseName = (name: string | null | undefined): string => {
+  let cleaned = String(name ?? '').trim().toLowerCase();
+  // Strip common suffixes/prefixes like ' dc', ' whse', ' warehouse', 'r '
+  cleaned = cleaned.replace(/\bdc\b/g, '');
+  cleaned = cleaned.replace(/\bwhse\b/g, '');
+  cleaned = cleaned.replace(/\bwarehouse\b/g, '');
+  cleaned = cleaned.replace(/\br\b/g, '');
+  // Remove non-alphanumeric characters
+  cleaned = cleaned.replace(/[^a-z0-9]+/g, '');
+  return cleaned;
+};

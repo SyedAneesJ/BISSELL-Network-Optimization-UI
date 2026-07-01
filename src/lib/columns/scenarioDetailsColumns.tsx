@@ -2,11 +2,11 @@ import { Column } from '@/components/ui';
 import { ScenarioRunResultsDC, ScenarioRunResultsLane, getAdditionalCostsForDc } from '@/data';
 import { formatCurrencyOrNA, formatDecimalOrNA, formatNumberOrNA, formatPercentOrNA, formatTextOrNA } from '@/utils';
 
-export const createScenarioDcColumns = (isBaseline = false): Column<ScenarioRunResultsDC>[] => [
+export const createScenarioDcColumns = (isBaseline = false, utilCap = 85): Column<ScenarioRunResultsDC>[] => [
   { key: 'DCName', header: 'DC Name', sortable: true },
   {
     key: 'TotalCost',
-    header: 'Base Cost',
+    header: 'Variable Cost',
     sortable: true,
     render: (row) => {
       if (isBaseline) {
@@ -82,7 +82,7 @@ export const createScenarioDcColumns = (isBaseline = false): Column<ScenarioRunR
     header: 'Util %',
     sortable: true,
     render: (row) => (
-      <span className={row.UtilPct > 85 ? 'text-amber-600 font-medium' : ''}>
+      <span className={row.UtilPct > utilCap ? 'text-amber-600 font-medium' : ''}>
         {formatPercentOrNA(row.UtilPct, 2)}
       </span>
     ),
