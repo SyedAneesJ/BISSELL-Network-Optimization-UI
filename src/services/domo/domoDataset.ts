@@ -1730,7 +1730,7 @@ export const buildScenarioHeaderFromRows = (
     TotalCount: totalCount,
     SLABreachPct: Number(slaBreachPct.toFixed(2)),
     ExcludedBySLACount: slaBreachUnits,
-    MaxUtilPct: Number(maxUtil.toFixed(2)),
+    MaxUtilPct: totalWorkingCapacity > 0 ? Number(((totalCoreSpace / totalWorkingCapacity) * 100).toFixed(2)) : 0,
     TotalSpaceRequired: totalWorkingCapacity,
     SpaceCore: Math.round(totalCoreSpace),
     SpaceBCV: Math.round(totalBcvSpace),

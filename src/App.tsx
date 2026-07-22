@@ -243,6 +243,27 @@ const dedupeScenarioResultsLanes = (rows: ScenarioRunResultsLane[]): ScenarioRun
   return deduped;
 };
 
+const areScenarioLanesEqual = (lanesA: ScenarioRunResultsLane[], lanesB: ScenarioRunResultsLane[]): boolean => {
+  if (lanesA.length !== lanesB.length) return false;
+  for (let i = 0; i < lanesA.length; i++) {
+    const a = lanesA[i];
+    const b = lanesB[i];
+    if (
+      (a.ScenarioRunID || '') !== (b.ScenarioRunID || '') ||
+      (a.Dest3Zip || '') !== (b.Dest3Zip || '') ||
+      (a.Channel || '') !== (b.Channel || '') ||
+      (a.Terms || '') !== (b.Terms || '') ||
+      (a.DestState || '') !== (b.DestState || '') ||
+      (a.PartyName || a.CustomerGroup || '') !== (b.PartyName || b.CustomerGroup || '') ||
+      Number(a.TotalCost ?? a.LaneCost ?? 0) !== Number(b.TotalCost ?? b.LaneCost ?? 0) ||
+      (a.AssignedDC || a.CostingWarehouse || a.DefaultShipFrom || '') !== (b.AssignedDC || b.CostingWarehouse || b.DefaultShipFrom || '')
+    ) {
+      return false;
+    }
+  }
+  return true;
+};
+
 const cloneDcCapacityRows = (rows: DomoDcCapacityRow[]): DomoDcCapacityRow[] =>
   rows.map((row) => ({ ...row }));
 
@@ -945,33 +966,9 @@ function App() {
         String(header.RunName || '').toLowerCase().includes('baseline')
       );
 
-      let maxUtilOverride = header.MaxUtilPct;
-      if (isUsSpaceOverrideHeader && dcs.length > 0 && spaceOverrideRows && spaceOverrideRows.length > 0) {
-        const spaceLookup = new Map<string, DomoSpaceOverrideRow>();
-        spaceOverrideRows.forEach((row) => {
-          spaceLookup.set(normalizeWarehouseName(row.Location), row);
-        });
-
-        const activeDcUtilPcts = dcs
-          .filter((dc) => dc.IsSuppressed !== 'Y')
-          .map((dc) => {
-            const spaceOverride = spaceLookup.get(normalizeWarehouseName(dc.DCName));
-            if (spaceOverride) {
-              if (isUsBaselineHeader) {
-                return Number((spaceOverride.PalletUtilization * 100).toFixed(2));
-              } else {
-                return spaceOverride.ContractedSquareFootage > 0
-                  ? Number(((dc.SpaceRequired / spaceOverride.ContractedSquareFootage) * 100).toFixed(2))
-                  : 0;
-              }
-            }
-            return Number(dc.UtilPct || 0);
-          });
-
-        if (activeDcUtilPcts.length > 0) {
-          maxUtilOverride = Number(Math.max(...activeDcUtilPcts).toFixed(2));
-        }
-      }
+      const maxUtilOverride = spaceRequiredOverride > 0
+        ? Number(((spaceCoreOverride / spaceRequiredOverride) * 100).toFixed(2))
+        : (header.MaxUtilPct || 0);
 
       // For US Baseline there is no utilization cap — the stored value is incorrectly
       // mapped from the dataset's maxUtilization column. Force it to 100%.
@@ -2073,23 +2070,30 @@ function App() {
       persistedRecords.forEach((record) => {
         const freshLanes = freshLanesByScenarioId.get(record.definition.scenarioId) || [];
         if (freshLanes.length > 0 && record.snapshot) {
-          const nextSnapshot = {
-            ...record.snapshot,
-            resultsLanes: canonicalizeScenarioResultsLanes(freshLanes),
-            updatedAt: new Date().toISOString(),
-          };
-          const nextRecord: ScenarioRepositoryRecord = {
-            ...record,
-            snapshot: nextSnapshot,
-          };
-          repairedRecords.push(nextRecord);
-          repairedRecordIds.add(record.definition.scenarioId);
+          const nextLanes = canonicalizeScenarioResultsLanes(freshLanes);
+          const existingLanes = record.snapshot.resultsLanes || [];
+          if (!areScenarioLanesEqual(existingLanes, nextLanes)) {
+            const nextSnapshot = {
+              ...record.snapshot,
+              resultsLanes: nextLanes,
+              updatedAt: new Date().toISOString(),
+            };
+            const nextRecord: ScenarioRepositoryRecord = {
+              ...record,
+              snapshot: nextSnapshot,
+            };
+            repairedRecords.push(nextRecord);
+            repairedRecordIds.add(record.definition.scenarioId);
+          } else {
+            repairedRecords.push(record);
+          }
         } else {
           repairedRecords.push(record);
         }
       });
       const scenarioRepairUpdates = repairedRecords.filter((record) => repairedRecordIds.has(record.definition.scenarioId));
       if (scenarioRepairUpdates.length > 0) {
+        console.log('[Scenario State] updating database cache with repaired lanes', { count: scenarioRepairUpdates.length });
         await Promise.all(scenarioRepairUpdates.map((record) => persistScenarioRecordToPrimaryStore(record)));
       }
       persistedRecords = repairedRecords;

@@ -329,10 +329,10 @@ const buildScenarioHeader = (
   const costPerUnit = baseline ? Number((baseline.CostPerUnit * (1 + costShift)).toFixed(2)) : 0;
   const avgDays = baseline ? Number((baseline.AvgDeliveryDays * (1 - serviceShift * 0.1)).toFixed(1)) : 0;
   const slaBreach = baseline ? Number((baseline.SLABreachPct * (1 + costShift * 0.5)).toFixed(1)) : 0;
-  const maxUtil = baseline ? Math.min(100, Number((baseline.MaxUtilPct * (1 + utilCapImpact)).toFixed(2))) : 0;
   const totalSpace = baseline ? baseline.TotalSpaceRequired : 0;
   const spaceCore = baseline ? baseline.SpaceCore : 0;
   const spaceBCV = baseline ? baseline.SpaceBCV : 0;
+  const maxUtil = totalSpace > 0 ? Number(((spaceCore / totalSpace) * 100).toFixed(2)) : 0;
 
   const alertFlags: string[] = [];
   if (context.hasUtilCaps && payload.input.utilCap > 90) alertFlags.push('OverCap');
@@ -590,8 +590,9 @@ const summarizeDcResults = (rows: ScenarioRunResultsDC[]): ScenarioBuildSummary 
   });
   const avgDays = avgDaysWeight > 0 ? avgDaysNumerator / avgDaysWeight : 0;
   const avgTransitDays = avgTransitDaysWeight > 0 ? avgTransitDaysNumerator / avgTransitDaysWeight : null;
-  const maxUtil = rows.reduce((max, row) => Math.max(max, row.UtilPct), 0);
   const totalSpaceRequired = rows.reduce((sum, row) => sum + row.SpaceRequired, 0);
+  const totalSpaceCore = rows.reduce((sum, row) => sum + row.SpaceCore, 0);
+  const maxUtil = totalSpaceRequired > 0 ? (totalSpaceCore / totalSpaceRequired) * 100 : 0;
   const excludedBySla = rows.reduce((sum, row) => sum + row.ExcludedBySLACount, 0);
   const slaBreachCount = rows.reduce((sum, row) => sum + row.SLABreachCount, 0);
   const missingAvgDays = rows.filter((row) => row.AvgDays === 0).length;

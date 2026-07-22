@@ -99,8 +99,14 @@ export const useScenarioDetails = ({
 
   const scenario = useMemo(
     () => {
-      if (!rawScenario || !isUsSpaceOverrideScenario || !spaceOverrideRows || spaceOverrideRows.length === 0) {
-        return rawScenario;
+      if (!rawScenario) return undefined;
+      if (!isUsSpaceOverrideScenario || !spaceOverrideRows || spaceOverrideRows.length === 0) {
+        const totalSpace = rawScenario.TotalSpaceRequired || 0;
+        const coreSpace = rawScenario.SpaceCore || 0;
+        return {
+          ...rawScenario,
+          MaxUtilPct: totalSpace > 0 ? Number(((coreSpace / totalSpace) * 100).toFixed(2)) : (rawScenario.MaxUtilPct || 0),
+        };
       }
       const activeDcNames = new Set(
         scenarioRunResultsDC
@@ -115,6 +121,7 @@ export const useScenarioDetails = ({
         ...rawScenario,
         TotalSpaceRequired: Math.round(totalSpaceRequired),
         SpaceCore: Math.round(spaceCore),
+        MaxUtilPct: totalSpaceRequired > 0 ? Number(((spaceCore / totalSpaceRequired) * 100).toFixed(2)) : 0,
       };
     },
     [rawScenario, isUsSpaceOverrideScenario, spaceOverrideRows, scenarioRunResultsDC, scenarioId]
@@ -689,7 +696,7 @@ export const useScenarioDetails = ({
           costPerUnit: dc.VolumeUnits > 0 ? Number((totalCostDisplay / dc.VolumeUnits).toFixed(2)) : 0,
           averageDeliveryDays: Number(dc.AvgDays.toFixed(2)),
           averageTransitDays: dc.AvgTransitDays == null ? '' : Number(dc.AvgTransitDays.toFixed(2)),
-          maxUtilization: Number(dc.UtilPct.toFixed(2)),
+          utilization: Number(dc.UtilPct.toFixed(2)),
           actualSpace: dc.ActualSpace ?? '',
           coreSpace: dc.SpaceCore,
           bcvSpace: dc.SpaceBCV,
@@ -709,7 +716,6 @@ export const useScenarioDetails = ({
               (typedDc.VolumeUnits > 0 ? (typedDc.SLABreachCount / typedDc.VolumeUnits) * 100 : null);
             return breachPct == null ? '' : Number(breachPct.toFixed(2));
           })(),
-          totalcount: dc.VolumeUnits,
         };
       });
       const csv = toCSV(rows);

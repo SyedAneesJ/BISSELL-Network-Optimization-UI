@@ -153,10 +153,11 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
     </span>
   );
 
-  const maxUtilFromDcs = maxUtilDc ? Number(maxUtilDc.UtilPct) : 0;
-  const effectiveMaxUtil = Math.max(maxUtilFromDcs, scenario.MaxUtilPct || 0);
+  const effectiveMaxUtil = scenario.TotalSpaceRequired > 0
+    ? (scenario.SpaceCore / scenario.TotalSpaceRequired) * 100
+    : (scenario.MaxUtilPct || 0);
   const maxUtilDisplay = effectiveMaxUtil > 0
-    ? `${effectiveMaxUtil.toFixed(2)}%${maxUtilDc && maxUtilDc.DCName ? ` | ${maxUtilDc.DCName}` : ''}`
+    ? `${effectiveMaxUtil.toFixed(2)}%`
     : 'NA';
 
   return (
@@ -221,7 +222,6 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
             <KPICard label="Avg Delivery Days" value={formatDecimalOrNA(scenario.AvgDeliveryDays, 2)} />
             <KPICard label="Avg Transit Days" value={formatDecimalOrNA(scenario.AvgTransitDays, 2)} />
             <KPICard label="SLA Breach %" value={Number.isFinite(scenario.SLABreachPct) ? scenario.SLABreachPct : 'NA'} format="decimal" />
-            <KPICard label="Max Utilization %" value={maxUtilDisplay} />
           </div>
         </div>
 
@@ -234,7 +234,8 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
             <KPICard label="Total Space" value={scenario.TotalSpaceRequired} format="number" />
             <KPICard label={`Space ${entityLabels.first}`} value={scenario.SpaceCore} format="number" />
             <KPICard label={`Space ${entityLabels.second}`} value={scenario.SpaceBCV} format="number" />
-            <KPICard label="Total Count" value={formatNumberOrNA(scenario.TotalCount)} />
+            <KPICard label="Utilization %" value={maxUtilDisplay} />
+            {/* <KPICard label="Total Count" value={formatNumberOrNA(scenario.TotalCount)} /> */}
           </div>
         </div>
       </div>

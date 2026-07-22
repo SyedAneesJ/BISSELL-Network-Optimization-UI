@@ -71,7 +71,7 @@ export const ComparisonKpiTab: React.FC<ComparisonKpiTabProps> = ({
             {kpiComparisons.map((kpi, idx) => {
               const delta = kpi.valueB - kpi.valueA;
               const deltaPct = kpi.valueA !== 0 ? (delta / kpi.valueA) * 100 : 0;
-              const isNegativeBetter = ['SLA Breach %', 'Excluded SLA', 'Max Util %'].includes(kpi.label);
+              const isNegativeBetter = ['SLA Breach %', 'Excluded SLA', 'Utilization %'].includes(kpi.label);
 
               return (
                 <tr key={idx} className="transition-colors hover:bg-blue-50/50">

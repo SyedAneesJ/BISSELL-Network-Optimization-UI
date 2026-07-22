@@ -27,7 +27,7 @@ export const HomeKpiRow: React.FC<HomeKpiRowProps> = ({ aggregateKPIs }) => {
         size="small"
       />
       <KPICard
-        label="Max Utilization"
+        label="Max Utilization %"
         value={aggregateKPIs.maxUtilPct}
         format="percent"
         size="small"

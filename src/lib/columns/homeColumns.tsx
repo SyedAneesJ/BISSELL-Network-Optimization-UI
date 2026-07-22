@@ -188,7 +188,7 @@ export const createScenarioColumns = ({
   },
   {
     key: 'MaxUtilPct',
-    header: 'Max Util %',
+    header: 'Utilization %',
     width: '100px',
     sortable: true,
     render: (row) => {
