@@ -893,10 +893,32 @@ function App() {
         return sum + (dc.Rent ?? costs.Rent) + (dc.ContractLabor ?? costs.ContractLabor) + (dc.ManagementFee ?? costs.ManagementFee);
       }, 0);
 
-      const totalCombinedCost = isBaseline
+      const isUsBaselineHeader = header.Region === 'US' && (
+        header.ScenarioRunID === 'SR001' ||
+        String(header.ScenarioType || '').toLowerCase().includes('baseline') ||
+        String(header.RunName || '').toLowerCase().includes('baseline')
+      );
+
+      let totalCombinedCost = isBaseline
         ? header.TotalCost
         : header.TotalCost + additionalCost;
-      const totalCount = Number(header.TotalCount || 1);
+
+      let totalCountOverride = header.TotalCount;
+
+      if (isUsBaselineHeader && spaceOverrideRows && spaceOverrideRows.length > 0) {
+        const activeDcNames = new Set(
+          dcs
+            .filter((dc) => dc.IsSuppressed !== 'Y')
+            .map((dc) => normalizeWarehouseName(dc.DCName))
+        );
+        const matchingOverrides = spaceOverrideRows.filter((r) => activeDcNames.has(normalizeWarehouseName(r.Location)));
+        if (matchingOverrides.length > 0) {
+          totalCombinedCost = matchingOverrides.reduce((sum, r) => sum + (r.TotalCost || 0), 0);
+          totalCountOverride = matchingOverrides.reduce((sum, r) => sum + (r.VolumeUnits || 0), 0);
+        }
+      }
+
+      const totalCount = Number(totalCountOverride || 1);
       const combinedCostPerUnit = totalCount > 0 ? totalCombinedCost / totalCount : header.CostPerUnit;
 
       let calculatedChangedLanes = header.ChangedLaneCountVsBaseline || 0;
@@ -960,11 +982,6 @@ function App() {
       // so the table aligns with scenario details (which also derives from dcResults).
       // For US Baseline: DCs have UtilPct from the space override dataset (PalletUtilization × 100).
       // For Tactical/Consolidation: DCs have engine-computed UtilPct.
-      const isUsBaselineHeader = header.Region === 'US' && (
-        header.ScenarioRunID === 'SR001' ||
-        String(header.ScenarioType || '').toLowerCase().includes('baseline') ||
-        String(header.RunName || '').toLowerCase().includes('baseline')
-      );
 
       const maxUtilOverride = spaceRequiredOverride > 0
         ? Number(((spaceCoreOverride / spaceRequiredOverride) * 100).toFixed(2))
@@ -977,6 +994,7 @@ function App() {
       return {
         ...header,
         TotalCost: Number(totalCombinedCost.toFixed(2)),
+        TotalCount: totalCountOverride,
         CostPerUnit: Number(combinedCostPerUnit.toFixed(2)),
         ChangedLaneCountVsBaseline: calculatedChangedLanes,
         OverrideCount: calculatedOverrideCount,
@@ -1954,7 +1972,54 @@ function App() {
       const baseScenarioState: ScenarioState = {
         headers: uniqueScenarioPayloads.map((p) => p.header),
         configs: [],
-        resultsDC: uniqueScenarioPayloads.flatMap((p) => p.dcResults),
+        resultsDC: uniqueScenarioPayloads.flatMap((p) => {
+          const isUsBaselineScenario = p.header.Region === 'US' && (
+            p.header.ScenarioRunID === 'SR001' ||
+            String(p.header.ScenarioType || '').toLowerCase().includes('baseline') ||
+            String(p.header.RunName || '').toLowerCase().includes('baseline')
+          );
+          if (isUsBaselineScenario && loadedSpaceOverrideRows && loadedSpaceOverrideRows.length > 0) {
+            return p.dcResults.map((dc) => {
+              const spaceOverride = loadedSpaceOverrideRows.find(
+                (r) => normalizeWarehouseName(r.Location) === normalizeWarehouseName(dc.DCName)
+              );
+              if (spaceOverride) {
+                return {
+                  ...dc,
+                  TotalCost: spaceOverride.TotalCost ?? dc.TotalCost,
+                  VolumeUnits: spaceOverride.VolumeUnits ?? dc.VolumeUnits,
+                  InboundSpend: spaceOverride.InboundSpend ?? dc.InboundSpend ?? 0,
+                  ParcelSpend: spaceOverride.ParcelSpend ?? dc.ParcelSpend ?? 0,
+                  LtlSpend: spaceOverride.LtlSpend ?? dc.LtlSpend ?? 0,
+                  TlSpend: spaceOverride.TlSpend ?? dc.TlSpend ?? 0,
+                  DistributionCost: spaceOverride.DistributionCost ?? dc.DistributionCost ?? 0,
+                  Rent: spaceOverride.Rent ?? dc.Rent ?? 0,
+                  ContractLabor: spaceOverride.ContractLabor ?? dc.ContractLabor ?? 0,
+                  ManagementFee: spaceOverride.ManagementFee ?? dc.ManagementFee ?? 0,
+                  ActualSpace: spaceOverride.ContractedSquareFootage,
+                  SpaceCore: spaceOverride.WorkingCapacitySqFt,
+                  UtilPct: Number((spaceOverride.PalletUtilization * 100).toFixed(2)),
+                  SpaceRequired: Number((spaceOverride.ContractedSquareFootage * spaceOverride.PalletUtilization).toFixed(2)),
+                  // Optional percentage and CPU fields
+                  PctToTotalSales: spaceOverride.PctToTotalSales,
+                  IbfPctOfRevenue: spaceOverride.IbfPctOfRevenue,
+                  DstPctRevenue: spaceOverride.DstPctRevenue,
+                  ObParcelPctRevenue: spaceOverride.ObParcelPctRevenue,
+                  ObTlPctRevenue: spaceOverride.ObTlPctRevenue,
+                  ObLtlPctRevenue: spaceOverride.ObLtlPctRevenue,
+                  ObfTotalPctOfRevenue: spaceOverride.ObfTotalPctOfRevenue,
+                  CostPerUnit: spaceOverride.CostPerUnit,
+                  ObfCostPerUnit: spaceOverride.ObfCostPerUnit,
+                  DstCostPerUnit: spaceOverride.DstCostPerUnit,
+                  IbfCostPerUnit: spaceOverride.IbfCostPerUnit,
+                  TotalExtendedPrice: spaceOverride.TotalExtendedPrice,
+                };
+              }
+              return dc;
+            });
+          }
+          return p.dcResults;
+        }),
         resultsLanes: uniqueScenarioPayloads.flatMap((p) =>
           safeLoadedLanes.filter((lane) => lane.ScenarioRunID === p.header.ScenarioRunID)
         ),

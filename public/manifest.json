@@ -13,18 +13,54 @@
       "name": "comparision_scenarios",
       "schema": {
         "columns": [
-          { "name": "id", "type": "STRING" },
-          { "name": "kind", "type": "STRING" },
-          { "name": "comparisonId", "type": "STRING" },
-          { "name": "notificationId", "type": "STRING" },
-          { "name": "ownerUserId", "type": "STRING" },
-          { "name": "ownerUserName", "type": "STRING" },
-          { "name": "ownerUserEmail", "type": "STRING" },
-          { "name": "status", "type": "STRING" },
-          { "name": "isPublished", "type": "STRING" },
-          { "name": "payload", "type": "STRING" },
-          { "name": "createdAt", "type": "DATETIME" },
-          { "name": "updatedAt", "type": "DATETIME" }
+          {
+            "name": "id",
+            "type": "STRING"
+          },
+          {
+            "name": "kind",
+            "type": "STRING"
+          },
+          {
+            "name": "comparisonId",
+            "type": "STRING"
+          },
+          {
+            "name": "notificationId",
+            "type": "STRING"
+          },
+          {
+            "name": "ownerUserId",
+            "type": "STRING"
+          },
+          {
+            "name": "ownerUserName",
+            "type": "STRING"
+          },
+          {
+            "name": "ownerUserEmail",
+            "type": "STRING"
+          },
+          {
+            "name": "status",
+            "type": "STRING"
+          },
+          {
+            "name": "isPublished",
+            "type": "STRING"
+          },
+          {
+            "name": "payload",
+            "type": "STRING"
+          },
+          {
+            "name": "createdAt",
+            "type": "DATETIME"
+          },
+          {
+            "name": "updatedAt",
+            "type": "DATETIME"
+          }
         ]
       },
       "syncEnabled": true
@@ -33,23 +69,74 @@
       "name": "custom_scenarios",
       "schema": {
         "columns": [
-          { "name": "id", "type": "STRING" },
-          { "name": "kind", "type": "STRING" },
-          { "name": "scenarioId", "type": "STRING" },
-          { "name": "scenarioName", "type": "STRING" },
-          { "name": "status", "type": "STRING" },
-          { "name": "region", "type": "STRING" },
-          { "name": "scenarioType", "type": "STRING" },
-          { "name": "ownerUserId", "type": "STRING" },
-          { "name": "ownerUserName", "type": "STRING" },
-          { "name": "ownerUserEmail", "type": "STRING" },
-          { "name": "isPublished", "type": "STRING" },
-          { "name": "isArchived", "type": "STRING" },
-          { "name": "payload", "type": "STRING" },
-          { "name": "createdAt", "type": "DATETIME" },
-          { "name": "updatedAt", "type": "DATETIME" },
-          { "name": "deletedAt", "type": "DATETIME" },
-          { "name": "searchText", "type": "STRING" }
+          {
+            "name": "id",
+            "type": "STRING"
+          },
+          {
+            "name": "kind",
+            "type": "STRING"
+          },
+          {
+            "name": "scenarioId",
+            "type": "STRING"
+          },
+          {
+            "name": "scenarioName",
+            "type": "STRING"
+          },
+          {
+            "name": "status",
+            "type": "STRING"
+          },
+          {
+            "name": "region",
+            "type": "STRING"
+          },
+          {
+            "name": "scenarioType",
+            "type": "STRING"
+          },
+          {
+            "name": "ownerUserId",
+            "type": "STRING"
+          },
+          {
+            "name": "ownerUserName",
+            "type": "STRING"
+          },
+          {
+            "name": "ownerUserEmail",
+            "type": "STRING"
+          },
+          {
+            "name": "isPublished",
+            "type": "STRING"
+          },
+          {
+            "name": "isArchived",
+            "type": "STRING"
+          },
+          {
+            "name": "payload",
+            "type": "STRING"
+          },
+          {
+            "name": "createdAt",
+            "type": "DATETIME"
+          },
+          {
+            "name": "updatedAt",
+            "type": "DATETIME"
+          },
+          {
+            "name": "deletedAt",
+            "type": "DATETIME"
+          },
+          {
+            "name": "searchText",
+            "type": "STRING"
+          }
         ]
       },
       "syncEnabled": true
@@ -58,18 +145,54 @@
       "name": "custom_scenario_lanes",
       "schema": {
         "columns": [
-          { "name": "id", "type": "STRING" },
-          { "name": "kind", "type": "STRING" },
-          { "name": "scenarioId", "type": "STRING" },
-          { "name": "scenarioName", "type": "STRING" },
-          { "name": "chunkIndex", "type": "LONG" },
-          { "name": "chunkCount", "type": "LONG" },
-          { "name": "laneCount", "type": "LONG" },
-          { "name": "payload", "type": "STRING" },
-          { "name": "createdAt", "type": "DATETIME" },
-          { "name": "updatedAt", "type": "DATETIME" },
-          { "name": "deletedAt", "type": "DATETIME" },
-          { "name": "searchText", "type": "STRING" }
+          {
+            "name": "id",
+            "type": "STRING"
+          },
+          {
+            "name": "kind",
+            "type": "STRING"
+          },
+          {
+            "name": "scenarioId",
+            "type": "STRING"
+          },
+          {
+            "name": "scenarioName",
+            "type": "STRING"
+          },
+          {
+            "name": "chunkIndex",
+            "type": "LONG"
+          },
+          {
+            "name": "chunkCount",
+            "type": "LONG"
+          },
+          {
+            "name": "laneCount",
+            "type": "LONG"
+          },
+          {
+            "name": "payload",
+            "type": "STRING"
+          },
+          {
+            "name": "createdAt",
+            "type": "DATETIME"
+          },
+          {
+            "name": "updatedAt",
+            "type": "DATETIME"
+          },
+          {
+            "name": "deletedAt",
+            "type": "DATETIME"
+          },
+          {
+            "name": "searchText",
+            "type": "STRING"
+          }
         ]
       },
       "syncEnabled": true
@@ -78,15 +201,42 @@
       "name": "notification",
       "schema": {
         "columns": [
-          { "name": "id", "type": "STRING" },
-          { "name": "kind", "type": "STRING" },
-          { "name": "notificationId", "type": "STRING" },
-          { "name": "recipientUserId", "type": "STRING" },
-          { "name": "recipientUserEmail", "type": "STRING" },
-          { "name": "status", "type": "STRING" },
-          { "name": "payload", "type": "STRING" },
-          { "name": "createdAt", "type": "DATETIME" },
-          { "name": "updatedAt", "type": "DATETIME" }
+          {
+            "name": "id",
+            "type": "STRING"
+          },
+          {
+            "name": "kind",
+            "type": "STRING"
+          },
+          {
+            "name": "notificationId",
+            "type": "STRING"
+          },
+          {
+            "name": "recipientUserId",
+            "type": "STRING"
+          },
+          {
+            "name": "recipientUserEmail",
+            "type": "STRING"
+          },
+          {
+            "name": "status",
+            "type": "STRING"
+          },
+          {
+            "name": "payload",
+            "type": "STRING"
+          },
+          {
+            "name": "createdAt",
+            "type": "DATETIME"
+          },
+          {
+            "name": "updatedAt",
+            "type": "DATETIME"
+          }
         ]
       },
       "syncEnabled": true

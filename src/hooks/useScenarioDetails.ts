@@ -351,6 +351,36 @@ export const useScenarioDetails = ({
         }),
       } : {};
 
+      if (isUsBaseline && spaceOverride) {
+        return {
+          ...dc,
+          TotalCost: spaceOverride.TotalCost ?? dc.TotalCost,
+          VolumeUnits: spaceOverride.VolumeUnits ?? dc.VolumeUnits,
+          InboundSpend: spaceOverride.InboundSpend ?? 0,
+          ParcelSpend: spaceOverride.ParcelSpend ?? 0,
+          LtlSpend: spaceOverride.LtlSpend ?? 0,
+          TlSpend: spaceOverride.TlSpend ?? 0,
+          DistributionCost: spaceOverride.DistributionCost ?? 0,
+          Rent: spaceOverride.Rent ?? 0,
+          ContractLabor: spaceOverride.ContractLabor ?? 0,
+          ManagementFee: spaceOverride.ManagementFee ?? 0,
+          ...spaceFields,
+          // Optional percentage and CPU fields
+          PctToTotalSales: spaceOverride.PctToTotalSales,
+          IbfPctOfRevenue: spaceOverride.IbfPctOfRevenue,
+          DstPctRevenue: spaceOverride.DstPctRevenue,
+          ObParcelPctRevenue: spaceOverride.ObParcelPctRevenue,
+          ObTlPctRevenue: spaceOverride.ObTlPctRevenue,
+          ObLtlPctRevenue: spaceOverride.ObLtlPctRevenue,
+          ObfTotalPctOfRevenue: spaceOverride.ObfTotalPctOfRevenue,
+          CostPerUnit: spaceOverride.CostPerUnit,
+          ObfCostPerUnit: spaceOverride.ObfCostPerUnit,
+          DstCostPerUnit: spaceOverride.DstCostPerUnit,
+          IbfCostPerUnit: spaceOverride.IbfCostPerUnit,
+          TotalExtendedPrice: spaceOverride.TotalExtendedPrice,
+        };
+      }
+
       if (totals) {
         return {
           ...dc,
@@ -682,6 +712,22 @@ export const useScenarioDetails = ({
         const baseCostDisplay = isBaseline ? Math.max(0, dc.TotalCost - addCost) : dc.TotalCost;
         const totalCostDisplay = isBaseline ? dc.TotalCost : dc.TotalCost + (dc.IsSuppressed === 'N' ? addCost : 0);
 
+        const isUsBaselineHeader = scenario.Region === 'US' && isBaseline;
+        const pctFields = isUsBaselineHeader && (dc as any).PctToTotalSales !== undefined ? {
+          '% to total sales': (dc as any).PctToTotalSales,
+          'IBF % of Revenue': (dc as any).IbfPctOfRevenue,
+          'DST % Revenue': (dc as any).DstPctRevenue,
+          'OB Parcel % Revenue': (dc as any).ObParcelPctRevenue,
+          'OB TL % Revenue': (dc as any).ObTlPctRevenue,
+          'OB LTL % Revenue': (dc as any).ObLtlPctRevenue,
+          'OBF Total % of Revenue': (dc as any).ObfTotalPctOfRevenue,
+          'Cost Per Unit': (dc as any).CostPerUnit,
+          'OBF Cost Per Unit': (dc as any).ObfCostPerUnit,
+          'DST Cost Per Unit': (dc as any).DstCostPerUnit,
+          'IBF Cost Per Unit': (dc as any).IbfCostPerUnit,
+          'totalExtendedPrice': (dc as any).TotalExtendedPrice,
+        } : {};
+
         return {
           ScenarioRunID: dc.ScenarioRunID,
           DC: dc.DCName,
@@ -716,6 +762,7 @@ export const useScenarioDetails = ({
               (typedDc.VolumeUnits > 0 ? (typedDc.SLABreachCount / typedDc.VolumeUnits) * 100 : null);
             return breachPct == null ? '' : Number(breachPct.toFixed(2));
           })(),
+          ...pctFields,
         };
       });
       const csv = toCSV(rows);

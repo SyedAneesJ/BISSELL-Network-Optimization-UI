@@ -86,6 +86,18 @@ export interface ScenarioRunResultsDC {
   LtlSpend?: number;
   TlSpend?: number;
   DistributionCost?: number;
+  PctToTotalSales?: number;
+  IbfPctOfRevenue?: number;
+  DstPctRevenue?: number;
+  ObParcelPctRevenue?: number;
+  ObTlPctRevenue?: number;
+  ObLtlPctRevenue?: number;
+  ObfTotalPctOfRevenue?: number;
+  CostPerUnit?: number;
+  ObfCostPerUnit?: number;
+  DstCostPerUnit?: number;
+  IbfCostPerUnit?: number;
+  TotalExtendedPrice?: number;
 }
 
 export interface DomoCostComponentRow {
@@ -105,6 +117,28 @@ export interface DomoSpaceOverrideRow {
   ContractedSquareFootage: number;
   WorkingCapacitySqFt: number;
   PalletUtilization: number; // decimal e.g. 0.92 → 92%
+  TotalCost?: number;
+  InboundSpend?: number;
+  DistributionCost?: number;
+  ManagementFee?: number;
+  Rent?: number;
+  ContractLabor?: number;
+  ParcelSpend?: number;
+  TlSpend?: number;
+  LtlSpend?: number;
+  VolumeUnits?: number;
+  PctToTotalSales?: number;
+  IbfPctOfRevenue?: number;
+  DstPctRevenue?: number;
+  ObParcelPctRevenue?: number;
+  ObTlPctRevenue?: number;
+  ObLtlPctRevenue?: number;
+  ObfTotalPctOfRevenue?: number;
+  CostPerUnit?: number;
+  ObfCostPerUnit?: number;
+  DstCostPerUnit?: number;
+  IbfCostPerUnit?: number;
+  TotalExtendedPrice?: number;
 }
 
 export interface ScenarioRunResultsLane {

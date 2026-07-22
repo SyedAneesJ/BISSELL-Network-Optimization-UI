@@ -1240,12 +1240,19 @@ const FIELD_ALIASES = {
   allowManualOverride: ['AllowManualOverride'],
 } as const;
 
+const superNormalizeKey = (s: string): string => {
+  return s
+    .toLowerCase()
+    .replace(/[âÂ\xa0\u00a0\u200b]/g, '')
+    .replace(/[^a-z0-9]/g, '');
+};
+
 const getField = (row: DomoDcRow, keys: readonly string[]): unknown => {
   const rowEntries = Object.entries(row);
   for (const key of keys) {
     if (row[key] !== undefined) return row[key];
-    const normalized = key.trim().toLowerCase();
-    const fallback = rowEntries.find(([rowKey]) => rowKey.trim().toLowerCase() === normalized);
+    const normKey = superNormalizeKey(key);
+    const fallback = rowEntries.find(([rowKey]) => superNormalizeKey(rowKey) === normKey);
     if (fallback) return fallback[1];
   }
   return undefined;
@@ -1829,6 +1836,30 @@ const SPACE_OVERRIDE_FIELD_ALIASES = {
   contractedSqFt: ['Contracted Square Footage', 'ContractedSquareFootage', 'contracted_square_footage', 'contractedSqFt'],
   workingCapacitySqFt: ['Working Capacity Sq. Ft. dyn', 'WorkingCapacitySqFtDyn', 'workingCapacitySqFt', 'WorkingCapacitySqFt', 'Working Capacity Sq Ft', 'working_capacity_sq_ft', 'Working Capacity Sq. Ft. dyn '],
   palletUtilization: ['Pallet Positition Utilization dyn', 'Pallet Position Utilization dyn', 'PalletPositionUtilizationDyn', 'palletUtilization', 'pallet_utilization'],
+  // New baseline cost columns:
+  totalCost: ['total_cost(incl ibf,dst,obf)', 'total_cost', 'totalCost', 'TotalCost', 'total_cost(incl_ibf,dst,obf)', 'total_cost (incl ibf,dst,obf)'],
+  totalQty: ['totalQty', 'totalQty ', 'total_qty', 'VolumeUnits', 'volumeUnits'],
+  totalInboundSpend: ['totalInboundSpend', 'totalInboundSpend ', 'total_inbound_spend', 'inboundSpend'],
+  totalDistributionSpend: ['totalDistributionSpend', 'totalDistributionSpend ', 'total_distribution_spend', 'distributionCost'],
+  annualManagementFee: ['Annual Management Fee', 'AnnualManagementFee', 'annual_management_fee', 'managementFee'],
+  totalWarehouseCost: ['Total WarehouseÂ Cost dyn', 'Total WarehouseÂ Cost dyn', 'Total Warehouse Cost dyn', 'TotalWarehouseCostDyn', 'Total Warehouse Cost', 'totalWarehouseCost', 'rent'],
+  distributionSpendIncAll: ['distributionSpend_Inc_(rent,mgmtfee,cnrctlbr)', 'distributionSpend_Inc_rent_mgmtfee_cnrctlbr', 'distributionSpendInc', 'distributionSpend_Inc_(rent,mgmtfee,cnrctlbr) '],
+  parcelSpend: ['Parcel Spend', 'ParcelSpend', 'parcel_spend', 'parcelSpend'],
+  tlCost: ['TL_Cost', 'TL Cost', 'tlCost', 'tlSpend'],
+  ltlCost: ['LTL_Cost', 'LTL Cost', 'ltlCost', 'ltlSpend'],
+  // Percentages and CPU:
+  pctToTotalSales: ['% to total sales', '%_to_total_sales', 'pctToTotalSales'],
+  ibfPctOfRevenue: ['IBF % of Revenue', 'IBF % Revenue', 'ibfPctOfRevenue'],
+  dstPctRevenue: ['DST % Revenue', 'dstPctRevenue'],
+  obParcelPctRevenue: ['OB Parcel % Revenue', 'obParcelPctRevenue'],
+  obTlPctRevenue: ['OB TL % Revenue', 'obTlPctRevenue'],
+  obLtlPctRevenue: ['OB LTL % Revenue', 'obLtlPctRevenue'],
+  obfTotalPctOfRevenue: ['OBF Total % of Revenue', 'obfTotalPctOfRevenue'],
+  costPerUnit: ['Cost Per Unit', 'costPerUnit'],
+  obfCostPerUnit: ['OBF Cost Per Unit', 'obfCostPerUnit'],
+  dstCostPerUnit: ['DST Cost Per Unit', 'dstCostPerUnit'],
+  ibfCostPerUnit: ['IBF Cost Per Unit', 'ibfCostPerUnit'],
+  totalExtendedPrice: ['totalExtendedPrice', 'TotalExtendedPrice'],
 };
 
 export const loadSpaceOverridesDataset = async (datasetId: string): Promise<DomoSpaceOverrideRow[]> => {
@@ -1838,11 +1869,52 @@ export const loadSpaceOverridesDataset = async (datasetId: string): Promise<Domo
     const rawCsv = await DatasetApi.getDatasetDataCsv(datasetId, token, 10000, 0);
     const rawRows = csvToObjects(rawCsv);
     return rawRows.map((row: any) => {
+      const contractedSqFt = asNumber(getField(row, SPACE_OVERRIDE_FIELD_ALIASES.contractedSqFt));
+      const workingCapacitySqFt = asNumber(getField(row, SPACE_OVERRIDE_FIELD_ALIASES.workingCapacitySqFt));
+      const palletUtilization = asNumber(getField(row, SPACE_OVERRIDE_FIELD_ALIASES.palletUtilization));
+
+      const totalCost = asNumber(getField(row, SPACE_OVERRIDE_FIELD_ALIASES.totalCost));
+      const totalQty = asNumber(getField(row, SPACE_OVERRIDE_FIELD_ALIASES.totalQty));
+      const totalInboundSpend = asNumber(getField(row, SPACE_OVERRIDE_FIELD_ALIASES.totalInboundSpend));
+      const totalDistributionSpend = asNumber(getField(row, SPACE_OVERRIDE_FIELD_ALIASES.totalDistributionSpend));
+      const annualManagementFee = asNumber(getField(row, SPACE_OVERRIDE_FIELD_ALIASES.annualManagementFee));
+      const totalWarehouseCost = asNumber(getField(row, SPACE_OVERRIDE_FIELD_ALIASES.totalWarehouseCost)); // Rent
+      const distributionSpendIncAll = asNumber(getField(row, SPACE_OVERRIDE_FIELD_ALIASES.distributionSpendIncAll));
+      const parcelSpend = asNumber(getField(row, SPACE_OVERRIDE_FIELD_ALIASES.parcelSpend));
+      const tlCost = asNumber(getField(row, SPACE_OVERRIDE_FIELD_ALIASES.tlCost));
+      const ltlCost = asNumber(getField(row, SPACE_OVERRIDE_FIELD_ALIASES.ltlCost));
+
+      // Derive Contract Labor:
+      // ContractLabor = distributionSpend_Inc_(rent,mgmtfee,cnrctlbr) - Rent (totalWarehouseCost) - ManagementFee (annualManagementFee)
+      const derivedContractLabor = Math.max(0, distributionSpendIncAll - totalWarehouseCost - annualManagementFee);
+
       return {
         Location: asText(getField(row, SPACE_OVERRIDE_FIELD_ALIASES.location)),
-        ContractedSquareFootage: asNumber(getField(row, SPACE_OVERRIDE_FIELD_ALIASES.contractedSqFt)),
-        WorkingCapacitySqFt: asNumber(getField(row, SPACE_OVERRIDE_FIELD_ALIASES.workingCapacitySqFt)),
-        PalletUtilization: asNumber(getField(row, SPACE_OVERRIDE_FIELD_ALIASES.palletUtilization)),
+        ContractedSquareFootage: contractedSqFt,
+        WorkingCapacitySqFt: workingCapacitySqFt,
+        PalletUtilization: palletUtilization,
+        TotalCost: totalCost,
+        InboundSpend: totalInboundSpend,
+        DistributionCost: totalDistributionSpend,
+        ManagementFee: annualManagementFee,
+        Rent: totalWarehouseCost,
+        ContractLabor: derivedContractLabor,
+        ParcelSpend: parcelSpend,
+        TlSpend: tlCost,
+        LtlSpend: ltlCost,
+        VolumeUnits: totalQty,
+        PctToTotalSales: asNumber(getField(row, SPACE_OVERRIDE_FIELD_ALIASES.pctToTotalSales)),
+        IbfPctOfRevenue: asNumber(getField(row, SPACE_OVERRIDE_FIELD_ALIASES.ibfPctOfRevenue)),
+        DstPctRevenue: asNumber(getField(row, SPACE_OVERRIDE_FIELD_ALIASES.dstPctRevenue)),
+        ObParcelPctRevenue: asNumber(getField(row, SPACE_OVERRIDE_FIELD_ALIASES.obParcelPctRevenue)),
+        ObTlPctRevenue: asNumber(getField(row, SPACE_OVERRIDE_FIELD_ALIASES.obTlPctRevenue)),
+        ObLtlPctRevenue: asNumber(getField(row, SPACE_OVERRIDE_FIELD_ALIASES.obLtlPctRevenue)),
+        ObfTotalPctOfRevenue: asNumber(getField(row, SPACE_OVERRIDE_FIELD_ALIASES.obfTotalPctOfRevenue)),
+        CostPerUnit: asNumber(getField(row, SPACE_OVERRIDE_FIELD_ALIASES.costPerUnit)),
+        ObfCostPerUnit: asNumber(getField(row, SPACE_OVERRIDE_FIELD_ALIASES.obfCostPerUnit)),
+        DstCostPerUnit: asNumber(getField(row, SPACE_OVERRIDE_FIELD_ALIASES.dstCostPerUnit)),
+        IbfCostPerUnit: asNumber(getField(row, SPACE_OVERRIDE_FIELD_ALIASES.ibfCostPerUnit)),
+        TotalExtendedPrice: asNumber(getField(row, SPACE_OVERRIDE_FIELD_ALIASES.totalExtendedPrice)),
       };
     });
   } catch (error) {
