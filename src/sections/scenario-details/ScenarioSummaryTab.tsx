@@ -134,14 +134,32 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
   const tlCostTotal = dcResults.reduce((sum, dc) => sum + (dc.TlSpend ?? 0), 0);
   const outboundCostTotal = parcelCostTotal + ltlCostTotal + tlCostTotal;
 
+  const isBaseline = scenario.ScenarioRunID === 'SR001' || String(scenario.ScenarioType || '').toLowerCase().includes('baseline');
+  const isUsBaseline = scenario.Region === 'US' && isBaseline;
+
+  const activeDcs = dcResults.filter(dc => dc.IsSuppressed !== 'Y');
+
   const totalDenominator = scenario.TotalCost || 1;
-  const inboundPct = `${((inboundCostTotal / totalDenominator) * 100).toFixed(1)}%`;
-  const dstPct = `${((distributionCostTotal / totalDenominator) * 100).toFixed(1)}%`;
-  const parcelPct = `${((parcelCostTotal / totalDenominator) * 100).toFixed(1)}%`;
-  const ltlPct = `${((ltlCostTotal / totalDenominator) * 100).toFixed(1)}%`;
-  const tlPct = `${((tlCostTotal / totalDenominator) * 100).toFixed(1)}%`;
-  const outboundPct = `${((outboundCostTotal / totalDenominator) * 100).toFixed(1)}%`;
-  const totalPct = `${(((inboundCostTotal + distributionCostTotal + outboundCostTotal) / totalDenominator) * 100).toFixed(1)}%`;
+  const totalExtendedPriceSum = activeDcs.reduce((sum, dc) => sum + ((dc as any).TotalExtendedPrice || 0), 0);
+  const salesDenominator = isUsBaseline && totalExtendedPriceSum > 0 ? totalExtendedPriceSum : totalDenominator;
+
+  const inboundPctVal = (inboundCostTotal / salesDenominator) * 100;
+  const dstPctVal = (distributionCostTotal / salesDenominator) * 100;
+  const parcelPctVal = (parcelCostTotal / salesDenominator) * 100;
+  const ltlPctVal = (ltlCostTotal / salesDenominator) * 100;
+  const tlPctVal = (tlCostTotal / salesDenominator) * 100;
+  const outboundPctVal = (outboundCostTotal / salesDenominator) * 100;
+  const totalPctVal = ((inboundCostTotal + distributionCostTotal + outboundCostTotal) / salesDenominator) * 100;
+  const pctToSalesVal = ((inboundCostTotal + distributionCostTotal + outboundCostTotal) / salesDenominator) * 100;
+
+  const inboundPct = `${inboundPctVal.toFixed(isUsBaseline ? 2 : 1)}%`;
+  const dstPct = `${dstPctVal.toFixed(isUsBaseline ? 2 : 1)}%`;
+  const parcelPct = `${parcelPctVal.toFixed(isUsBaseline ? 2 : 1)}%`;
+  const ltlPct = `${ltlPctVal.toFixed(isUsBaseline ? 2 : 1)}%`;
+  const tlPct = `${tlPctVal.toFixed(isUsBaseline ? 2 : 1)}%`;
+  const outboundPct = `${outboundPctVal.toFixed(isUsBaseline ? 2 : 1)}%`;
+  const totalPct = `${totalPctVal.toFixed(isUsBaseline ? 2 : 1)}%`;
+  const pctToSales = `${pctToSalesVal.toFixed(isUsBaseline ? 2 : 1)}%`;
 
   const formatCostPct = (cost: number, pctStr: string) => (
     <span className="inline-flex items-baseline gap-1 flex-wrap">
@@ -208,7 +226,10 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
                 value={formatCostPct(outboundCostTotal, outboundPct)} 
                 tooltip={`Parcel: $${parcelCostTotal.toLocaleString()}\nLTL: $${ltlCostTotal.toLocaleString()}\nTL: $${tlCostTotal.toLocaleString()}`}
               />
-              <KPICard label="6 DC Scenario Cost % Sales" value={formatCostPct(inboundCostTotal + distributionCostTotal + outboundCostTotal, totalPct)} />
+              {/* <KPICard 
+                label={`${activeDcs.length} DC Scenario Cost % Sales`} 
+                value={formatCostPct(inboundCostTotal + distributionCostTotal + outboundCostTotal, isUsBaseline ? pctToSales : totalPct)} 
+              /> */}
             </div>
           </div>
         )}

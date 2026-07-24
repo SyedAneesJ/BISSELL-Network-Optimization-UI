@@ -904,6 +904,15 @@ function App() {
         : header.TotalCost + additionalCost;
 
       let totalCountOverride = header.TotalCount;
+      let avgDeliveryDaysOverride = header.AvgDeliveryDays;
+      let avgTransitDaysOverride = header.AvgTransitDays;
+      let pctToTotalSalesOverride = undefined;
+      let ibfPctOfRevenueOverride = undefined;
+      let dstPctRevenueOverride = undefined;
+      let obParcelPctRevenueOverride = undefined;
+      let obTlPctRevenueOverride = undefined;
+      let obLtlPctRevenueOverride = undefined;
+      let obfTotalPctOfRevenueOverride = undefined;
 
       if (isUsBaselineHeader && spaceOverrideRows && spaceOverrideRows.length > 0) {
         const activeDcNames = new Set(
@@ -915,6 +924,42 @@ function App() {
         if (matchingOverrides.length > 0) {
           totalCombinedCost = matchingOverrides.reduce((sum, r) => sum + (r.TotalCost || 0), 0);
           totalCountOverride = matchingOverrides.reduce((sum, r) => sum + (r.VolumeUnits || 0), 0);
+
+          const totalVolume = matchingOverrides.reduce((sum, r) => sum + (r.VolumeUnits || 0), 0);
+          if (totalVolume > 0) {
+            const weightedDelivery = matchingOverrides.reduce((sum, r) => sum + (r.AvgDeliveryDays || 0) * (r.VolumeUnits || 0), 0);
+            avgDeliveryDaysOverride = Number((weightedDelivery / totalVolume).toFixed(2));
+
+            const weightedTransit = matchingOverrides.reduce((sum, r) => sum + (r.AvgTransitDays || 0) * (r.VolumeUnits || 0), 0);
+            avgTransitDaysOverride = Number((weightedTransit / totalVolume).toFixed(2));
+          }
+        }
+
+        // Find the "Total" row in space override dataset to get pre-aggregated percentages directly
+        const totalRow = spaceOverrideRows.find(
+          (r) => {
+            const locLower = r.Location.toLowerCase().trim();
+            return locLower === 'total' || locLower.includes('total') || locLower.includes('overall');
+          }
+        );
+
+        if (totalRow) {
+          pctToTotalSalesOverride = totalRow.PctToTotalSales;
+          ibfPctOfRevenueOverride = totalRow.IbfPctOfRevenue;
+          dstPctRevenueOverride = totalRow.DstPctRevenue;
+          obParcelPctRevenueOverride = totalRow.ObParcelPctRevenue;
+          obTlPctRevenueOverride = totalRow.ObTlPctRevenue;
+          obLtlPctRevenueOverride = totalRow.ObLtlPctRevenue;
+          obfTotalPctOfRevenueOverride = totalRow.ObfTotalPctOfRevenue;
+        } else if (matchingOverrides.length > 0) {
+          // Fallback: sum of active DCs
+          pctToTotalSalesOverride = matchingOverrides.reduce((sum, r) => sum + (r.PctToTotalSales || 0), 0);
+          ibfPctOfRevenueOverride = matchingOverrides.reduce((sum, r) => sum + (r.IbfPctOfRevenue || 0), 0);
+          dstPctRevenueOverride = matchingOverrides.reduce((sum, r) => sum + (r.DstPctRevenue || 0), 0);
+          obParcelPctRevenueOverride = matchingOverrides.reduce((sum, r) => sum + (r.ObParcelPctRevenue || 0), 0);
+          obTlPctRevenueOverride = matchingOverrides.reduce((sum, r) => sum + (r.ObTlPctRevenue || 0), 0);
+          obLtlPctRevenueOverride = matchingOverrides.reduce((sum, r) => sum + (r.ObLtlPctRevenue || 0), 0);
+          obfTotalPctOfRevenueOverride = matchingOverrides.reduce((sum, r) => sum + (r.ObfTotalPctOfRevenue || 0), 0);
         }
       }
 
@@ -1002,6 +1047,15 @@ function App() {
         SpaceCore: spaceCoreOverride,
         MaxUtilPct: maxUtilOverride,
         UtilizationCap: utilizationCapOverride,
+        PctToTotalSales: pctToTotalSalesOverride,
+        IbfPctOfRevenue: ibfPctOfRevenueOverride,
+        DstPctRevenue: dstPctRevenueOverride,
+        ObParcelPctRevenue: obParcelPctRevenueOverride,
+        ObTlPctRevenue: obTlPctRevenueOverride,
+        ObLtlPctRevenue: obLtlPctRevenueOverride,
+        ObfTotalPctOfRevenue: obfTotalPctOfRevenueOverride,
+        AvgDeliveryDays: avgDeliveryDaysOverride,
+        AvgTransitDays: avgTransitDaysOverride,
       };
     });
   }, [scenarioState.headers, scenarioState.resultsDC, scenarioState.resultsLanes, spaceOverrideRows]);
@@ -1984,15 +2038,23 @@ function App() {
                 (r) => normalizeWarehouseName(r.Location) === normalizeWarehouseName(dc.DCName)
               );
               if (spaceOverride) {
+                const extPrice = spaceOverride.TotalExtendedPrice || 0;
+                const totCost = spaceOverride.TotalCost ?? dc.TotalCost;
+                const ibf = spaceOverride.InboundSpend ?? dc.InboundSpend ?? 0;
+                const dst = spaceOverride.DistributionCost ?? dc.DistributionCost ?? 0;
+                const parcel = spaceOverride.ParcelSpend ?? dc.ParcelSpend ?? 0;
+                const tl = spaceOverride.TlSpend ?? dc.TlSpend ?? 0;
+                const ltl = spaceOverride.LtlSpend ?? dc.LtlSpend ?? 0;
+
                 return {
                   ...dc,
-                  TotalCost: spaceOverride.TotalCost ?? dc.TotalCost,
+                  TotalCost: totCost,
                   VolumeUnits: spaceOverride.VolumeUnits ?? dc.VolumeUnits,
-                  InboundSpend: spaceOverride.InboundSpend ?? dc.InboundSpend ?? 0,
-                  ParcelSpend: spaceOverride.ParcelSpend ?? dc.ParcelSpend ?? 0,
-                  LtlSpend: spaceOverride.LtlSpend ?? dc.LtlSpend ?? 0,
-                  TlSpend: spaceOverride.TlSpend ?? dc.TlSpend ?? 0,
-                  DistributionCost: spaceOverride.DistributionCost ?? dc.DistributionCost ?? 0,
+                  InboundSpend: ibf,
+                  ParcelSpend: parcel,
+                  LtlSpend: ltl,
+                  TlSpend: tl,
+                  DistributionCost: dst,
                   Rent: spaceOverride.Rent ?? dc.Rent ?? 0,
                   ContractLabor: spaceOverride.ContractLabor ?? dc.ContractLabor ?? 0,
                   ManagementFee: spaceOverride.ManagementFee ?? dc.ManagementFee ?? 0,
@@ -2000,19 +2062,21 @@ function App() {
                   SpaceCore: spaceOverride.WorkingCapacitySqFt,
                   UtilPct: Number((spaceOverride.PalletUtilization * 100).toFixed(2)),
                   SpaceRequired: Number((spaceOverride.ContractedSquareFootage * spaceOverride.PalletUtilization).toFixed(2)),
-                  // Optional percentage and CPU fields
-                  PctToTotalSales: spaceOverride.PctToTotalSales,
-                  IbfPctOfRevenue: spaceOverride.IbfPctOfRevenue,
-                  DstPctRevenue: spaceOverride.DstPctRevenue,
-                  ObParcelPctRevenue: spaceOverride.ObParcelPctRevenue,
-                  ObTlPctRevenue: spaceOverride.ObTlPctRevenue,
-                  ObLtlPctRevenue: spaceOverride.ObLtlPctRevenue,
-                  ObfTotalPctOfRevenue: spaceOverride.ObfTotalPctOfRevenue,
+                  // Dynamically calculated percentages based on TotalExtendedPrice
+                  PctToTotalSales: extPrice > 0 ? (totCost / extPrice) * 100 : 0,
+                  IbfPctOfRevenue: extPrice > 0 ? (ibf / extPrice) * 100 : 0,
+                  DstPctRevenue: extPrice > 0 ? (dst / extPrice) * 100 : 0,
+                  ObParcelPctRevenue: extPrice > 0 ? (parcel / extPrice) * 100 : 0,
+                  ObTlPctRevenue: extPrice > 0 ? (tl / extPrice) * 100 : 0,
+                  ObLtlPctRevenue: extPrice > 0 ? (ltl / extPrice) * 100 : 0,
+                  ObfTotalPctOfRevenue: extPrice > 0 ? ((parcel + tl + ltl) / extPrice) * 100 : 0,
                   CostPerUnit: spaceOverride.CostPerUnit,
                   ObfCostPerUnit: spaceOverride.ObfCostPerUnit,
                   DstCostPerUnit: spaceOverride.DstCostPerUnit,
                   IbfCostPerUnit: spaceOverride.IbfCostPerUnit,
-                  TotalExtendedPrice: spaceOverride.TotalExtendedPrice,
+                  TotalExtendedPrice: extPrice,
+                  AvgDays: spaceOverride.AvgDeliveryDays ?? dc.AvgDays,
+                  AvgTransitDays: spaceOverride.AvgTransitDays ?? dc.AvgTransitDays,
                 };
               }
               return dc;

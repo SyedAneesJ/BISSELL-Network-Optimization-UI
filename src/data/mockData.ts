@@ -41,6 +41,15 @@ export interface ScenarioRunHeader {
   OverrideCount: number;
   LaneCount: number;
   ChangedLaneCountVsBaseline: number;
+
+  // Percentage overrides for US Baseline
+  PctToTotalSales?: number;
+  IbfPctOfRevenue?: number;
+  DstPctRevenue?: number;
+  ObParcelPctRevenue?: number;
+  ObTlPctRevenue?: number;
+  ObLtlPctRevenue?: number;
+  ObfTotalPctOfRevenue?: number;
 }
 
 export interface ScenarioRunConfig {
@@ -139,6 +148,8 @@ export interface DomoSpaceOverrideRow {
   DstCostPerUnit?: number;
   IbfCostPerUnit?: number;
   TotalExtendedPrice?: number;
+  AvgDeliveryDays?: number;
+  AvgTransitDays?: number;
 }
 
 export interface ScenarioRunResultsLane {

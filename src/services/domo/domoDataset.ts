@@ -1860,6 +1860,8 @@ const SPACE_OVERRIDE_FIELD_ALIASES = {
   dstCostPerUnit: ['DST Cost Per Unit', 'dstCostPerUnit'],
   ibfCostPerUnit: ['IBF Cost Per Unit', 'ibfCostPerUnit'],
   totalExtendedPrice: ['totalExtendedPrice', 'TotalExtendedPrice'],
+  avgDeliveryDays: ['avg_delivery_days', 'avgDeliveryDays', 'AvgDeliveryDays', 'Avg Delivery Days', 'avg_delivery_days '],
+  avgTransitDays: ['avg_transit_days', 'avgTransitDays', 'AvgTransitDays', 'Avg Transit Days', 'avg_transit_days '],
 };
 
 export const loadSpaceOverridesDataset = async (datasetId: string): Promise<DomoSpaceOverrideRow[]> => {
@@ -1915,6 +1917,8 @@ export const loadSpaceOverridesDataset = async (datasetId: string): Promise<Domo
         DstCostPerUnit: asNumber(getField(row, SPACE_OVERRIDE_FIELD_ALIASES.dstCostPerUnit)),
         IbfCostPerUnit: asNumber(getField(row, SPACE_OVERRIDE_FIELD_ALIASES.ibfCostPerUnit)),
         TotalExtendedPrice: asNumber(getField(row, SPACE_OVERRIDE_FIELD_ALIASES.totalExtendedPrice)),
+        AvgDeliveryDays: asNumber(getField(row, SPACE_OVERRIDE_FIELD_ALIASES.avgDeliveryDays)),
+        AvgTransitDays: asNumber(getField(row, SPACE_OVERRIDE_FIELD_ALIASES.avgTransitDays)),
       };
     });
   } catch (error) {

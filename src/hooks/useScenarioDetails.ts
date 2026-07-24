@@ -352,32 +352,42 @@ export const useScenarioDetails = ({
       } : {};
 
       if (isUsBaseline && spaceOverride) {
+        const extPrice = spaceOverride.TotalExtendedPrice || 0;
+        const totCost = spaceOverride.TotalCost ?? dc.TotalCost;
+        const ibf = spaceOverride.InboundSpend ?? 0;
+        const dst = spaceOverride.DistributionCost ?? 0;
+        const parcel = spaceOverride.ParcelSpend ?? 0;
+        const tl = spaceOverride.TlSpend ?? 0;
+        const ltl = spaceOverride.LtlSpend ?? 0;
+
         return {
           ...dc,
-          TotalCost: spaceOverride.TotalCost ?? dc.TotalCost,
+          TotalCost: totCost,
           VolumeUnits: spaceOverride.VolumeUnits ?? dc.VolumeUnits,
-          InboundSpend: spaceOverride.InboundSpend ?? 0,
-          ParcelSpend: spaceOverride.ParcelSpend ?? 0,
-          LtlSpend: spaceOverride.LtlSpend ?? 0,
-          TlSpend: spaceOverride.TlSpend ?? 0,
-          DistributionCost: spaceOverride.DistributionCost ?? 0,
+          InboundSpend: ibf,
+          ParcelSpend: parcel,
+          LtlSpend: ltl,
+          TlSpend: tl,
+          DistributionCost: dst,
           Rent: spaceOverride.Rent ?? 0,
           ContractLabor: spaceOverride.ContractLabor ?? 0,
           ManagementFee: spaceOverride.ManagementFee ?? 0,
           ...spaceFields,
           // Optional percentage and CPU fields
-          PctToTotalSales: spaceOverride.PctToTotalSales,
-          IbfPctOfRevenue: spaceOverride.IbfPctOfRevenue,
-          DstPctRevenue: spaceOverride.DstPctRevenue,
-          ObParcelPctRevenue: spaceOverride.ObParcelPctRevenue,
-          ObTlPctRevenue: spaceOverride.ObTlPctRevenue,
-          ObLtlPctRevenue: spaceOverride.ObLtlPctRevenue,
-          ObfTotalPctOfRevenue: spaceOverride.ObfTotalPctOfRevenue,
+          PctToTotalSales: extPrice > 0 ? (totCost / extPrice) * 100 : 0,
+          IbfPctOfRevenue: extPrice > 0 ? (ibf / extPrice) * 100 : 0,
+          DstPctRevenue: extPrice > 0 ? (dst / extPrice) * 100 : 0,
+          ObParcelPctRevenue: extPrice > 0 ? (parcel / extPrice) * 100 : 0,
+          ObTlPctRevenue: extPrice > 0 ? (tl / extPrice) * 100 : 0,
+          ObLtlPctRevenue: extPrice > 0 ? (ltl / extPrice) * 100 : 0,
+          ObfTotalPctOfRevenue: extPrice > 0 ? ((parcel + tl + ltl) / extPrice) * 100 : 0,
           CostPerUnit: spaceOverride.CostPerUnit,
           ObfCostPerUnit: spaceOverride.ObfCostPerUnit,
           DstCostPerUnit: spaceOverride.DstCostPerUnit,
           IbfCostPerUnit: spaceOverride.IbfCostPerUnit,
-          TotalExtendedPrice: spaceOverride.TotalExtendedPrice,
+          TotalExtendedPrice: extPrice,
+          AvgDays: spaceOverride.AvgDeliveryDays ?? dc.AvgDays,
+          AvgTransitDays: spaceOverride.AvgTransitDays ?? dc.AvgTransitDays,
         };
       }
 
