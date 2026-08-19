@@ -31,8 +31,10 @@ import { ScenarioLaneDetailsModal } from '@/components/modals';
 import { ScenarioCommentModal } from '@/components/modals';
 import { useScenarioDetails } from '@/hooks';
 import { loadScenarioLaneSnapshotsFromAppDb, ScenarioRunHistoryEntry } from '@/services/scenario';
+import { enrichRankedOptionsForLanes } from '@/services/domo/domoDataset';
 import { AICopilotDrawer } from '@/sections/scenario-details/ai';
 import { startWorkflow } from '@/services/domo/domoWorkflow';
+import { APPDB_COLLECTIONS } from '@/services/domo/domoAppDb';
 
 interface ScenarioDetailsProps {
   scenarioId: string;
@@ -41,6 +43,8 @@ interface ScenarioDetailsProps {
   scenarioRunConfigs: ScenarioRunConfig[];
   scenarioRunResultsDC: ScenarioRunResultsDC[];
   scenarioRunResultsLanes: ScenarioRunResultsLane[];
+  /** Raw multi-DC candidate pool from Domo lane dataset (all DCs per zip), used for ranked options enrichment */
+  rawLaneCandidatePool?: ScenarioRunResultsLane[];
   scenarioOverrides: ScenarioOverride[];
   recentRuns: ScenarioRunHistoryEntry[];
   onDuplicateScenario: (scenarioId: string) => void;
@@ -138,6 +142,15 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = (props) => {
     let cancelled = false;
     setHydratedLaneResults(baseLaneResults);
 
+    console.log(`[Scenario Details Flow: Lanes Hydration] scenarioId=${props.scenarioId}:`, {
+      scenarioName: currentScenario?.RunName,
+      baseLaneResultsFromProps: baseLaneResults.length,
+      totalLanesInAppProps: props.scenarioRunResultsLanes.length,
+      rawCandidatePoolSize: props.rawLaneCandidatePool?.length || 0,
+      source: baseLaneResults.length > 0 ? 'Direct In-Memory Props (Instant)' : 'AppDB custom_scenario_lanes Fallback Query',
+      networkCallStatus: baseLaneResults.length > 0 ? 'No network call needed - data is in client memory' : 'Querying AppDB custom_scenario_lanes',
+    });
+
     if (baseLaneResults.length > 0) {
       setIsLaneDataLoading(false);
       return () => {
@@ -145,11 +158,21 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = (props) => {
       };
     }
 
+    console.log(`[Scenario Details Flow: AppDB Fallback] baseLaneResults was empty; querying AppDB collection '${APPDB_COLLECTIONS.customScenarioLanes}' for ${props.scenarioId}`);
     setIsLaneDataLoading(true);
-    void loadScenarioLaneSnapshotsFromAppDb(props.scenarioId)
+    // Use rawLaneCandidatePool (full multi-DC Domo dataset) as the candidate pool for enrichment
+    // so Options 2-4 can be populated. scenarioRunResultsLanes only has 1 DC per zip (assigned DC).
+    const candidatePool = props.rawLaneCandidatePool && props.rawLaneCandidatePool.length > 0
+      ? props.rawLaneCandidatePool
+      : props.scenarioRunResultsLanes;
+    void loadScenarioLaneSnapshotsFromAppDb(props.scenarioId, candidatePool)
       .then((laneRows) => {
         if (!cancelled && laneRows.length > 0) {
-          setHydratedLaneResults(laneRows);
+          console.log(`[Scenario Details Flow: AppDB Fallback SUCCESS] Loaded and enriched ${laneRows.length} lane(s) from AppDB for ${props.scenarioId}`);
+          const enriched = enrichRankedOptionsForLanes(laneRows, candidatePool);
+          setHydratedLaneResults(enriched);
+        } else if (!cancelled) {
+          console.log(`[Scenario Details Flow: AppDB Fallback] No lanes found in AppDB for ${props.scenarioId}`);
         }
       })
       .catch((error) => {
@@ -164,7 +187,7 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = (props) => {
     return () => {
       cancelled = true;
     };
-  }, [baseLaneResults, props.scenarioId]);
+  }, [baseLaneResults, props.scenarioId, currentScenario?.RunName, props.rawLaneCandidatePool, props.scenarioRunResultsLanes]);
 
   const laneResultsForDetails = hydratedLaneResults.length > 0 ? hydratedLaneResults : baseLaneResults;
 
@@ -224,6 +247,7 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = (props) => {
       ...laneResultsForDetails,
       ...baselineLanes
     ], [laneResultsForDetails, baselineLanes]),
+    rawLaneCandidatePool: props.rawLaneCandidatePool,
     scenarioOverrides: props.scenarioOverrides,
     costComponentRows: props.costComponentRows,
     spaceOverrideRows: props.spaceOverrideRows,

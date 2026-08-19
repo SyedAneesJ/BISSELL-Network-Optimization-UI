@@ -1,45 +1,38 @@
 export const parseCsv = (csvText: string): string[][] => {
+  if (!csvText) return [];
+  const lines = csvText.split(/\r?\n/);
   const rows: string[][] = [];
-  let row: string[] = [];
-  let current = '';
-  let inQuotes = false;
 
-  for (let i = 0; i < csvText.length; i++) {
-    const char = csvText[i];
-    const next = csvText[i + 1];
+  for (let l = 0; l < lines.length; l++) {
+    const line = lines[l];
+    if (!line) continue;
 
-    if (char === '"' && inQuotes && next === '"') {
-      current += '"';
-      i++;
+    if (!line.includes('"')) {
+      rows.push(line.split(','));
       continue;
     }
 
-    if (char === '"') {
-      inQuotes = !inQuotes;
-      continue;
+    const cells: string[] = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      if (char === '"') {
+        if (inQuotes && line[i + 1] === '"') {
+          current += '"';
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (char === ',' && !inQuotes) {
+        cells.push(current);
+        current = '';
+      } else {
+        current += char;
+      }
     }
-
-    if (char === ',' && !inQuotes) {
-      row.push(current);
-      current = '';
-      continue;
-    }
-
-    if ((char === '\n' || char === '\r') && !inQuotes) {
-      if (char === '\r' && next === '\n') i++;
-      row.push(current);
-      if (row.length > 1 || row[0] !== '') rows.push(row);
-      row = [];
-      current = '';
-      continue;
-    }
-
-    current += char;
-  }
-
-  if (current.length > 0 || row.length > 0) {
-    row.push(current);
-    rows.push(row);
+    cells.push(current);
+    rows.push(cells);
   }
 
   return rows;

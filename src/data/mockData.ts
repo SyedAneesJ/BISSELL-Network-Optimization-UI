@@ -170,6 +170,9 @@ export interface ScenarioRunResultsLane {
   RankedOption3DC: string;
   RankedOption3Cost: number;
   RankedOption3Days: number;
+  RankedOption4DC?: string;
+  RankedOption4Cost?: number;
+  RankedOption4Days?: number;
   ChosenRank: number;
   LaneCost: number;
   CostDeltaVsBest: number;

@@ -195,6 +195,8 @@ const laneIsActive = (lane: ScenarioRunResultsLane, activeDcs: Set<string>, supp
 
 const pickBestLaneInGroup = (rows: ScenarioRunResultsLane[]): ScenarioRunResultsLane => {
   const sorted = [...rows].sort((a, b) => {
+    const totalCostDelta = laneCostToDisplay(a) - laneCostToDisplay(b);
+    if (totalCostDelta !== 0) return totalCostDelta;
     const cpuA = laneCostPerUnit(a);
     const cpuB = laneCostPerUnit(b);
     if (cpuA !== cpuB) return cpuA - cpuB;
@@ -202,8 +204,6 @@ const pickBestLaneInGroup = (rows: ScenarioRunResultsLane[]): ScenarioRunResults
     const warehouseB = `${b.CostingWarehouse || b.AssignedDC || ''}|${b.DefaultShipFrom || ''}`;
     const warehouseDelta = warehouseA.localeCompare(warehouseB);
     if (warehouseDelta !== 0) return warehouseDelta;
-    const totalCostDelta = laneCostToDisplay(a) - laneCostToDisplay(b);
-    if (totalCostDelta !== 0) return totalCostDelta;
     return `${a.Dest3Zip}|${a.Channel}`.localeCompare(`${b.Dest3Zip}|${b.Channel}`);
   });
   const best = sorted[0];
@@ -243,11 +243,11 @@ const buildScenarioLanes = (
         const activeA = laneIsActive(a, activeSet, suppressedSet);
         const activeB = laneIsActive(b, activeSet, suppressedSet);
         if (activeA !== activeB) return activeA ? -1 : 1;
+        const totalCostDelta = laneCostToDisplay(a) - laneCostToDisplay(b);
+        if (totalCostDelta !== 0) return totalCostDelta;
         const cpuA = laneCostPerUnit(a);
         const cpuB = laneCostPerUnit(b);
         if (cpuA !== cpuB) return cpuA - cpuB;
-        const totalCostDelta = laneCostToDisplay(a) - laneCostToDisplay(b);
-        if (totalCostDelta !== 0) return totalCostDelta;
         const warehouseA = `${a.CostingWarehouse || a.AssignedDC || ''}|${a.DefaultShipFrom || ''}`;
         const warehouseB = `${b.CostingWarehouse || b.AssignedDC || ''}|${b.DefaultShipFrom || ''}`;
         const warehouseDelta = warehouseA.localeCompare(warehouseB);

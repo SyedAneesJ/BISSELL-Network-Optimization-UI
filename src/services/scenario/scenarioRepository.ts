@@ -14,18 +14,48 @@ const readRecords = (): ScenarioRepositoryRecord[] => {
   if (!isBrowser) return [];
   try {
     const stored = localStorage.getItem(SCENARIO_STORAGE_KEY);
-    if (!stored) return [];
+    if (!stored) {
+      console.log('[LocalStorage Scenario Read] No stored scenarios found in localStorage key:', SCENARIO_STORAGE_KEY);
+      return [];
+    }
     const parsed = JSON.parse(stored);
-    return Array.isArray(parsed) ? parsed : [];
+    const records = Array.isArray(parsed) ? parsed : [];
+    console.log('[LocalStorage Scenario Read] Successfully loaded scenarios from localStorage:', {
+      key: SCENARIO_STORAGE_KEY,
+      recordCount: records.length,
+      scenarioIds: records.map((r) => r?.definition?.scenarioId),
+      laneCountsByScenario: records.reduce<Record<string, number>>((acc, r) => {
+        if (r?.definition?.scenarioId) {
+          acc[r.definition.scenarioId] = r.snapshot?.resultsLanes?.length || 0;
+        }
+        return acc;
+      }, {}),
+    });
+    return records;
   } catch (error) {
-    console.warn('Failed to parse scenario records from localStorage', error);
+    console.warn('[LocalStorage Scenario Read] Failed to parse scenario records from localStorage', error);
     return [];
   }
 };
 
 const writeRecords = (records: ScenarioRepositoryRecord[]) => {
   if (!isBrowser) return;
-  localStorage.setItem(SCENARIO_STORAGE_KEY, JSON.stringify(records.slice(0, 500)));
+  try {
+    const serialized = JSON.stringify(records.slice(0, 500));
+    const sizeKb = (serialized.length / 1024).toFixed(1);
+    localStorage.setItem(SCENARIO_STORAGE_KEY, serialized);
+    console.log(`[LocalStorage Scenario Store] Saved ${records.length} scenario(s) to localStorage (${sizeKb} KB):`, {
+      key: SCENARIO_STORAGE_KEY,
+      scenarios: records.map((r) => ({
+        id: r.definition.scenarioId,
+        name: r.definition.scenarioName,
+        laneCount: r.snapshot?.resultsLanes?.length || 0,
+        dcCount: r.snapshot?.resultsDC?.length || 0,
+      })),
+    });
+  } catch (error) {
+    console.error('[LocalStorage Scenario Store] ERROR: Failed to write scenarios to localStorage (quota or serialization issue):', error);
+  }
 };
 
 const cloneRecord = (record: ScenarioRepositoryRecord): ScenarioRepositoryRecord => ({

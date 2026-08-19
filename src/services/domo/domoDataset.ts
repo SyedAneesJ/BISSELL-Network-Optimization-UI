@@ -59,6 +59,8 @@ const RAW_LANE_DATASET_ENV_ID = String(
 const BCV_LANE_DATASET_ENV_ID = String(import.meta.env.VITE_SCENARIO_LANE_BCV_DATASET_ID || '').trim();
 const TACTICAL_CONSOLIDATION_LANE_DATASET_ENV_ID = String(import.meta.env.VITE_SCENARIO_LANE_TACTICAL_CONSOLIDATION_DATASET_ID || '').trim();
 const CANADA_BASELINE_LANE_DATASET_ENV_ID = String(import.meta.env.VITE_SCENARIO_LANE_CANADA_BASELINE_DATASET_ID || '').trim();
+const US_BASELINE_NEW_LANE_DATASET_ENV_ID = String(import.meta.env.VITE_SCENARIO_LANE_US_BASELINE_NEW_ID || '').trim();
+const CANADA_BASELINE_NEW_LANE_DATASET_ENV_ID = String(import.meta.env.VITE_SCENARIO_LANE_CANADA_BASELINE_NEW_ID || import.meta.env.VITE_SCENARIO_LANE_US_BASELINE_NEW_ID || '').trim();
 const CANADA_STRATFORD_LANE_DATASET_ENV_ID = String(import.meta.env.VITE_SCENARIO_CANADA_STRATFORD_DATASET_ID || '').trim();
 const NORMALIZED_LANE_DATASET_ENV_ID = String(import.meta.env.VITE_SCENARIO_LANE_NORMALIZED_DATASET_ID || '').trim();
 const DC_CAPACITY_DATASET_ENV_ID = String(import.meta.env.VITE_DC_CAPACITY_DATASET_ID || '').trim();
@@ -84,16 +86,19 @@ const REGISTRY_SCHEMA = {
 
 const RAW_LANE_FIELD_ALIASES = {
   scenarioRunId: ['ScenarioRunID', 'scenarioRunId', 'scenario_id', 'Scenario Run ID', 'scenarioRunID'],
-  zip3: ['3-zip', '3Zip', '3-Zip', 'Dest3Zip', 'dest3Zip', 'zip3'],
-  distributionCost: ['3-zip x Channel Distribution Cost', 'distributionCost', 'distribution_cost'],
+  zip3: ['3-zip', '3Zip', '3-Zip', 'Dest3Zip', 'dest3Zip', 'zip3', 'Destination_3Zip', 'Destination 3Zip', 'Dest 3Zip'],
+  distributionCost: ['3-zip x Channel Distribution Cost', 'distributionCost', 'distribution_cost', '3zip_Distribution Spend', '3zip Distribution Spend', '3zip_Distribution_Spend'],
   totalUnits: [
     '3-zip x Channel line_id Count x Origin',
     'totalUnits',
     'TotalUnits',
     'totalcount',
     'TotalCount',
+    '3zip_des_cases_received',
+    '3zip_des_ordvrs_cnt',
+    '3zip des cases received',
   ],
-  tlSpend: ['3-zip x Channel TL Spend', '3-zip x Channel TL Spend ', 'tlSpend', 'LtlSpend'],
+  tlSpend: ['3-zip x Channel TL Spend', '3-zip x Channel TL Spend ', 'tlSpend', 'LtlSpend', '3zip_tl_spend', '3zip TL Spend', '3zip_TL_Spend'],
   workingCapacity: [
     'laneSpaceSqFt',
     '3-zip x Channel Containers x Origin', 
@@ -102,24 +107,24 @@ const RAW_LANE_FIELD_ALIASES = {
   ],
   breachFlag: ['breach_flag', 'breachFlag', 'BreachFlag'],
   channel: ['Channel', 'channel'],
-  costingWarehouse: ['Costing Warehouse', 'CostingWarehouse', 'costingWarehouse'],
-  costPerUnit: ['costPerUnit', 'CostPerUnit'],
-  defaultShipFrom: ['Default Ship From', 'DefaultShipFrom', 'defaultShipFrom'],
-  inboundSpend: ['Inbound Spend', 'InboundSpend', 'inboundSpend'],
-  ltlSpend: ['LTL Spend x 3-zip x Channel', 'LTL Spend x 3-zip x Channel ', 'LtlSpend', 'ltlSpend'],
+  costingWarehouse: ['Costing Warehouse', 'CostingWarehouse', 'costingWarehouse', 'Costing_Warehouse', 'Default Warehouse', 'DefaultWarehouse', 'Default_Warehouse', 'Default Warehouse ', 'Default', 'default', 'Warehouse', 'warehouse', 'Origin', 'origin', 'DC', 'dc'],
+  costPerUnit: ['costPerUnit', 'CostPerUnit', 'Cost Per CWT', 'CostPerCWT', 'cost_per_cwt', 'Cost per CWT', 'costPerCWT', 'Cost/Unit', 'cost_per_unit'],
+  defaultShipFrom: ['Default Ship From', 'DefaultShipFrom', 'defaultShipFrom', 'Default Warehouse', 'DefaultWarehouse', 'Default_Warehouse', 'Default Warehouse ', 'Default Warehouse', 'Default_Warehouse ', 'Default', 'default', 'Warehouse', 'warehouse', 'Origin', 'origin', 'DC', 'dc'],
+  inboundSpend: ['Inbound Spend', 'InboundSpend', 'inboundSpend', '3zip_Inbound Spend', '3zip Inbound Spend', '3zip_Inbound_Spend'],
+  ltlSpend: ['LTL Spend x 3-zip x Channel', 'LTL Spend x 3-zip x Channel ', 'LtlSpend', 'ltlSpend', '3zip_LTL_Spend', '3zip LTL Spend', '3zip_LTL Spend'],
   orderToDeliverDays: ['Order to Deliver Calendar Days_Days', 'Order to Deliver Calendar Days', 'orderToDeliverDays'],
-  parcelSpend: ['Parcel Spend', 'ParcelSpend', 'parcelSpend'],
+  parcelSpend: ['Parcel Spend', 'ParcelSpend', 'parcelSpend', '3zip_Parcel Spend', '3zip Parcel Spend', '3zip_Parcel_Spend'],
   partyName: ['party_name', 'partyName', 'party name'],
   scenarioType: ['scenarioType', 'ScenarioType'],
   shipToDeliverDays: ['Ship to Deliver Calendar Days', 'ShipToDeliverCalendarDays', 'shipToDeliverDays'],
-  deliveryDays: ['DeliveryDays', 'deliveryDays'],
-  avgDeliveryDays: ['avgDeliveryDays', 'AverageDeliveryDays', 'averageDeliveryDays'],
-  avgTransitDays: ['avgTransitDays', 'AverageTransitDays', 'averageTransitDays'],
+  deliveryDays: ['servicedays_us&can_combined', 'servicedays_us_can_combined', 'servicedays_us_and_can_combined', 'Service Days', 'Service_Days', 'DeliveryDays', 'deliveryDays', 'servicedays', 'service_days'],
+  avgDeliveryDays: ['avg_delivery_days', 'avgDeliveryDays', 'AverageDeliveryDays', 'averageDeliveryDays', 'avg_delivery_days '],
+  avgTransitDays: ['avg_transit_days', 'avgTransitDays', 'AverageTransitDays', 'averageTransitDays', 'avg_transit_days '],
   squareFootage: ['Square Footage', 'SquareFootage', 'squareFootage'],
   state: ['state', 'State'],
-  terms: ['terms', 'Terms', 'freight_terms', 'freightTerms', 'freight terms'],
+  terms: ['freight_terms', 'freight_terms ', 'freightterms', 'terms', 'Terms', 'freightTerms', 'freight terms'],
   threshold: ['threshold', 'Threshold'],
-  totalCost: ['totalCost', 'TotalCost', '3-zip x Channel Scenario Cost', '3-zip x Channel Scenario Cost '],
+  totalCost: ['totalCost', 'TotalCost', '3-zip x Channel Scenario Cost', '3-zip x Channel Scenario Cost ', '3zip_scenario cost', '3zip Scenario Cost', '3zip_scenario_cost'],
 } as const;
 
 const NORMALIZED_LANE_FIELD_ALIASES = {
@@ -139,6 +144,9 @@ const NORMALIZED_LANE_FIELD_ALIASES = {
   rankedOption3Dc: ['RankedOption3DC', 'rankedOption3Dc'],
   rankedOption3Cost: ['RankedOption3Cost', 'rankedOption3Cost'],
   rankedOption3Days: ['RankedOption3Days', 'rankedOption3Days'],
+  rankedOption4Dc: ['RankedOption4DC', 'rankedOption4Dc', 'Option4DC', 'Option 4 DC'],
+  rankedOption4Cost: ['RankedOption4Cost', 'rankedOption4Cost', 'Option4Cost', 'Option 4 Cost'],
+  rankedOption4Days: ['RankedOption4Days', 'rankedOption4Days', 'Option4Days', 'Option 4 Days'],
   chosenRank: ['ChosenRank', 'chosenRank'],
   laneCost: ['LaneCost', 'laneCost', '3-zip x Channel Scenario Cost', '3-zip x Channel Scenario Cost '],
   costDeltaVsBest: ['CostDeltaVsBest', 'costDeltaVsBest'],
@@ -173,6 +181,7 @@ const NORMALIZED_LANE_FIELD_ALIASES = {
   threshold: ['Threshold', 'threshold'],
   sourceDatasetId: ['SourceDatasetId', 'sourceDatasetId'],
   totalUnits: ['TotalUnits', 'totalUnits', 'TotalCount', 'totalCount', 'VolumeUnits', 'volumeUnits'],
+  costPerUnit: ['CostPerUnit', 'costPerUnit', 'Cost Per CWT', 'CostPerCWT', 'cost_per_cwt', 'Cost per CWT', 'costPerCWT', 'Cost/Unit', 'cost_per_unit'],
 } as const;
 
 const LANE_NORMALIZED_SCHEMA = {
@@ -239,53 +248,88 @@ const DC_CAPACITY_SCHEMA = {
   ],
 };
 
+const asText = (value: unknown): string => {
+  if (value === null || value === undefined) return '';
+  return String(value).trim();
+};
+
+const asNumberOptional = (value: unknown): number | null => {
+  if (value === null || value === undefined) return null;
+  const cleaned = String(value).replace(/,/g, '').replace(/%/g, '').trim();
+  if (cleaned === '') return null;
+  const parsed = Number(cleaned);
+  return Number.isNaN(parsed) ? null : parsed;
+};
+
+const asNumber = (value: unknown, fallback = 0): number => {
+  const result = asNumberOptional(value);
+  return result !== null ? result : fallback;
+};
+
+const detectRegionFromText = (text: string): 'US' | 'Canada' | undefined => {
+  if (!text) return undefined;
+  const lower = text.toLowerCase();
+  if (lower.includes('canada') || lower.includes('canadian') || lower.includes('ca baseline') || lower.includes('ca stratford') || lower.includes('_ca')) {
+    return 'Canada';
+  }
+  if (lower.includes('us baseline') || lower.includes('us ') || lower.includes('usa') || lower.includes('united states') || lower.includes('_us')) {
+    return 'US';
+  }
+  return undefined;
+};
+
 const parseBoolean = (value: unknown): boolean => {
   const text = asText(value).toLowerCase();
   return text === 'true' || text === '1' || text === 'y' || text === 'yes' || text === 'on';
 };
 
+const getNormalizedRowField = (row: Record<string, any>, key: string): string | undefined => {
+  const direct = row[key];
+  if (direct !== undefined && direct !== null) return String(direct).trim();
+
+  let normMap = (row as any).__normMap;
+  if (!normMap) {
+    normMap = new Map<string, string>();
+    for (const k in row) {
+      if (k !== '__normMap' && k !== '__superNormMap') {
+        normMap.set(k.trim().toLowerCase(), k);
+      }
+    }
+    Object.defineProperty(row, '__normMap', { value: normMap, enumerable: false, writable: false });
+  }
+
+  const matchKey = normMap.get(key.trim().toLowerCase());
+  if (matchKey !== undefined) {
+    const val = row[matchKey];
+    if (val !== undefined && val !== null) return String(val).trim();
+  }
+  return undefined;
+};
+
 const readRegistryField = (row: ScenarioDatasetRegistryCsvRow, keys: string[]): string => {
   for (const key of keys) {
-    const direct = row[key];
-    if (direct !== undefined && direct !== null && String(direct).trim() !== '') {
-      return String(direct).trim();
-    }
-    const normalized = key.trim().toLowerCase();
-    const fallback = Object.entries(row).find(([rowKey]) => rowKey.trim().toLowerCase() === normalized);
-    if (fallback && String(fallback[1]).trim() !== '') {
-      return String(fallback[1]).trim();
+    const val = getNormalizedRowField(row as any, key);
+    if (val !== undefined && val !== '') {
+      return val;
     }
   }
   return '';
 };
 
-/**
- * Like readRegistryField but stops at the FIRST column key that EXISTS in the
- * row, returning its raw value even when it is empty/zero.  Returns null only
- * when NO key from the list is found in the row at all.
- *
- * Use this for fields where an explicitly-empty cell must be honoured as 0
- * rather than falling through to the next alias (e.g. laneSpaceSqFt = '' must
- * not cascade to '3-zip x Channel Containers x Origin').
- */
 const readRegistryFieldRaw = (row: ScenarioDatasetRegistryCsvRow, keys: string[]): string | null => {
-  const rowEntries = Object.entries(row);
   for (const key of keys) {
-    const direct = row[key];
-    if (direct !== undefined && direct !== null) return String(direct).trim();
-    const normalized = key.trim().toLowerCase();
-    const match = rowEntries.find(([rowKey]) => rowKey.trim().toLowerCase() === normalized);
-    if (match !== undefined) return String(match[1]).trim();
+    const val = getNormalizedRowField(row as any, key);
+    if (val !== undefined) {
+      return val;
+    }
   }
-  return null; // column genuinely absent from this row
+  return null;
 };
+
 const hasRegistryField = (row: ScenarioDatasetRegistryCsvRow, keys: string[]): boolean => {
-  const rowEntries = Object.entries(row);
   for (const key of keys) {
-    if (row[key] !== undefined) return true;
-    const normalized = key.trim().toLowerCase();
-    const fallback = rowEntries.some(([rowKey]) => rowKey.trim().toLowerCase() === normalized);
-    if (fallback) return true;
+    const val = getNormalizedRowField(row as any, key);
+    if (val !== undefined) return true;
   }
   return false;
 };
@@ -381,7 +425,12 @@ const normalizeRawLaneRow = (
   scenarioRunIdLookup: Record<string, string> = {},
   sourceDatasetId?: string,
 ): ScenarioRunResultsLane | null => {
-  const scenarioRunId = resolveRawLaneScenarioRunId(row, scenarioRunIdLookup);
+  let scenarioRunId = resolveRawLaneScenarioRunId(row, scenarioRunIdLookup);
+  if (sourceDatasetId && sourceDatasetId === US_BASELINE_NEW_LANE_DATASET_ENV_ID) {
+    if (!scenarioRunId || scenarioRunId === 'UNKNOWN') {
+      scenarioRunId = scenarioRunIdLookup['us baseline'] || scenarioRunIdLookup['baseline'] || 'SR001';
+    }
+  }
 
   const dest3Zip = readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.zip3]);
   const channel = readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.channel]) || 'B2C';
@@ -402,8 +451,18 @@ const normalizeRawLaneRow = (
   const workingCapacity = asNumber(workingCapacityRaw ?? '');
   const inboundSpend = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.inboundSpend]));
   const parcelSpend = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.parcelSpend]));
-  const costPerUnit = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.costPerUnit]));
+  const costPerCwt = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, ['Cost Per CWT', 'CostPerCWT', 'cost_per_cwt', 'Cost per CWT', 'costPerCWT']));
+  let rawCostPerUnit = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.costPerUnit]));
   const totalUnits = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.totalUnits]));
+
+  // If Cost Per CWT column is present in raw data, use it directly as costPerUnit.
+  // Otherwise if costPerUnit was populated with total distribution spend, derive per-unit rate = distributionCost / totalUnits.
+  let costPerUnit = costPerCwt > 0 ? costPerCwt : rawCostPerUnit;
+  if (costPerCwt === 0 && distributionCost > 0 && totalUnits > 0 && (Math.abs(rawCostPerUnit - distributionCost) < 0.05 || rawCostPerUnit > 30)) {
+    costPerUnit = Number((distributionCost / totalUnits).toFixed(4));
+  }
+
+  const rawDeliveryDays = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.deliveryDays]));
   const avgDeliveryDays = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.avgDeliveryDays]));
   const avgTransitDays = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.avgTransitDays]));
   const shipToDeliverDays = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.shipToDeliverDays]));
@@ -415,13 +474,36 @@ const normalizeRawLaneRow = (
   const breachFlag = normalizeLaneBreachFlag(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.breachFlag]));
   const assignedDc = costingWarehouse || defaultShipFrom || '';
   const laneCost = rawTotalCost > 0 ? rawTotalCost : Math.max(0, distributionCost + inboundSpend + parcelSpend + ltlSpend + tlSpend);
-  const deliveryDays = avgDeliveryDays > 0
-    ? avgDeliveryDays
-    : avgTransitDays > 0
-      ? avgTransitDays
-      : shipToDeliverDays > 0
-        ? shipToDeliverDays
-        : orderToDeliverDays;
+  const deliveryDays = rawDeliveryDays > 0
+    ? rawDeliveryDays
+    : avgDeliveryDays > 0
+      ? avgDeliveryDays
+      : avgTransitDays > 0
+        ? avgTransitDays
+        : shipToDeliverDays > 0
+          ? shipToDeliverDays
+          : orderToDeliverDays;
+
+  if (dest3Zip === '006' || dest3Zip === '007' || ((globalThis as any).__loggedServiceDaysCount || 0) < 5) {
+    (globalThis as any).__loggedServiceDaysCount = ((globalThis as any).__loggedServiceDaysCount || 0) + 1;
+    console.log('[ServiceDays Diagnostic]', {
+      dest3Zip,
+      costingWarehouse,
+      rawDeliveryDays,
+      avgDeliveryDays,
+      finalDeliveryDays: deliveryDays,
+      matchedRowKeys: Object.keys(row).filter((k) => {
+        const lower = k.toLowerCase();
+        return lower.includes('service') || lower.includes('day') || lower.includes('transit');
+      }),
+      rawRowSample: Object.fromEntries(
+        Object.entries(row).filter(([k]) => {
+          const lower = k.toLowerCase();
+          return lower.includes('service') || lower.includes('day') || lower.includes('transit');
+        })
+      ),
+    });
+  }
   const laneUnits = totalUnits > 0 ? totalUnits : 0;
   const footprintContribution = hasWorkingCapacityColumn
     ? workingCapacity
@@ -430,6 +512,9 @@ const normalizeRawLaneRow = (
     ? Number(((workingCapacity / threshold) * 100).toFixed(2))
     : 0;
 
+  const cheapestToServeFrom = readRegistryField(row as ScenarioDatasetRegistryCsvRow, ['cheapest to serve from', 'cheapest_to_serve_from', 'cheapestToServeFrom']);
+  const cheapestCostToServe = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, ['cheapest cost to serve', 'cheapest_cost_to_serve', 'cheapestCostToServe']));
+
   return {
     ScenarioRunID: scenarioRunId,
     Dest3Zip: dest3Zip,
@@ -437,16 +522,19 @@ const normalizeRawLaneRow = (
     Channel: channel as ScenarioRunResultsLane['Channel'],
     Terms: normalizeLaneTerms(freightTerms),
     CustomerGroup: partyName,
-    AssignedDC: assignedDc,
-    RankedOption1DC: assignedDc,
+    AssignedDC: defaultShipFrom || costingWarehouse || '',
+    RankedOption1DC: costingWarehouse || defaultShipFrom || '',
     RankedOption1Cost: laneCost,
     RankedOption1Days: deliveryDays,
-    RankedOption2DC: defaultShipFrom || assignedDc,
-    RankedOption2Cost: distributionCost || laneCost,
-    RankedOption2Days: orderToDeliverDays || deliveryDays,
-    RankedOption3DC: defaultShipFrom || assignedDc || '',
-    RankedOption3Cost: tlSpend || laneCost,
-    RankedOption3Days: threshold || deliveryDays,
+    RankedOption2DC: '',
+    RankedOption2Cost: 0,
+    RankedOption2Days: 0,
+    RankedOption3DC: '',
+    RankedOption3Cost: 0,
+    RankedOption3Days: 0,
+    RankedOption4DC: '',
+    RankedOption4Cost: 0,
+    RankedOption4Days: 0,
     ChosenRank: 0,
     LaneCost: laneCost,
     CostDeltaVsBest: 0,
@@ -546,6 +634,9 @@ const normalizeNormalizedLaneRow = (row: DomoLaneRow): ScenarioRunResultsLane | 
     RankedOption3DC: readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.rankedOption3Dc]) || normalized.RankedOption3DC,
     RankedOption3Cost: asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.rankedOption3Cost]), normalized.RankedOption3Cost),
     RankedOption3Days: asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.rankedOption3Days]), normalized.RankedOption3Days),
+    RankedOption4DC: readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.rankedOption4Dc]) || normalized.RankedOption4DC,
+    RankedOption4Cost: asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.rankedOption4Cost]), normalized.RankedOption4Cost || 0),
+    RankedOption4Days: asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.rankedOption4Days]), normalized.RankedOption4Days || 0),
     ChosenRank: asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.chosenRank]), normalized.ChosenRank),
     LaneCost: laneCost,
     CostPerUnit: costPerUnit > 0 ? costPerUnit : normalized.CostPerUnit,
@@ -659,310 +750,6 @@ const resolveSpaceProfile = (row: DomoDcRow, datasetInfo?: ScenarioDatasetRegist
   };
 };
 
-const rankLaneRows = (rows: ScenarioRunResultsLane[]): ScenarioRunResultsLane[] => {
-  const grouped = rows.reduce<Record<string, ScenarioRunResultsLane[]>>((acc, row) => {
-    const key = laneGroupingKey(row) || row.ScenarioRunID || 'UNKNOWN';
-    acc[key] = acc[key] || [];
-    acc[key].push(row);
-    return acc;
-  }, {});
-
-  return Object.entries(grouped)
-    .flatMap(([, scenarioRows]) => {
-      const sorted = [...scenarioRows].sort((a, b) => {
-        const cpuA = laneCostPerUnit(a);
-        const cpuB = laneCostPerUnit(b);
-        const costDelta = cpuA - cpuB;
-        if (costDelta !== 0) return costDelta;
-        const totalCostDelta = laneTotalCost(a) - laneTotalCost(b);
-        if (totalCostDelta !== 0) return totalCostDelta;
-        const warehouseA = `${a.CostingWarehouse || a.AssignedDC || ''}|${a.DefaultShipFrom || ''}`;
-        const warehouseB = `${b.CostingWarehouse || b.AssignedDC || ''}|${b.DefaultShipFrom || ''}`;
-        const warehouseDelta = warehouseA.localeCompare(warehouseB);
-        if (warehouseDelta !== 0) return warehouseDelta;
-        const zipA = `${a.Dest3Zip}|${a.Channel}|${a.Terms}|${a.DestState}`;
-        const zipB = `${b.Dest3Zip}|${b.Channel}|${b.Terms}|${b.DestState}`;
-        return zipA.localeCompare(zipB);
-      });
-      const [best = null, second = null, third = null] = sorted;
-      if (!best) return [];
-      const bestCpu = laneCostPerUnit(best);
-      const bestTotalCost = laneTotalCost(best);
-      return [{
-        ...best,
-        CostRank: 1,
-        ChosenRank: 1,
-        AssignedDC: laneOptionDc(best),
-        RankedOption1DC: laneOptionDc(best),
-        RankedOption1Cost: bestCpu,
-        RankedOption1Days: best.DeliveryDays || 0,
-        RankedOption2DC: laneOptionDc(second),
-        RankedOption2Cost: second ? laneCostPerUnit(second) : 0,
-        RankedOption2Days: second?.DeliveryDays || 0,
-        RankedOption3DC: laneOptionDc(third),
-        RankedOption3Cost: third ? laneCostPerUnit(third) : 0,
-        RankedOption3Days: third?.DeliveryDays || 0,
-        LaneCost: bestTotalCost,
-        TotalCost: bestTotalCost,
-        CostPerUnit: best.CostPerUnit ?? bestCpu,
-        CostDeltaVsBest: 0,
-        FootprintContribution: best.WorkingCapacity || best.FootprintContribution || best.Threshold || 0,
-        UtilImpactPct: best.UtilImpactPct || (
-          best.Threshold && best.Threshold > 0 && best.WorkingCapacity !== undefined
-            ? Number(((best.WorkingCapacity / best.Threshold) * 100).toFixed(2))
-            : best.UtilImpactPct
-        ),
-      }];
-    })
-    .sort((a, b) => {
-      const scenarioCompare = a.ScenarioRunID.localeCompare(b.ScenarioRunID);
-      if (scenarioCompare !== 0) return scenarioCompare;
-      const zipCompare = `${a.Dest3Zip}|${a.Channel}|${a.Terms}|${a.DestState}`.localeCompare(`${b.Dest3Zip}|${b.Channel}|${b.Terms}|${b.DestState}`);
-      if (zipCompare !== 0) return zipCompare;
-      return (a.CostRank || 0) - (b.CostRank || 0);
-    });
-};
-
-const buildLaneNormalizedSeedRows = (rows: ScenarioRunResultsLane[]): Array<Record<string, unknown>> =>
-  rows.map((row) => ({
-    ScenarioRunID: row.ScenarioRunID,
-    Dest3Zip: row.Dest3Zip,
-    DestState: row.DestState,
-    Channel: row.Channel,
-    Terms: row.Terms,
-    CustomerGroup: row.CustomerGroup,
-    AssignedDC: row.AssignedDC,
-    RankedOption1DC: row.RankedOption1DC,
-    RankedOption1Cost: row.RankedOption1Cost,
-    RankedOption1Days: row.RankedOption1Days,
-    RankedOption2DC: row.RankedOption2DC,
-    RankedOption2Cost: row.RankedOption2Cost,
-    RankedOption2Days: row.RankedOption2Days,
-    RankedOption3DC: row.RankedOption3DC,
-    RankedOption3Cost: row.RankedOption3Cost,
-    RankedOption3Days: row.RankedOption3Days,
-    ChosenRank: row.ChosenRank,
-    LaneCost: row.LaneCost,
-    CostDeltaVsBest: row.CostDeltaVsBest,
-    DeliveryDays: row.DeliveryDays,
-    AvgDeliveryDays: row.AvgDeliveryDays ?? 0,
-    AvgTransitDays: row.AvgTransitDays ?? 0,
-    SLABreachFlag: row.SLABreachFlag,
-    ExcludedBySLAFlag: row.ExcludedBySLAFlag,
-    FootprintContribution: row.FootprintContribution,
-    UtilImpactPct: row.UtilImpactPct,
-    OverrideAppliedFlag: row.OverrideAppliedFlag,
-    OverrideVersion: row.OverrideVersion,
-    NotesFlag: row.NotesFlag,
-    ScenarioType: row.ScenarioType || '',
-    RunName: row.RunName || '',
-    CostingWarehouse: row.CostingWarehouse || '',
-    DefaultShipFrom: row.DefaultShipFrom || '',
-    InboundSpend: row.InboundSpend ?? 0,
-    ParcelSpend: row.ParcelSpend ?? 0,
-    LtlSpend: row.LtlSpend ?? 0,
-    TotalCost: row.TotalCost ?? row.LaneCost,
-    CostRank: row.CostRank || 0,
-    WorkingCapacity: row.WorkingCapacity ?? 0,
-    DistributionCost: row.DistributionCost ?? 0,
-    TlSpend: row.TlSpend ?? 0,
-    BreachFlag: row.BreachFlag || row.SLABreachFlag || 'N',
-    OrderToDeliverCalendarDays: row.OrderToDeliverCalendarDays ?? 0,
-    ShipToDeliverCalendarDays: row.ShipToDeliverCalendarDays ?? 0,
-    State: row.State || row.DestState || '',
-    PartyName: row.PartyName || row.CustomerGroup || '',
-    Threshold: row.Threshold ?? 0,
-    SquareFootage: row.SquareFootage ?? 0,
-    SourceDatasetId: row.SourceDatasetId || RAW_LANE_DATASET_ENV_ID || '',
-  }));
-
-const getStoredLaneNormalizedDatasetId = (): string => {
-  if (typeof window === 'undefined') return '';
-  try {
-    return String(window.localStorage.getItem(LANE_BOOTSTRAP_STORAGE_KEY) || '').trim();
-  } catch {
-    return '';
-  }
-};
-
-const storeLaneNormalizedDatasetId = (datasetId: string) => {
-  if (typeof window === 'undefined' || !datasetId) return;
-  try {
-    window.localStorage.setItem(LANE_BOOTSTRAP_STORAGE_KEY, datasetId);
-  } catch {
-    // ignore
-  }
-};
-
-const findLaneNormalizedDatasetIdFromCatalog = async (): Promise<string> => {
-  const datasets = await listDatasets();
-  const match = datasets.find((dataset) => {
-    const name = asText(dataset?.name).toLowerCase();
-    const description = asText(dataset?.description).toLowerCase();
-    return (
-      name === LANE_BOOTSTRAP_DATASET_NAME.toLowerCase() ||
-      name.includes('normalized lanes') ||
-      description.includes('normalized lane')
-    );
-  });
-  return asText(match?.id || match?.datasetId || match?.dataSetId);
-};
-
-const createLaneNormalizedDataset = async (): Promise<string> => {
-  const token = await DatasetApi.fetchAccessToken();
-  console.log('[Domo Lanes Normalized] bootstrap=create:start', {
-    name: LANE_BOOTSTRAP_DATASET_NAME,
-  });
-  const created = await DatasetApi.createDataset({
-    name: LANE_BOOTSTRAP_DATASET_NAME,
-    description: LANE_BOOTSTRAP_DATASET_DESCRIPTION,
-    rows: 0,
-    schema: LANE_NORMALIZED_SCHEMA,
-    token,
-  });
-  const datasetId = asText(created?.id || created?.datasetId || created?.dataSetId);
-  if (!datasetId) {
-    throw new Error('Lane normalized dataset was created but no dataset id was returned.');
-  }
-  console.log('[Domo Lanes Normalized] bootstrap=create:done', { datasetId });
-  return datasetId;
-};
-
-const ensureLaneNormalizedDatasetId = async (): Promise<string> => {
-  if (NORMALIZED_LANE_DATASET_ENV_ID) {
-    console.log('[Domo Lanes Normalized] config=env', { datasetId: NORMALIZED_LANE_DATASET_ENV_ID });
-    return NORMALIZED_LANE_DATASET_ENV_ID;
-  }
-
-  const cachedId = getStoredLaneNormalizedDatasetId();
-  if (cachedId) {
-    console.log('[Domo Lanes Normalized] config=localStorage', { datasetId: cachedId });
-    return cachedId;
-  }
-
-  try {
-    console.log('[Domo Lanes Normalized] bootstrap=lookup:start');
-    const catalogId = await findLaneNormalizedDatasetIdFromCatalog();
-    if (catalogId) {
-      storeLaneNormalizedDatasetId(catalogId);
-      console.log('[Domo Lanes Normalized] config=catalog', { datasetId: catalogId });
-      return catalogId;
-    }
-  } catch (error) {
-    console.warn('[Domo Lanes Normalized] Failed to inspect dataset catalog before bootstrap.', error);
-  }
-
-  const createdId = await createLaneNormalizedDataset();
-  storeLaneNormalizedDatasetId(createdId);
-  console.log('[Domo Lanes Normalized] created dataset id for env copy', createdId);
-  console.log(`[Domo Lanes Normalized] VITE_SCENARIO_LANE_NORMALIZED_DATASET_ID=${createdId}`);
-  return createdId;
-};
-
-const loadScenarioLaneDatasetFrom = async (
-  datasetId: string,
-  label: string,
-  scenarioRunIdLookup: Record<string, string> = {},
-): Promise<ScenarioRunResultsLane[]> => {
-  if (!datasetId) {
-    console.log(`[Domo Lanes ${label}] source=fallback (dataset id not set)`);
-    return [];
-  }
-
-  try {
-    const token = await DatasetApi.fetchAccessToken();
-    console.log(`[Domo Lanes ${label}] config=env`, { datasetId });
-    const rawCsv = await DatasetApi.getDatasetDataCsv(datasetId, token, 50000, 0);
-    const rawRows = csvToObjects(rawCsv) as DomoLaneRow[];
-    const rawRowsWithScenarioRunId = rawRows.filter((row) => Boolean(resolveRawLaneScenarioRunId(row, scenarioRunIdLookup)));
-    const normalizedCandidateRows = rawRows
-      .map((row) => normalizeRawLaneRow(row, scenarioRunIdLookup, datasetId))
-      .filter((item): item is ScenarioRunResultsLane => Boolean(item));
-    const normalizedFromRaw = rankLaneRows(
-      normalizedCandidateRows,
-    );
-    const rankedOptionDiagnostics = normalizedFromRaw.reduce(
-      (acc, row) => {
-        if (row.RankedOption2Cost > 0) acc.withOption2 += 1;
-        if (row.RankedOption3Cost > 0) acc.withOption3 += 1;
-        if (Number(row.AvgTransitDays ?? 0) > 0) acc.withTransitDays += 1;
-        if (row.SLABreachFlag === 'Y' || row.ExcludedBySLAFlag === 'Y') acc.withSlaBreach += 1;
-        return acc;
-      },
-      { withOption2: 0, withOption3: 0, withTransitDays: 0, withSlaBreach: 0 },
-    );
-    const debugZip = label === 'Raw' ? '427' : '';
-    const rawZipRows = rawRows.filter((row) => {
-      const rawZip = String(
-        readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.zip3]) ||
-        '',
-      ).trim();
-      return rawZip === debugZip;
-    });
-    const normalizedZipRows = normalizedFromRaw.filter((row) => String(row.Dest3Zip || '').trim() === debugZip);
-    console.log(`[Domo Lanes ${label}] source=dataset`, {
-      datasetId,
-      rows: rawRows.length,
-      rowsWithScenarioRunId: rawRowsWithScenarioRunId.length,
-      missingScenarioRunIdRows: Math.max(0, rawRows.length - rawRowsWithScenarioRunId.length),
-      normalizedCandidateRows: normalizedCandidateRows.length,
-      normalizedRows: normalizedFromRaw.length,
-      rankedRowsWithOption2: rankedOptionDiagnostics.withOption2,
-      rankedRowsWithOption3: rankedOptionDiagnostics.withOption3,
-      rankedRowsWithTransitDays: rankedOptionDiagnostics.withTransitDays,
-      rankedRowsWithSlaBreach: rankedOptionDiagnostics.withSlaBreach,
-      rankedSample: normalizedFromRaw.slice(0, 3).map((row) => ({
-        ScenarioRunID: row.ScenarioRunID,
-        Dest3Zip: row.Dest3Zip,
-        Channel: row.Channel,
-        Terms: row.Terms,
-        AvgTransitDays: row.AvgTransitDays ?? null,
-        SLABreachFlag: row.SLABreachFlag,
-        Option1: `${row.RankedOption1DC}:${row.RankedOption1Cost}`,
-        Option2: `${row.RankedOption2DC}:${row.RankedOption2Cost}`,
-        Option3: `${row.RankedOption3DC}:${row.RankedOption3Cost}`,
-      })),
-    });
-    if (datasetId === CANADA_STRATFORD_LANE_DATASET_ENV_ID) {
-      console.log(`[Domo Lanes ${label}] source=canada-stratford`, {
-        datasetId,
-        firstRowSourceDatasetId: normalizedFromRaw[0]?.SourceDatasetId || 'missing',
-        sampleScenarioRunIds: Array.from(new Set(normalizedFromRaw.slice(0, 5).map((row) => row.ScenarioRunID || ''))),
-      });
-    }
-    if (rawZipRows.length > 0 || normalizedZipRows.length > 0) {
-      console.groupCollapsed(`[Domo Lanes Debug] zip=${debugZip}`);
-      console.log('raw', rawZipRows);
-      console.log('normalized', normalizedZipRows);
-      console.groupEnd();
-    }
-    if (normalizedFromRaw.length === 0 && rawRows.length > 0) {
-      console.warn(`[Domo Lanes ${label}] No rows could be normalized because ScenarioRunID could not be derived from the lane dataset.`);
-      console.log(`[Domo Lanes ${label}] sample columns`, Object.keys(rawRows[0] || {}));
-    }
-    console.log(`[Domo Lanes ${label}] normalized=memory`, {
-      rows: normalizedFromRaw.length,
-    });
-    return normalizedFromRaw;
-  } catch (error) {
-    console.warn(`[Domo Lanes ${label}] Failed to load lane dataset; using empty lane set.`, error);
-    console.log(`[Domo Lanes ${label}] source=fallback (failed to load lane dataset)`, {
-      datasetId,
-    });
-    return [];
-  }
-};
-
-export const loadScenarioLaneDataset = async (
-  scenarioRunIdLookup: Record<string, string> = {},
-): Promise<ScenarioRunResultsLane[]> =>
-  loadScenarioLaneDatasetFrom(RAW_LANE_DATASET_ENV_ID, 'Raw', scenarioRunIdLookup);
-
-export const loadBcvScenarioLaneDataset = async (
-  scenarioRunIdLookup: Record<string, string> = {},
-): Promise<ScenarioRunResultsLane[]> =>
-  loadScenarioLaneDatasetFrom(BCV_LANE_DATASET_ENV_ID, 'BCV', scenarioRunIdLookup);
-
 export const loadTacticalConsolidationScenarioLaneDataset = async (
   scenarioRunIdLookup: Record<string, string> = {},
 ): Promise<ScenarioRunResultsLane[]> =>
@@ -1070,6 +857,25 @@ const listDatasets = async (): Promise<any[]> => {
   if (Array.isArray(response?.datasets)) return response.datasets;
   return [];
 };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 const findRegistryDatasetIdFromCatalog = async (): Promise<string> => {
   const datasets = await listDatasets();
@@ -1182,21 +988,212 @@ export const loadScenarioDatasetRegistry = async (): Promise<ScenarioDatasetRegi
   }
 };
 
-const detectRegionFromText = (text: string): 'US' | 'Canada' | null => {
-  const normalized = text.toLowerCase();
-  if (normalized.includes('canada') || normalized.includes(' ca ') || normalized.startsWith('ca ')) {
-    return 'Canada';
-  }
-  if (
-    normalized.includes('united states') ||
-    normalized.includes(' usa ') ||
-    normalized.includes(' us ') ||
-    normalized.startsWith('us ')
-  ) {
-    return 'US';
-  }
-  return null;
+export const enrichRankedOptionsForLanes = (
+  lanes: ScenarioRunResultsLane[],
+  candidateSourcePool?: ScenarioRunResultsLane[]
+): ScenarioRunResultsLane[] => {
+  if (!lanes || lanes.length === 0) return [];
+  
+  const pool = (candidateSourcePool && candidateSourcePool.length > 0) ? candidateSourcePool : lanes;
+
+  const poolByZipChannel = new Map<string, ScenarioRunResultsLane[]>();
+  const poolByZip = new Map<string, ScenarioRunResultsLane[]>();
+
+  pool.forEach((lane) => {
+    const zip = (lane.Dest3Zip || '').trim();
+    if (!zip) return;
+    const zipChannelKey = `${zip}|${(lane.Channel || '').trim()}`;
+
+    const listZC = poolByZipChannel.get(zipChannelKey) || [];
+    listZC.push(lane);
+    poolByZipChannel.set(zipChannelKey, listZC);
+
+    const listZ = poolByZip.get(zip) || [];
+    listZ.push(lane);
+    poolByZip.set(zip, listZ);
+  });
+
+  const candidatesCache = new Map<string, { dc: string; cost: number; days: number }[]>();
+
+  const getCandidatesForKey = (key: string, rows: ScenarioRunResultsLane[]): { dc: string; cost: number; days: number }[] => {
+    if (candidatesCache.has(key)) return candidatesCache.get(key)!;
+
+    const sortedRows = [...rows].sort((a, b) => {
+      const costA = Number(a.TotalCost ?? a.LaneCost ?? 0);
+      const costB = Number(b.TotalCost ?? b.LaneCost ?? 0);
+      if (costA !== costB && costA > 0 && costB > 0) return costA - costB;
+      const cpuA = Number(a.CostPerUnit ?? 0);
+      const cpuB = Number(b.CostPerUnit ?? 0);
+      return cpuA - cpuB;
+    });
+
+    const seenDcs = new Set<string>();
+    const candidates: { dc: string; cost: number; days: number }[] = [];
+
+    sortedRows.forEach((row) => {
+      const dcName = String(row.CostingWarehouse || row.AssignedDC || row.DefaultShipFrom || '').trim();
+      if (!dcName || dcName.toLowerCase() === 'na' || seenDcs.has(dcName.toLowerCase())) return;
+      seenDcs.add(dcName.toLowerCase());
+      candidates.push({
+        dc: dcName,
+        cost: Number(row.TotalCost ?? row.LaneCost ?? 0),
+        days: Number(row.DeliveryDays ?? row.AvgDeliveryDays ?? 0),
+      });
+    });
+
+    candidatesCache.set(key, candidates);
+    return candidates;
+  };
+
+  lanes.forEach((row) => {
+    const zip = (row.Dest3Zip || '').trim();
+    const zipChannelKey = `${zip}|${(row.Channel || '').trim()}`;
+
+    let candidates = poolByZipChannel.has(zipChannelKey)
+      ? getCandidatesForKey(zipChannelKey, poolByZipChannel.get(zipChannelKey)!)
+      : [];
+
+    if (candidates.length < 2 && poolByZip.has(zip)) {
+      const zipCandidates = getCandidatesForKey(`ZIP_${zip}`, poolByZip.get(zip)!);
+      if (zipCandidates.length > candidates.length) {
+        candidates = zipCandidates;
+      }
+    }
+
+    const opt1 = candidates[0];
+    const opt2 = candidates[1];
+    const opt3 = candidates[2];
+    const opt4 = candidates[3];
+
+    row.RankedOption1DC = opt1 ? opt1.dc : row.RankedOption1DC || '';
+    row.RankedOption1Cost = opt1 ? (opt1.cost > 0 ? opt1.cost : row.RankedOption1Cost || 0) : (row.RankedOption1Cost || 0);
+    row.RankedOption1Days = opt1 ? opt1.days : row.RankedOption1Days || 0;
+
+    row.RankedOption2DC = opt2 ? opt2.dc : '';
+    row.RankedOption2Cost = opt2 ? opt2.cost : 0;
+    row.RankedOption2Days = opt2 ? opt2.days : 0;
+
+    row.RankedOption3DC = opt3 ? opt3.dc : '';
+    row.RankedOption3Cost = opt3 ? opt3.cost : 0;
+    row.RankedOption3Days = opt3 ? opt3.days : 0;
+
+    row.RankedOption4DC = opt4 ? opt4.dc : '';
+    row.RankedOption4Cost = opt4 ? opt4.cost : 0;
+    row.RankedOption4Days = opt4 ? opt4.days : 0;
+  });
+
+  return lanes;
 };
+
+const loadScenarioLaneDatasetFrom = async (
+  datasetId: string,
+  label: string,
+  scenarioRunIdLookup: Record<string, string> = {},
+): Promise<ScenarioRunResultsLane[]> => {
+  const t0 = performance.now();
+  if (!datasetId) {
+    console.log(`[Domo Lanes ${label}] source=fallback (dataset ID not set)`);
+    return [];
+  }
+
+  try {
+    console.log(`[Domo Lanes ${label}] Step 1: fetching token & requesting CSV for dataset ${datasetId}`);
+    const token = await DatasetApi.fetchAccessToken();
+    const rawCsv = await DatasetApi.getDatasetDataCsv(datasetId, token, 100000, 0);
+    const fetchMs = Math.round(performance.now() - t0);
+    console.log(`[Domo Lanes ${label}] Step 2: CSV received (${rawCsv.length} chars, took ${fetchMs}ms)`);
+
+    const parseT0 = performance.now();
+    const rawRows = csvToObjects(rawCsv) as DomoLaneRow[];
+    const parseMs = Math.round(performance.now() - parseT0);
+    console.log(`[Domo Lanes ${label}] Step 3: CSV parsed (${rawRows.length} rows, took ${parseMs}ms)`);
+
+    const normT0 = performance.now();
+    const rawNormalized = rawRows
+      .map((row) => normalizeRawLaneRow(row, scenarioRunIdLookup, datasetId))
+      .filter((item): item is ScenarioRunResultsLane => Boolean(item));
+    const normalizedFromRaw = enrichRankedOptionsForLanes(rawNormalized);
+    const normMs = Math.round(performance.now() - normT0);
+
+    console.log(`[Domo Lanes ${label}] Step 4: fully loaded & normalized (${normalizedFromRaw.length} rows, took ${normMs}ms, total ${Math.round(performance.now() - t0)}ms)`);
+    return normalizedFromRaw;
+  } catch (error) {
+    console.warn(`[Domo Lanes ${label}] ERROR after ${Math.round(performance.now() - t0)}ms:`, error);
+    return [];
+  }
+};
+
+export const loadScenarioLaneDataset = async (
+  scenarioRunIdLookup: Record<string, string> = {},
+): Promise<ScenarioRunResultsLane[]> =>
+  loadScenarioLaneDatasetFrom(RAW_LANE_DATASET_ENV_ID, 'Raw', scenarioRunIdLookup);
+
+export const loadUsBaselineNewLaneDataset = async (
+  scenarioRunIdLookup: Record<string, string> = {},
+): Promise<ScenarioRunResultsLane[]> => {
+  if (!US_BASELINE_NEW_LANE_DATASET_ENV_ID) {
+    console.log('[Domo Lanes US Baseline New] VITE_SCENARIO_LANE_US_BASELINE_NEW_ID not set; returning empty list.');
+    return [];
+  }
+  return loadScenarioLaneDatasetFrom(US_BASELINE_NEW_LANE_DATASET_ENV_ID, 'US Baseline New Lanes', scenarioRunIdLookup);
+};
+
+export const loadCanadaBaselineNewLaneDataset = async (
+  scenarioRunIdLookup: Record<string, string> = {},
+): Promise<ScenarioRunResultsLane[]> => {
+  if (!CANADA_BASELINE_NEW_LANE_DATASET_ENV_ID) {
+    console.log('[Domo Lanes Canada Baseline New] VITE_SCENARIO_LANE_CANADA_BASELINE_NEW_ID / US fallback not set; returning empty list.');
+    return [];
+  }
+  return loadScenarioLaneDatasetFrom(CANADA_BASELINE_NEW_LANE_DATASET_ENV_ID, 'Canada Baseline New Lanes', scenarioRunIdLookup);
+};
+
+const normalizeWarehouseNameInternal = (name: string): string => {
+  if (!name) return '';
+  const cleaned = name.trim().toLowerCase();
+  if (cleaned.includes('dallas')) return 'dallas';
+  if (cleaned.includes('virginia') || cleaned.includes('r virginia')) return 'r virginia';
+  if (cleaned.includes('elwood')) return 'elwood';
+  if (cleaned.includes('los angeles') || cleaned.includes('la')) return 'los angeles';
+  if (cleaned.includes('milton')) return 'milton';
+  if (cleaned.includes('delta')) return 'delta';
+  if (cleaned.includes('brampton')) return 'brampton';
+  if (cleaned.includes('richmond')) return 'richmond';
+  if (cleaned.includes('vancouver')) return 'vancouver';
+  return cleaned;
+};
+
+export const US_DEFAULT_WAREHOUSES = new Set(['dallas', 'r virginia', 'elwood', 'los angeles']);
+export const CANADA_DEFAULT_WAREHOUSES = new Set(['milton', 'delta', 'brampton', 'richmond', 'vancouver']);
+
+export const filterLanesByDefaultWarehouse = (
+  lanes: ScenarioRunResultsLane[],
+  region: 'US' | 'Canada'
+): ScenarioRunResultsLane[] => {
+  const allowed = region === 'Canada' ? CANADA_DEFAULT_WAREHOUSES : US_DEFAULT_WAREHOUSES;
+  const filtered = lanes.filter((lane) => {
+    const rawWh = String(
+      lane.DefaultShipFrom || lane.CostingWarehouse || lane.AssignedDC || ''
+    ).trim();
+    if (!rawWh) return false;
+    const normalizedWh = normalizeWarehouseNameInternal(rawWh);
+    return allowed.has(normalizedWh);
+  });
+  console.log(`[Domo Warehouse Filter] region=${region} inputLanes=${lanes.length} filteredLanes=${filtered.length}`);
+  if (filtered.length === 0 && lanes.length > 0) {
+    console.warn(`[Domo Warehouse Filter WARNING] Filter produced 0 lanes for region=${region}! Sample raw warehouse fields from input:`,
+      lanes.slice(0, 5).map(l => ({ defaultShipFrom: l.DefaultShipFrom, costingWarehouse: l.CostingWarehouse, assignedDC: l.AssignedDC }))
+    );
+  }
+  return filtered;
+};
+
+export const loadBcvScenarioLaneDataset = async (
+  scenarioRunIdLookup: Record<string, string> = {},
+): Promise<ScenarioRunResultsLane[]> =>
+  loadScenarioLaneDatasetFrom(BCV_LANE_DATASET_ENV_ID, 'BCV', scenarioRunIdLookup);
+
+
 
 const FIELD_ALIASES = {
   dc: ['DC', 'dc', 'DC Name', 'DCName'],
@@ -1209,7 +1206,7 @@ const FIELD_ALIASES = {
   avgTransitDays: ['averageTransitDays'],
   slaBreachCount: ['slaBreach'],
   totalOrderCount: ['totalOrderCount', 'totalcount'],
-  costPerUnit: ['costPerUnit'],
+  costPerUnit: ['costPerUnit', 'CostPerUnit', 'Cost Per CWT', 'CostPerCWT', 'cost_per_cwt', 'Cost per CWT', 'costPerCWT', 'Cost/Unit', 'cost_per_unit'],
   slaBreachPct: ['slaBreach%', ' slaBreach%'],
   breachFlag: ['breach_flag', 'breachFlag', 'BreachFlag', 'SLABreachFlag'],
   maxUtilizationPct: ['maxUtilization%', 'maxUtilization %', 'maxUtilization'],
@@ -1248,35 +1245,27 @@ const superNormalizeKey = (s: string): string => {
 };
 
 const getField = (row: DomoDcRow, keys: readonly string[]): unknown => {
-  const rowEntries = Object.entries(row);
   for (const key of keys) {
     if (row[key] !== undefined) return row[key];
-    const normKey = superNormalizeKey(key);
-    const fallback = rowEntries.find(([rowKey]) => superNormalizeKey(rowKey) === normKey);
-    if (fallback) return fallback[1];
   }
+
+  let superNormMap = (row as any).__superNormMap;
+  if (!superNormMap) {
+    superNormMap = new Map<string, unknown>();
+    for (const k in row) {
+      if (k !== '__normMap' && k !== '__superNormMap') {
+        superNormMap.set(superNormalizeKey(k), row[k]);
+      }
+    }
+    Object.defineProperty(row, '__superNormMap', { value: superNormMap, enumerable: false, writable: false });
+  }
+
+  for (const key of keys) {
+    const match = superNormMap.get(superNormalizeKey(key));
+    if (match !== undefined) return match;
+  }
+
   return undefined;
-};
-
-const asNumber = (value: unknown, fallback = 0): number => {
-  if (value === null || value === undefined) return fallback;
-  const cleaned = String(value).replace(/,/g, '').replace(/%/g, '').trim();
-  if (cleaned === '') return fallback;
-  const parsed = Number(cleaned);
-  return Number.isNaN(parsed) ? fallback : parsed;
-};
-
-const asNumberOptional = (value: unknown): number | null => {
-  if (value === null || value === undefined) return null;
-  const cleaned = String(value).replace(/,/g, '').replace(/%/g, '').trim();
-  if (cleaned === '') return null;
-  const parsed = Number(cleaned);
-  return Number.isNaN(parsed) ? null : parsed;
-};
-
-const asText = (value: unknown): string => {
-  if (value === null || value === undefined) return '';
-  return String(value).trim();
 };
 
 const asPercent = (value: unknown): number => {
@@ -1897,7 +1886,7 @@ export const loadSpaceOverridesDataset = async (datasetId: string): Promise<Domo
         PalletUtilization: palletUtilization,
         TotalCost: totalCost,
         InboundSpend: totalInboundSpend,
-        DistributionCost: totalDistributionSpend,
+        DistributionCost: distributionSpendIncAll,
         ManagementFee: annualManagementFee,
         Rent: totalWarehouseCost,
         ContractLabor: derivedContractLabor,

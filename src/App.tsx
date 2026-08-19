@@ -34,6 +34,9 @@ import {
   fetchAllScenarioDatasets,
   loadDcCapacityDataset,
   loadScenarioLaneDataset,
+  loadUsBaselineNewLaneDataset,
+  loadCanadaBaselineNewLaneDataset,
+  filterLanesByDefaultWarehouse,
   loadTacticalConsolidationScenarioLaneDataset,
   loadCostComponentsDataset,
   loadSpaceOverridesDataset,
@@ -415,12 +418,42 @@ const mergeScenarioStateWithRecords = (
         ? cloneScenarioResultsDC(baseDcRows)
         : cloneScenarioResultsDC(record.snapshot.resultsDC),
     );
-    resultsLanes.set(
-      scenarioId,
-      freshLanesByScenarioId.get(scenarioId)?.length
-        ? canonicalizeScenarioResultsLanes(freshLanesByScenarioId.get(scenarioId) || [])
-        : canonicalizeScenarioResultsLanes(record.snapshot.resultsLanes.map(l => ({ ...l, ScenarioRunID: scenarioId }))),
-    );
+    const freshLanes = freshLanesByScenarioId.get(scenarioId);
+    const hasFreshDomoLanes = Boolean(freshLanes && freshLanes.length > 0);
+    const rawSnapshotLanes = hasFreshDomoLanes
+      ? canonicalizeScenarioResultsLanes(freshLanes || [])
+      : canonicalizeScenarioResultsLanes((record.snapshot.resultsLanes || []).map(l => ({ ...l, ScenarioRunID: scenarioId })));
+    // Migration: align CostingWarehouse with AssignedDC for custom scenario snapshots.
+    // Older snapshots may have stored the original Domo CostingWarehouse (e.g. "R Virginia")
+    // instead of the allocator-assigned DC (e.g. "Los Angeles"). AssignedDC is always ground truth.
+    const isCustomScenario = !String(record.snapshot?.header?.DataflowID || record.definition.dataflowId || '').trim() ||
+      !['3267'].includes(String(record.snapshot?.header?.DataflowID || record.definition.dataflowId || '').trim());
+    const migratedLanes = isCustomScenario
+      ? rawSnapshotLanes.map(l => ({
+          ...l,
+          CostingWarehouse: l.AssignedDC || l.CostingWarehouse || l.DefaultShipFrom || '',
+        }))
+      : rawSnapshotLanes;
+
+    console.log(`[Scenario Merge Flow] scenarioId=${scenarioId}:`, {
+      scenarioName: record.definition.scenarioName,
+      isCustomScenario,
+      hasFreshDomoLanes,
+      laneSource: hasFreshDomoLanes ? 'Domo combinedLaneDatasetRows' : 'Repository Snapshot resultsLanes',
+      rawSnapshotLaneCount: record.snapshot.resultsLanes?.length || 0,
+      finalLaneCount: migratedLanes.length,
+      sampleLanes: migratedLanes.slice(0, 2).map((l) => ({
+        Zip: l.Dest3Zip,
+        Channel: l.Channel,
+        AssignedDC: l.AssignedDC,
+        CostingWarehouse: l.CostingWarehouse,
+        TotalCost: l.TotalCost,
+        RankedOption1DC: l.RankedOption1DC,
+        RankedOption1Cost: l.RankedOption1Cost,
+      })),
+    });
+
+    resultsLanes.set(scenarioId, migratedLanes);
   });
 
   const overrides = [...base.overrides];
@@ -893,8 +926,9 @@ function App() {
         return sum + (dc.Rent ?? costs.Rent) + (dc.ContractLabor ?? costs.ContractLabor) + (dc.ManagementFee ?? costs.ManagementFee);
       }, 0);
 
-      const isUsBaselineHeader = header.Region === 'US' && (
+      const isUsBaselineHeader = (header.Region === 'US' || header.Region === 'Canada') && (
         header.ScenarioRunID === 'SR001' ||
+        header.ScenarioRunID === 'SR005' ||
         String(header.ScenarioType || '').toLowerCase().includes('baseline') ||
         String(header.RunName || '').toLowerCase().includes('baseline')
       );
@@ -969,7 +1003,7 @@ function App() {
       let calculatedChangedLanes = header.ChangedLaneCountVsBaseline || 0;
       if (!isBaseline) {
         const baselineId = header.BaselineScenarioID || scenarioState.headers.find(
-          (h) => h.Region === header.Region && (h.ScenarioRunID === 'SR001' || String(h.ScenarioType || '').toLowerCase().includes('baseline'))
+          (h) => h.Region === header.Region && (h.ScenarioRunID === 'SR001' || h.ScenarioRunID === 'SR005' || String(h.ScenarioType || '').toLowerCase().includes('baseline'))
         )?.ScenarioRunID;
 
         if (baselineId && baselineId !== header.ScenarioRunID) {
@@ -997,12 +1031,13 @@ function App() {
         ? scenarioLanesForOverride.filter((lane) => lane.OverrideAppliedFlag === 'Y').length
         : (header.OverrideCount || 0);
 
-      const isUsSpaceOverrideHeader = header.Region === 'US' && (
+      const isUsSpaceOverrideHeader = (header.Region === 'US' || header.Region === 'Canada') && (
         header.ScenarioRunID === 'SR001' ||
+        header.ScenarioRunID === 'SR005' ||
         String(header.ScenarioType || '').toLowerCase().includes('baseline') ||
-        String(header.RunName || '').toLowerCase().includes('baseline') ||
         String(header.ScenarioType || '').toLowerCase().includes('tactical') ||
         String(header.ScenarioType || '').toLowerCase().includes('consolidation') ||
+        String(header.RunName || '').toLowerCase().includes('baseline') ||
         String(header.RunName || '').toLowerCase().includes('tactical') ||
         String(header.RunName || '').toLowerCase().includes('consolidation')
       );
@@ -1601,6 +1636,28 @@ function App() {
   };
 
   const navigateToScenario = (scenarioId: string) => {
+    const matchingHeader = scenarioState.headers.find((h) => h.ScenarioRunID === scenarioId);
+    const matchingLanes = scenarioState.resultsLanes.filter((l) => l.ScenarioRunID === scenarioId);
+    const matchingDcs = scenarioState.resultsDC.filter((d) => d.ScenarioRunID === scenarioId);
+    console.log(`[Scenario Flow: Open Scenario Details] User clicked scenario '${scenarioId}' (${matchingHeader?.RunName || 'Unknown'})`, {
+      scenarioId,
+      scenarioName: matchingHeader?.RunName,
+      region: matchingHeader?.Region,
+      scenarioType: matchingHeader?.ScenarioType,
+      dataSource: 'In-Memory React scenarioState (No network API call needed)',
+      totalInMemoryLanesForScenario: matchingLanes.length,
+      totalInMemoryDcsForScenario: matchingDcs.length,
+      sampleFirstLane: matchingLanes[0] ? {
+        Dest3Zip: matchingLanes[0].Dest3Zip,
+        Channel: matchingLanes[0].Channel,
+        AssignedDC: matchingLanes[0].AssignedDC,
+        CostingWarehouse: matchingLanes[0].CostingWarehouse,
+        TotalCost: matchingLanes[0].TotalCost,
+        RankedOption1DC: matchingLanes[0].RankedOption1DC,
+      } : null,
+      note: 'setUiBusyMessage is displayed briefly for smooth UI transition while React mounts ScenarioDetails components',
+    });
+
     setUiBusyMessage('Loading scenario details...');
     window.requestAnimationFrame(() => {
       setAppState({
@@ -1713,6 +1770,8 @@ function App() {
   const unreadNotificationCount = notifications.filter((notification) => notification.status === 'Unread').length;
 
   const loadDomoDc = useCallback(async () => {
+    const mainT0 = performance.now();
+    console.log('[Domo Hydration Trace 1/8] Starting loadDomoDc...');
     try {
       const datasetResults = await fetchAllScenarioDatasets();
       const dcCapacityDatasetRows = await loadDcCapacityDataset();
@@ -1896,8 +1955,11 @@ function App() {
 
       const costComponentsDatasetId = String(import.meta.env.VITE_COST_COMPONENTS_DATASET_ID || '').trim();
       const spaceOverrideDatasetId = String(import.meta.env.VITE_SPACE_OVERRIDE_DATASET_ID || '').trim();
+      console.log('[Domo Hydration Trace 4/8] Kicking off Promise.all for 8 lane & override datasets...');
       const [
         laneDatasetRows,
+        usBaselineNewLaneRows,
+        canadaBaselineNewLaneRows,
         bcvLaneDatasetRows,
         tacticalConsolidationLaneDatasetRows,
         canadaBaselineLaneDatasetRows,
@@ -1906,6 +1968,8 @@ function App() {
         loadedSpaceOverrideRows,
       ] = await Promise.all([
         loadScenarioLaneDataset(usLaneScenarioRunIdLookup),
+        loadUsBaselineNewLaneDataset(usLaneScenarioRunIdLookup),
+        loadCanadaBaselineNewLaneDataset(canadaLaneScenarioRunIdLookup),
         loadBcvScenarioLaneDataset(usLaneScenarioRunIdLookup),
         loadTacticalConsolidationScenarioLaneDataset(usLaneScenarioRunIdLookup),
         loadCanadaScenarioLaneDataset(canadaLaneScenarioRunIdLookup),
@@ -1913,6 +1977,7 @@ function App() {
         costComponentsDatasetId ? loadCostComponentsDataset(costComponentsDatasetId) : Promise.resolve([]),
         spaceOverrideDatasetId ? loadSpaceOverridesDataset(spaceOverrideDatasetId) : Promise.resolve([]),
       ]);
+      console.log('[Domo Hydration Trace 5/8] Promise.all completed for all datasets!', { totalMs: Math.round(performance.now() - mainT0) });
       setCostComponentRows(loadedCostCompRows);
       setSpaceOverrideRows(loadedSpaceOverrideRows);
       console.log('[Domo Cost Components] loaded', {
@@ -1921,11 +1986,46 @@ function App() {
       console.log('[Domo Space Overrides] loaded', {
         rows: loadedSpaceOverrideRows.length,
       });
+      const usBaselineRunId = usLaneScenarioRunIdLookup[normalizeScenarioLookupKey('us baseline')] || usLaneScenarioRunIdLookup[normalizeScenarioLookupKey('baseline')] || 'SR001';
+      const canadaBaselineRunId = canadaLaneScenarioRunIdLookup[normalizeScenarioLookupKey('canada baseline')] || canadaLaneScenarioRunIdLookup[normalizeScenarioLookupKey('baseline')] || 'SR_ETL_11_CANADA_CANADA_BASELINE_NA';
+
+      const filteredUsBaselineNewLanes = filterLanesByDefaultWarehouse(usBaselineNewLaneRows, 'US').map((lane) => ({
+        ...lane,
+        ScenarioRunID: usBaselineRunId,
+        ScenarioType: 'US Baseline',
+        RunName: 'US Baseline',
+      }));
+
+      const activeUsBaselineLaneRows = filteredUsBaselineNewLanes.length > 0
+        ? [
+            ...filteredUsBaselineNewLanes,
+            ...laneDatasetRows.filter((lane) => lane.ScenarioRunID !== usBaselineRunId && lane.ScenarioType !== 'US Baseline')
+          ]
+        : (usBaselineNewLaneRows.length > 0
+            ? usBaselineNewLaneRows.map((lane) => ({ ...lane, ScenarioRunID: usBaselineRunId, ScenarioType: 'US Baseline', RunName: 'US Baseline' }))
+            : laneDatasetRows);
+
+      const filteredCanadaBaselineNewLanes = filterLanesByDefaultWarehouse(canadaBaselineNewLaneRows, 'Canada').map((lane) => ({
+        ...lane,
+        ScenarioRunID: canadaBaselineRunId,
+        ScenarioType: 'Canada Baseline',
+        RunName: 'Canada Baseline',
+      }));
+
+      const activeCanadaBaselineLaneRows = filteredCanadaBaselineNewLanes.length > 0
+        ? [
+            ...filteredCanadaBaselineNewLanes,
+            ...canadaBaselineLaneDatasetRows.filter((lane) => lane.ScenarioRunID !== canadaBaselineRunId && lane.ScenarioType !== 'Canada Baseline')
+          ]
+        : (canadaBaselineNewLaneRows.length > 0
+            ? canadaBaselineNewLaneRows.map((lane) => ({ ...lane, ScenarioRunID: canadaBaselineRunId }))
+            : canadaBaselineLaneDatasetRows);
+
       const combinedLaneDatasetRows = [
-        ...laneDatasetRows,
+        ...activeUsBaselineLaneRows,
         ...bcvLaneDatasetRows,
         ...tacticalConsolidationLaneDatasetRows,
-        ...canadaBaselineLaneDatasetRows,
+        ...activeCanadaBaselineLaneRows,
         ...canadaStratfordLaneDatasetRows,
       ];
       const rawLaneCountsBySourceDatasetId = combinedLaneDatasetRows.reduce<Record<string, number>>((acc, lane) => {
@@ -1934,10 +2034,12 @@ function App() {
         return acc;
       }, {});
       console.log('[Domo Lanes] loaded for scenarios', {
-        baselineLaneRows: laneDatasetRows.length,
+        baselineLaneRows: activeUsBaselineLaneRows.length,
+        usBaselineNewLaneRows: filteredUsBaselineNewLanes.length,
+        canadaBaselineNewLaneRows: filteredCanadaBaselineNewLanes.length,
         bcvLaneRows: bcvLaneDatasetRows.length,
         tacticalConsolidationLaneRows: tacticalConsolidationLaneDatasetRows.length,
-        canadaBaselineLaneRows: canadaBaselineLaneDatasetRows.length,
+        canadaBaselineLaneRows: activeCanadaBaselineLaneRows.length,
         canadaStratfordLaneRows: canadaStratfordLaneDatasetRows.length,
         combinedLaneRows: combinedLaneDatasetRows.length,
       });
@@ -2027,8 +2129,9 @@ function App() {
         headers: uniqueScenarioPayloads.map((p) => p.header),
         configs: [],
         resultsDC: uniqueScenarioPayloads.flatMap((p) => {
-          const isUsBaselineScenario = p.header.Region === 'US' && (
+          const isUsBaselineScenario = (p.header.Region === 'US' || p.header.Region === 'Canada') && (
             p.header.ScenarioRunID === 'SR001' ||
+            p.header.ScenarioRunID === 'SR005' ||
             String(p.header.ScenarioType || '').toLowerCase().includes('baseline') ||
             String(p.header.RunName || '').toLowerCase().includes('baseline')
           );
@@ -2306,9 +2409,10 @@ function App() {
 
       setScenarioHistoryState(buildScenarioHistoryState(persistedRecords));
 
+      console.log('[Domo Hydration Trace 8/8] loadDomoDc DONE! Hydration complete in', Math.round(performance.now() - mainT0), 'ms');
       setDomoDcLoaded(true);
     } catch (err) {
-      console.warn('Failed to load Domo dataset', err);
+      console.warn('[Domo Hydration Trace ERROR] Failed to load Domo dataset', err);
       setDomoDcLoaded(true);
     }
   }, []);
@@ -2556,9 +2660,14 @@ function App() {
       );
       const scopedLaneRowsByScenarioId = Object.entries(lanesByScenarioId).reduce<Record<string, ScenarioRunResultsLane[]>>((acc, [scenarioId, rows]) => {
         const scenarioRegion = scenarioRegionById.get(scenarioId) || payload.input.region;
+        const isBaselineScenario =
+          scenarioId === payload.input.baselineScenarioId ||
+          String(scenarioId || '').toLowerCase().includes('baseline');
+
         const filteredRows = rows.filter((row) =>
           scenarioRegion === payload.input.region &&
           (
+            isBaselineScenario ||
             resolveScenarioFamilyKey(row.ScenarioType) === familyKey ||
             (
               payload.input.region === 'Canada' &&
@@ -2645,6 +2754,16 @@ function App() {
         console.groupEnd();
       }
 
+      console.log('[Scenario Creation Flow: 1/4 - Creation Started]', {
+        scenarioName: payload.name,
+        scenarioType: payload.input.scenarioType,
+        region: payload.input.region,
+        activeDcs: normalizedActiveDcs,
+        suppressedDcs: normalizedSuppressedDcs,
+        baselineScenarioId: payload.input.baselineScenarioId,
+        baselineDataflowId: payload.input.baselineDataflowId,
+      });
+
       let artifact = buildScenarioArtifactsLegacy(payload, buildContext);
       try {
         artifact = await buildScenarioArtifactsWithLogic(
@@ -2672,6 +2791,26 @@ function App() {
           buildContext,
         );
       }
+
+      console.log('[Scenario Creation Flow: 2/4 - Artifacts Generated]', {
+        scenarioId: artifact.header.ScenarioRunID,
+        totalCost: artifact.header.TotalCost,
+        dcCount: artifact.resultsDC.length,
+        laneCount: artifact.resultsLanes.length,
+        sampleGeneratedLanes: artifact.resultsLanes.slice(0, 3).map((l) => ({
+          Dest3Zip: l.Dest3Zip,
+          Channel: l.Channel,
+          AssignedDC: l.AssignedDC,
+          CostingWarehouse: l.CostingWarehouse,
+          TotalCost: l.TotalCost,
+          CostPerUnit: l.CostPerUnit,
+          RankedOption1DC: l.RankedOption1DC,
+          RankedOption1Cost: l.RankedOption1Cost,
+          RankedOption2DC: l.RankedOption2DC,
+          RankedOption2Cost: l.RankedOption2Cost,
+        })),
+      });
+
       const repositoryRecord = buildScenarioRepositoryRecord(
         {
           ...payload,
@@ -2684,12 +2823,27 @@ function App() {
         buildContext,
         artifact,
       );
+
+      console.log(`[Scenario Creation Flow: 3/4 - Persisting to Store] Target Store: ${scenarioPersistenceSourceRef.current}`, {
+        scenarioId: repositoryRecord.definition.scenarioId,
+        scenarioName: repositoryRecord.definition.scenarioName,
+        snapshotLanesCount: repositoryRecord.snapshot?.resultsLanes?.length || 0,
+        snapshotDcsCount: repositoryRecord.snapshot?.resultsDC?.length || 0,
+      });
+
       try {
         await persistScenarioRecordToPrimaryStore(repositoryRecord);
+        console.log(`[Scenario Creation Flow: 3/4 - Persistence SUCCESS] Saved to ${scenarioPersistenceSourceRef.current}`);
       } catch (error) {
         console.warn('[Scenario AppDB] Failed to persist new scenario', error);
       }
       const { header, config, resultsDC, resultsLanes } = artifact;
+
+      console.log('[Scenario Creation Flow: 4/4 - Updating In-Memory React State]', {
+        scenarioId: header.ScenarioRunID,
+        prependedLanesCount: resultsLanes.length,
+        prependedDcsCount: resultsDC.length,
+      });
 
       setScenarioState((prev) => ({
         headers: [header, ...prev.headers],
@@ -4041,6 +4195,7 @@ function App() {
             scenarioRunConfigs={scenarioState.configs}
             scenarioRunResultsDC={scenarioState.resultsDC}
             scenarioRunResultsLanes={scenarioState.resultsLanes}
+            rawLaneCandidatePool={rawScenarioLaneRows}
             costComponentRows={costComponentRows}
             spaceOverrideRows={spaceOverrideRows}
             scenarioOverrides={scenarioState.overrides}

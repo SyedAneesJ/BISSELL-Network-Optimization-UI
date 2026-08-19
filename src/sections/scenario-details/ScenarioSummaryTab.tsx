@@ -122,7 +122,7 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
   const additionalCost = dcResults.reduce((sum, dc) => {
         if (dc.IsSuppressed === 'Y') return sum;
         const costs = getAdditionalCostsForDc(dc.DCName);
-        return sum + (dc.Rent ?? costs.Rent) + (dc.ContractLabor ?? costs.ContractLabor) + (dc.ManagementFee ?? costs.ManagementFee);
+        return sum + (dc.Rent ?? costs.Rent) + (dc.ManagementFee ?? costs.ManagementFee);
       }, 0);
 
   const baseCost = Math.max(0, scenario.TotalCost - additionalCost);
@@ -134,8 +134,8 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
   const tlCostTotal = dcResults.reduce((sum, dc) => sum + (dc.TlSpend ?? 0), 0);
   const outboundCostTotal = parcelCostTotal + ltlCostTotal + tlCostTotal;
 
-  const isBaseline = scenario.ScenarioRunID === 'SR001' || String(scenario.ScenarioType || '').toLowerCase().includes('baseline');
-  const isUsBaseline = scenario.Region === 'US' && isBaseline;
+  const isBaseline = scenario.ScenarioRunID === 'SR001' || scenario.ScenarioRunID === 'SR005' || String(scenario.ScenarioType || '').toLowerCase().includes('baseline');
+  const isUsBaseline = (scenario.Region === 'US' || scenario.Region === 'Canada') && isBaseline;
 
   const activeDcs = dcResults.filter(dc => dc.IsSuppressed !== 'Y');
 
@@ -234,15 +234,15 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
           </div>
         )}
 
-        {/* Service Metrics */}
+        {/* Parcel Service Metrics */}
         <div>
           <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2.5 flex items-center gap-1.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-green-500"></span> Service Metrics
+            <span className="h-1.5 w-1.5 rounded-full bg-green-500"></span> Parcel Service Metrics
           </h4>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <KPICard label="Avg Delivery Days" value={formatDecimalOrNA(scenario.AvgDeliveryDays, 2)} />
-            <KPICard label="Avg Transit Days" value={formatDecimalOrNA(scenario.AvgTransitDays, 2)} />
-            <KPICard label="SLA Breach %" value={Number.isFinite(scenario.SLABreachPct) ? scenario.SLABreachPct : 'NA'} format="decimal" />
+            <KPICard label="Avg Delivery Days Actual" value={formatDecimalOrNA(scenario.AvgDeliveryDays, 2)} />
+            <KPICard label=" Estimated E2E - Standard HD" value={formatDecimalOrNA(scenario.AvgTransitDays, 2)} />
+            {/* <KPICard label="SLA Breach %" value={Number.isFinite(scenario.SLABreachPct) ? scenario.SLABreachPct : 'NA'} format="decimal" /> */}
           </div>
         </div>
 
@@ -300,7 +300,12 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
             const feeVal = dc.ManagementFee ?? dcCosts.ManagementFee;
             const addCost = rentVal + laborVal + feeVal;
 
-            const baseCostDisplay = isBaseline ? Math.max(0, dc.TotalCost - addCost) : dc.TotalCost;
+            // Fixed cost is Rent + Management Fee (Contract Labor is variable cost)
+            const fixedCostVal = rentVal + feeVal;
+
+            const baseCostDisplay = isBaseline 
+              ? Math.max(0, dc.TotalCost - fixedCostVal) 
+              : dc.TotalCost + (dc.IsSuppressed === 'N' ? laborVal : 0);
             const totalCostDisplay = isBaseline ? dc.TotalCost : dc.TotalCost + (dc.IsSuppressed === 'N' ? addCost : 0);
 
             const inboundVal = dc.InboundSpend ?? 0;
@@ -315,7 +320,7 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
                 rentVal={rentVal}
                 laborVal={laborVal}
                 feeVal={feeVal}
-                addCost={addCost}
+                fixedCostDisplay={dc.IsSuppressed === 'N' ? fixedCostVal : 0}
                 baseCostDisplay={baseCostDisplay}
                 totalCostDisplay={totalCostDisplay}
                 inboundVal={inboundVal}
@@ -340,7 +345,7 @@ interface DcScorecardCardProps {
   rentVal: number;
   laborVal: number;
   feeVal: number;
-  addCost: number;
+  fixedCostDisplay: number;
   baseCostDisplay: number;
   totalCostDisplay: number;
   inboundVal: number;
@@ -358,7 +363,7 @@ const DcScorecardCard: React.FC<DcScorecardCardProps> = ({
   rentVal,
   laborVal,
   feeVal,
-  addCost,
+  fixedCostDisplay,
   baseCostDisplay,
   totalCostDisplay,
   inboundVal,
@@ -372,8 +377,8 @@ const DcScorecardCard: React.FC<DcScorecardCardProps> = ({
   const [varExpanded, setVarExpanded] = useState(false);
   const [fixedExpanded, setFixedExpanded] = useState(false);
 
-  const hasVarDetails = dc.IsSuppressed === 'N' && (inboundVal > 0 || outboundVal > 0 || distributionVal > 0);
-  const hasFixedDetails = dc.IsSuppressed === 'N' && (rentVal > 0 || laborVal > 0 || feeVal > 0);
+  const hasVarDetails = dc.IsSuppressed === 'N' && (inboundVal > 0 || outboundVal > 0 || distributionVal > 0 || laborVal > 0);
+  const hasFixedDetails = dc.IsSuppressed === 'N' && (rentVal > 0 || feeVal > 0);
 
   return (
     <div className="surface-card p-4 hover-lift">
@@ -437,6 +442,10 @@ const DcScorecardCard: React.FC<DcScorecardCardProps> = ({
               <span>Distribution Cost:</span>
               <span>${distributionVal.toLocaleString('en-US', { maximumFractionDigits: 0 })}</span>
             </div>
+            <div className="flex justify-between font-medium text-slate-600">
+              <span>Contract Labor:</span>
+              <span>${laborVal.toLocaleString('en-US')}</span>
+            </div>
           </div>
         )}
 
@@ -458,7 +467,7 @@ const DcScorecardCard: React.FC<DcScorecardCardProps> = ({
             )}
             Fixed Cost:
           </span>
-          <span>${(dc.IsSuppressed === 'N' ? addCost : 0).toLocaleString('en-US')}</span>
+          <span>${fixedCostDisplay.toLocaleString('en-US')}</span>
         </div>
 
         {/* Fixed Cost Details */}
@@ -467,10 +476,6 @@ const DcScorecardCard: React.FC<DcScorecardCardProps> = ({
             <div className="flex justify-between">
               <span>Rent:</span>
               <span>${rentVal.toLocaleString('en-US')}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Contract Labor:</span>
-              <span>${laborVal.toLocaleString('en-US')}</span>
             </div>
             <div className="flex justify-between">
               <span>Management Fee:</span>
@@ -513,12 +518,14 @@ const DcScorecardCard: React.FC<DcScorecardCardProps> = ({
             <span className="text-slate-400">-</span>
           )}
         </div>
+        {/*
         <div className="flex justify-between">
           <span className="text-slate-600">SLA Breaches:</span>
-          <span className={`font-medium ${dc.SLABreachCount > 5 ? 'text-red-600' : ''}`}>
+          <span className="font-medium">
             {dc.SLABreachCount}
           </span>
         </div>
+        */}
 
         {/* Space Required bar */}
         <div className="pt-2 border-t border-slate-200">

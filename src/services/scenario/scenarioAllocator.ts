@@ -11,7 +11,8 @@ type LaneCandidate = {
   dc: string;
   costPerUnit: number;
   days: number;
-  sourceIndex: 1 | 2 | 3;
+  totalCost?: number;
+  sourceIndex: 1 | 2 | 3 | 4;
 };
 
 type LaneGroup = {
@@ -147,7 +148,7 @@ const capacityValue = (row?: DomoDcCapacityRow): number => {
 
 const buildRawCandidates = (lane: ScenarioRunResultsLane): LaneCandidate[] => {
   const candidates: LaneCandidate[] = [];
-  const addCandidate = (dc: unknown, costPerUnit: unknown, days: unknown, sourceIndex: 1 | 2 | 3) => {
+  const addCandidate = (dc: unknown, costPerUnit: unknown, days: unknown, sourceIndex: 1 | 2 | 3 | 4) => {
     const dcName = normalizeText(dc);
     if (!dcName) return;
     const parsedCpu = Number(costPerUnit);
@@ -163,6 +164,7 @@ const buildRawCandidates = (lane: ScenarioRunResultsLane): LaneCandidate[] => {
   addCandidate(lane.RankedOption1DC, lane.RankedOption1Cost, lane.RankedOption1Days, 1);
   addCandidate(lane.RankedOption2DC, lane.RankedOption2Cost, lane.RankedOption2Days, 2);
   addCandidate(lane.RankedOption3DC, lane.RankedOption3Cost, lane.RankedOption3Days, 3);
+  addCandidate(lane.RankedOption4DC, lane.RankedOption4Cost, lane.RankedOption4Days, 4);
 
   if (candidates.length === 0) {
     const fallbackDc = normalizeText(lane.AssignedDC || lane.CostingWarehouse || lane.DefaultShipFrom);
@@ -185,7 +187,9 @@ const buildRawCandidates = (lane: ScenarioRunResultsLane): LaneCandidate[] => {
   return candidates
     .filter((candidate) => candidate.dc && normalizeDcKey(candidate.dc) !== 'na')
     .sort((a, b) => {
-      if (a.costPerUnit !== b.costPerUnit) return a.costPerUnit - b.costPerUnit;
+      const costA = a.totalCost ?? a.costPerUnit;
+      const costB = b.totalCost ?? b.costPerUnit;
+      if (costA !== costB && costA > 0 && costB > 0) return costA - costB;
       if (a.days !== b.days) return a.days - b.days;
       return a.sourceIndex - b.sourceIndex;
     });
@@ -223,12 +227,12 @@ const canonicalizeLaneRows = (rows: ScenarioRunResultsLane[]): ScenarioRunResult
     group.sort((a, b) => {
       const scoreDelta = laneQualityScore(b) - laneQualityScore(a);
       if (scoreDelta !== 0) return scoreDelta;
-      const cpuA = Number(a.CostPerUnit ?? a.RankedOption1Cost ?? a.LaneCost ?? 0);
-      const cpuB = Number(b.CostPerUnit ?? b.RankedOption1Cost ?? b.LaneCost ?? 0);
+      const costA = Number(a.TotalCost ?? a.LaneCost ?? a.RankedOption1Cost ?? 0);
+      const costB = Number(b.TotalCost ?? b.LaneCost ?? b.RankedOption1Cost ?? 0);
+      if (costA !== costB && costA > 0 && costB > 0) return costA - costB;
+      const cpuA = Number(a.CostPerUnit ?? 0);
+      const cpuB = Number(b.CostPerUnit ?? 0);
       if (cpuA !== cpuB) return cpuA - cpuB;
-      const costA = Number(a.TotalCost ?? a.LaneCost ?? 0);
-      const costB = Number(b.TotalCost ?? b.LaneCost ?? 0);
-      if (costA !== costB) return costA - costB;
       return normalizeText(a.AssignedDC || a.CostingWarehouse || a.DefaultShipFrom).localeCompare(
         normalizeText(b.AssignedDC || b.CostingWarehouse || b.DefaultShipFrom),
       );
@@ -236,14 +240,84 @@ const canonicalizeLaneRows = (rows: ScenarioRunResultsLane[]): ScenarioRunResult
   );
 };
 
-const buildLaneGroups = (rows: ScenarioRunResultsLane[]): LaneGroup[] =>
-  canonicalizeLaneRows(rows).map((sourceRow) => ({
-    key: laneGroupKey(sourceRow) || sourceRow.ScenarioRunID || 'UNKNOWN',
-    sourceRow,
-    laneUnits: inferLaneUnits(sourceRow),
-    laneSpaceRequired: laneSpaceRequired(sourceRow),
-    candidates: buildRawCandidates(sourceRow),
-  }));
+const buildLaneGroups = (rows: ScenarioRunResultsLane[]): LaneGroup[] => {
+  const grouped = new Map<string, ScenarioRunResultsLane[]>();
+  rows.forEach((row) => {
+    const key = laneGroupKey(row);
+    const list = grouped.get(key) || [];
+    list.push({ ...row });
+    grouped.set(key, list);
+  });
+
+  return Array.from(grouped.entries()).map(([key, groupRows]) => {
+    const sortedGroupRows = [...groupRows].sort((a, b) => {
+      const costA = Number(a.TotalCost ?? a.LaneCost ?? 0);
+      const costB = Number(b.TotalCost ?? b.LaneCost ?? 0);
+      if (costA !== costB && costA > 0 && costB > 0) return costA - costB;
+      const cpuA = Number(a.CostPerUnit ?? 0);
+      const cpuB = Number(b.CostPerUnit ?? 0);
+      return cpuA - cpuB;
+    });
+
+    const sourceRow = { ...sortedGroupRows[0] };
+    const laneUnits = inferLaneUnits(sourceRow);
+    const spaceReq = laneSpaceRequired(sourceRow);
+
+    const candidatesFromGroupRows: LaneCandidate[] = [];
+    const seenDcs = new Set<string>();
+
+    sortedGroupRows.forEach((row) => {
+      const dcName = normalizeText(canonicalizeDcName(row.CostingWarehouse || row.AssignedDC || row.DefaultShipFrom));
+      const dcKey = normalizeDcKey(dcName);
+      if (!dcName || !dcKey || dcKey === 'na' || seenDcs.has(dcKey)) return;
+      seenDcs.add(dcKey);
+      const cpu = Number(row.CostPerUnit ?? 0);
+      const days = Number(row.DeliveryDays ?? row.AvgDeliveryDays ?? 0);
+      const totalCost = Number(row.TotalCost ?? row.LaneCost ?? 0);
+      candidatesFromGroupRows.push({
+        dc: dcName,
+        costPerUnit: Number.isFinite(cpu) ? cpu : 0,
+        days: Number.isFinite(days) ? days : 0,
+        totalCost: Number.isFinite(totalCost) && totalCost > 0 ? totalCost : undefined,
+        sourceIndex: (candidatesFromGroupRows.length + 1) as 1 | 2 | 3 | 4,
+      });
+    });
+
+    // Populate 4 distinct ranked option properties onto sourceRow
+    const opt1 = candidatesFromGroupRows[0];
+    const opt2 = candidatesFromGroupRows[1];
+    const opt3 = candidatesFromGroupRows[2];
+    const opt4 = candidatesFromGroupRows[3];
+
+    sourceRow.RankedOption1DC = opt1 ? formatDcDisplayName(opt1.dc) : '';
+    sourceRow.RankedOption1Cost = opt1 ? (opt1.totalCost ?? opt1.costPerUnit) : 0;
+    sourceRow.RankedOption1Days = opt1 ? opt1.days : 0;
+
+    sourceRow.RankedOption2DC = opt2 ? formatDcDisplayName(opt2.dc) : '';
+    sourceRow.RankedOption2Cost = opt2 ? (opt2.totalCost ?? opt2.costPerUnit) : 0;
+    sourceRow.RankedOption2Days = opt2 ? opt2.days : 0;
+
+    sourceRow.RankedOption3DC = opt3 ? formatDcDisplayName(opt3.dc) : '';
+    sourceRow.RankedOption3Cost = opt3 ? (opt3.totalCost ?? opt3.costPerUnit) : 0;
+    sourceRow.RankedOption3Days = opt3 ? opt3.days : 0;
+
+    sourceRow.RankedOption4DC = opt4 ? formatDcDisplayName(opt4.dc) : '';
+    sourceRow.RankedOption4Cost = opt4 ? (opt4.totalCost ?? opt4.costPerUnit) : 0;
+    sourceRow.RankedOption4Days = opt4 ? opt4.days : 0;
+
+    const finalCandidates = candidatesFromGroupRows.length > 0
+      ? candidatesFromGroupRows
+      : buildRawCandidates(sourceRow);
+
+    return {
+      key: key || sourceRow.ScenarioRunID || 'UNKNOWN',
+      sourceRow,
+      laneUnits,
+      laneSpaceRequired: spaceReq,
+      candidates: finalCandidates,
+    };
+  });
+};
 
 export const buildCapacityMap = (rows: DomoDcCapacityRow[] | undefined, utilCap: number) => {
   const byName = new Map<string, number>();
@@ -360,7 +434,6 @@ const buildSelectedLaneRow = (
   selectedCapacity: number,
 ): ScenarioRunResultsLane => {
   const selectedCpu = Number(selected.costPerUnit.toFixed(2));
-  const selectedTotal = Number((selectedCpu * Math.max(laneUnits, 1)).toFixed(2));
   const bestCpu = Number(
     Math.min(
       ...buildRawCandidates(sourceRow)
@@ -371,14 +444,27 @@ const buildSelectedLaneRow = (
   );
   const selectedRank = selectedCandidateRank(sourceRow, selected.dc);
 
-  const baseTotalCost = Number(sourceRow.TotalCost ?? sourceRow.LaneCost ?? 0) || 1;
-  const ratio = selectedTotal / baseTotalCost;
+  const isOriginalDc = normalizeDcKey(selected.dc) === normalizeDcKey(laneSourceDc(sourceRow));
+  let selectedTotal: number;
+  let inboundSpend = sourceRow.InboundSpend;
+  let distributionCost = sourceRow.DistributionCost;
+  let parcelSpend = sourceRow.ParcelSpend;
+  let ltlSpend = sourceRow.LtlSpend;
+  let tlSpend = sourceRow.TlSpend;
 
-  const inboundSpend = typeof sourceRow.InboundSpend === 'number' ? Number((sourceRow.InboundSpend * ratio).toFixed(2)) : undefined;
-  const distributionCost = typeof sourceRow.DistributionCost === 'number' ? Number((sourceRow.DistributionCost * ratio).toFixed(2)) : undefined;
-  const parcelSpend = typeof sourceRow.ParcelSpend === 'number' ? Number((sourceRow.ParcelSpend * ratio).toFixed(2)) : undefined;
-  const ltlSpend = typeof sourceRow.LtlSpend === 'number' ? Number((sourceRow.LtlSpend * ratio).toFixed(2)) : undefined;
-  const tlSpend = typeof sourceRow.TlSpend === 'number' ? Number((sourceRow.TlSpend * ratio).toFixed(2)) : undefined;
+  if (isOriginalDc && Number(sourceRow.TotalCost ?? sourceRow.LaneCost ?? 0) > 0) {
+    selectedTotal = Number(sourceRow.TotalCost ?? sourceRow.LaneCost ?? 0);
+  } else {
+    const baseCpu = Number(sourceRow.CostPerUnit ?? 0);
+    const cpuRatio = baseCpu > 0 ? selectedCpu / baseCpu : 1;
+    distributionCost = typeof sourceRow.DistributionCost === 'number'
+      ? Number((sourceRow.DistributionCost * cpuRatio).toFixed(2))
+      : undefined;
+    const computedTotal = (inboundSpend ?? 0) + (distributionCost ?? 0) + (parcelSpend ?? 0) + (ltlSpend ?? 0) + (tlSpend ?? 0);
+    selectedTotal = computedTotal > 0
+      ? Number(computedTotal.toFixed(2))
+      : Number(sourceRow.TotalCost ?? sourceRow.LaneCost ?? (selectedCpu * Math.max(laneUnits, 1)));
+  }
 
   return {
     ...sourceRow,
@@ -1025,7 +1111,30 @@ export const allocateScenarioOutputs = (input: AllocationInput): AllocationResul
   const summary = buildAllocationSummary(finalDcRows);
 
   if (shouldLogAllocation) {
-    console.groupCollapsed('[Scenario Allocation] summary');
+    const reassignmentCounts: Record<string, { totalLanes: number; movedLanes: number; totalCost: number }> = {};
+    const movementMatrix: Record<string, number> = {};
+    resultsLanes.forEach((lane) => {
+      const origDc = normalizeText(canonicalizeDcName(lane.OriginalAssignedDC || lane.DefaultShipFrom || 'NA'));
+      const assignedDc = normalizeText(canonicalizeDcName(lane.AssignedDC || lane.CostingWarehouse || 'NA'));
+      const moveKey = `${origDc} -> ${assignedDc}`;
+      movementMatrix[moveKey] = (movementMatrix[moveKey] || 0) + 1;
+
+      if (!reassignmentCounts[assignedDc]) {
+        reassignmentCounts[assignedDc] = { totalLanes: 0, movedLanes: 0, totalCost: 0 };
+      }
+      reassignmentCounts[assignedDc].totalLanes += 1;
+      if (origDc !== assignedDc) {
+        reassignmentCounts[assignedDc].movedLanes += 1;
+      }
+      reassignmentCounts[assignedDc].totalCost += Number(lane.TotalCost ?? lane.LaneCost ?? 0);
+    });
+
+    console.groupCollapsed('[Scenario Allocation] Detailed Lane Reassignment Trace');
+    console.log('scenarioId', input.scenarioId);
+    console.log('scenarioType', input.scenarioType);
+    console.log('mode', mode);
+    console.log('reassignmentCountsByAssignedDc', reassignmentCounts);
+    console.log('movementMatrix', movementMatrix);
     console.log('utilCapPct', input.utilCap);
     console.log('activeDcs', input.activeDcs);
     console.log('suppressedDcs', input.suppressedDcs);
@@ -1041,6 +1150,65 @@ export const allocateScenarioOutputs = (input: AllocationInput): AllocationResul
       RankOverall: row.RankOverall,
     })));
     console.groupEnd();
+
+    // Sample 5 moved lanes trace for deep diagnostic inspection
+    const movedLanesSample = resultsLanes
+      .filter((lane) => {
+        const orig = normalizeDcKey((lane as any).OriginalAssignedDC || lane.DefaultShipFrom || '');
+        const assigned = normalizeDcKey(lane.AssignedDC || lane.CostingWarehouse || '');
+        return orig && assigned && orig !== assigned;
+      })
+      .slice(0, 5)
+      .map((lane) => {
+        const origDc = formatDcDisplayName((lane as any).OriginalAssignedDC || lane.DefaultShipFrom);
+        const movedToDc = formatDcDisplayName(lane.AssignedDC || lane.CostingWarehouse);
+        const isSuppressedSource = suppressedSet.has(normalizeDcKey(origDc));
+
+        const opt1Cost = Number(lane.RankedOption1Cost || 0);
+        const opt2Cost = Number(lane.RankedOption2Cost || 0);
+        const opt3Cost = Number(lane.RankedOption3Cost || 0);
+        const opt4Cost = Number((lane as any).RankedOption4Cost || 0);
+
+        const candidateOptions = [
+          lane.RankedOption1DC ? `Option 1: ${lane.RankedOption1DC} ($${opt1Cost.toFixed(2)})` : null,
+          lane.RankedOption2DC ? `Option 2: ${lane.RankedOption2DC} ($${opt2Cost.toFixed(2)})` : null,
+          lane.RankedOption3DC ? `Option 3: ${lane.RankedOption3DC} ($${opt3Cost.toFixed(2)})` : null,
+          (lane as any).RankedOption4DC ? `Option 4: ${(lane as any).RankedOption4DC} ($${opt4Cost.toFixed(2)})` : null,
+        ].filter(Boolean).join(' | ');
+
+        let reason = '';
+        if (isSuppressedSource) {
+          reason = `Original DC (${origDc}) is Suppressed -> Reassigned to lowest-cost available active DC (${movedToDc}).`;
+        } else if (normalizeDcKey(movedToDc) === normalizeDcKey(lane.RankedOption1DC)) {
+          reason = `Reallocated to lowest-cost Option 1 DC (${movedToDc}) to minimize network spend.`;
+        } else {
+          reason = `Lowest-cost DC (${lane.RankedOption1DC}) hit utilization cap (${input.utilCap}%) -> Reassigned to next cheapest active DC (${movedToDc}).`;
+        }
+
+        const beforeCostVal = Number((lane as any).OriginalCostPerUnit
+          ? (lane as any).OriginalCostPerUnit * Math.max(lane.TotalCount || 1, 1)
+          : (lane.RankedOption2Cost || lane.TotalCost || lane.LaneCost || 0));
+
+        return {
+          Dest3Zip: lane.Dest3Zip,
+          Channel: lane.Channel,
+          Terms: lane.Terms,
+          ActualDC: origDc || 'NA',
+          MovedToDC: movedToDc || 'NA',
+          BeforeCost: `$${beforeCostVal.toFixed(2)}`,
+          AfterCost: `$${Number(lane.TotalCost ?? lane.LaneCost ?? 0).toFixed(2)}`,
+          CandidateOptionsWithCost: candidateOptions,
+          ReassignmentReason: reason,
+        };
+      });
+
+    if (movedLanesSample.length > 0) {
+      console.group('[Scenario Allocation] Sample 5 Moved Lanes Detailed Trace');
+      console.log('Scenario ID:', input.scenarioId, '| Mode:', mode, '| Utilization Cap:', `${input.utilCap}%`);
+      console.table(movedLanesSample);
+      console.groupEnd();
+    }
+
     logBcvCollectRelocationSummary(input.scenarioType, resultsLanes);
   }
 

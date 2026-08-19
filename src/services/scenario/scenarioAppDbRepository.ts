@@ -3,6 +3,7 @@ import {
   deleteCollectionDocumentsByField,
   listCollectionDocuments,
   upsertCollectionDocumentByField,
+  enrichRankedOptionsForLanes,
 } from '@/services/domo';
 import type { ScenarioRunResultsLane } from '@/data';
 import { ScenarioRepositoryRecord } from './scenarioModels';
@@ -226,13 +227,17 @@ const parseLaneDocument = (doc: any): { scenarioId: string; scenarioName: string
   };
 };
 
-export const loadScenarioLaneSnapshotsFromAppDb = async (scenarioId: string): Promise<ScenarioRunResultsLane[]> => {
+export const loadScenarioLaneSnapshotsFromAppDb = async (
+  scenarioId: string,
+  globalCandidatePool?: ScenarioRunResultsLane[]
+): Promise<ScenarioRunResultsLane[]> => {
   const normalizedScenarioId = String(scenarioId || '').trim();
   if (!normalizedScenarioId) return [];
 
   try {
+    console.log(`[AppDB Scenario Lanes Read] Fetching lane snapshots for scenario: ${normalizedScenarioId}`);
     const laneDocuments = await listCollectionDocuments(APPDB_COLLECTIONS.customScenarioLanes);
-    return laneDocuments
+    const rawLanes = laneDocuments
       .map(parseLaneDocument)
       .filter((laneDoc): laneDoc is NonNullable<ReturnType<typeof parseLaneDocument>> =>
         Boolean(laneDoc) && laneDoc.scenarioId === normalizedScenarioId)
@@ -241,6 +246,10 @@ export const loadScenarioLaneSnapshotsFromAppDb = async (scenarioId: string): Pr
         ...row,
         ScenarioRunID: normalizedScenarioId,
       })));
+
+    console.log(`[AppDB Scenario Lanes Read] Retrieved ${rawLanes.length} lane(s) across chunks for ${normalizedScenarioId}`);
+    const enriched = enrichRankedOptionsForLanes(rawLanes, globalCandidatePool);
+    return enriched;
   } catch (error) {
     console.warn('[Scenario AppDB] Failed to load scenario lane snapshots', { scenarioId: normalizedScenarioId, error });
     return [];
@@ -305,6 +314,7 @@ const mergeLaneSnapshots = (
 
 export const upsertScenarioLaneSnapshotsToAppDb = async (record: ScenarioRepositoryRecord): Promise<void> => {
   if (!record.snapshot) {
+    console.log(`[AppDB Scenario Lanes Store] No snapshot present for ${record.definition.scenarioId}; deleting lane chunks`);
     await deleteCollectionDocumentsByField(APPDB_COLLECTIONS.customScenarioLanes, 'scenarioId', record.definition.scenarioId);
     return;
   }
@@ -315,6 +325,8 @@ export const upsertScenarioLaneSnapshotsToAppDb = async (record: ScenarioReposit
     record.snapshot.resultsLanes,
   );
 
+  console.log(`[AppDB Scenario Lanes Store] Storing ${record.snapshot.resultsLanes.length} lanes in ${chunks.length} chunk(s) for ${record.definition.scenarioId} to collection '${APPDB_COLLECTIONS.customScenarioLanes}'`);
+
   await deleteCollectionDocumentsByField(APPDB_COLLECTIONS.customScenarioLanes, 'scenarioId', record.definition.scenarioId);
 
   await Promise.all(chunks.map((chunk) => upsertCollectionDocumentByField(
@@ -323,6 +335,7 @@ export const upsertScenarioLaneSnapshotsToAppDb = async (record: ScenarioReposit
     chunk.id,
     chunk,
   )));
+  console.log(`[AppDB Scenario Lanes Store] Successfully persisted ${chunks.length} lane chunk(s) for ${record.definition.scenarioId}`);
 };
 
 export const deleteScenarioLaneSnapshotsFromAppDb = async (scenarioId: string): Promise<number> => {
@@ -331,11 +344,17 @@ export const deleteScenarioLaneSnapshotsFromAppDb = async (scenarioId: string): 
 
 export const loadScenarioRecordsFromAppDb = async (): Promise<ScenarioRepositoryRecord[]> => {
   try {
+    console.log('[AppDB Scenario Load] Loading all custom scenarios & lane chunks from Domo AppDB...');
     const [scenarioDocuments, laneDocuments, localRecords] = await Promise.all([
       listCollectionDocuments(APPDB_COLLECTIONS.customScenarios),
       listCollectionDocuments(APPDB_COLLECTIONS.customScenarioLanes),
       Promise.resolve(listScenarioRecords()),
     ]);
+    console.log('[AppDB Scenario Load] Raw document counts:', {
+      customScenariosDocs: scenarioDocuments.length,
+      customScenarioLanesDocs: laneDocuments.length,
+      localCacheRecords: localRecords.length,
+    });
     const localByScenarioId = new Map(localRecords.map((record) => [record.definition.scenarioId, record]));
     const laneDocsByScenarioId = new Map<string, Array<{ scenarioId: string; scenarioName: string; chunkIndex: number; lanes: ScenarioRunResultsLane[] }>>();
     const latestByScenarioId = new Map<string, { record: ScenarioRepositoryRecord; timestamp: number }>();
@@ -397,6 +416,14 @@ export const loadScenarioRecordsFromAppDb = async (): Promise<ScenarioRepository
       .sort((a, b) => b.timestamp - a.timestamp)
       .map(({ record }) => cloneScenarioRepositoryRecord(record));
 
+    console.log('[AppDB Scenario Load] Reconstructed persisted scenarios:', records.map((r) => ({
+      scenarioId: r.definition.scenarioId,
+      scenarioName: r.definition.scenarioName,
+      laneCount: r.snapshot?.resultsLanes?.length || 0,
+      dcCount: r.snapshot?.resultsDC?.length || 0,
+      updatedAt: r.definition.updatedAt || r.snapshot?.updatedAt,
+    })));
+
     return records;
   } catch (error) {
     console.warn('[Scenario AppDB] Failed to load scenario records', error);
@@ -428,6 +455,7 @@ export const upsertScenarioRecordToAppDb = async (record: ScenarioRepositoryReco
     searchText: buildSearchText(record),
   };
 
+  console.log(`[AppDB Scenario Record Store] Saving metadata for ${scenarioId} (${record.definition.scenarioName}) to collection '${APPDB_COLLECTIONS.customScenarios}'`);
   await upsertCollectionDocumentByField(APPDB_COLLECTIONS.customScenarios, 'scenarioId', scenarioId, content);
 };
 

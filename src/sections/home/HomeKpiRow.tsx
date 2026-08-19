@@ -38,12 +38,12 @@ export const HomeKpiRow: React.FC<HomeKpiRowProps> = ({ aggregateKPIs }) => {
         format="number"
         size="small"
       />
-      <KPICard
+      {/* <KPICard
         label="SLA Breach %"
         value={aggregateKPIs.slaBreachPct}
         format="decimal"
         size="small"
-      />
+      /> */}
     </div>
   );
 };

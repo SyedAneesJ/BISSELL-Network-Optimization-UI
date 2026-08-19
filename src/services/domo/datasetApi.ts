@@ -96,23 +96,36 @@ const DatasetApi = {
     return response.json();
   },
 
-  async getDatasetDataCsv(datasetId: string, token: string, limit = 10, offset = 0) {
+  async getDatasetDataCsv(datasetId: string, token: string, limit = 100000, offset = 0) {
     const id = normalizeDatasetId(datasetId);
     const url = `https://api.domo.com/v1/datasets/${id}/data?includeHeader=true&limit=${limit}&offset=${offset}`;
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: 'text/csv'
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 25000);
+
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'text/csv'
+        },
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+
+      if (!response.ok) {
+        const err = await response.text().catch(() => '');
+        throw new Error(`Get dataset data failed: ${response.status} ${err}`);
       }
-    });
 
-    if (!response.ok) {
-      const err = await response.text().catch(() => '');
-      throw new Error(`Get dataset data failed: ${response.status} ${err}`);
+      return await response.text();
+    } catch (err: any) {
+      clearTimeout(timer);
+      if (err?.name === 'AbortError') {
+        throw new Error(`Get dataset data timed out after 25s for dataset ${id}`);
+      }
+      throw err;
     }
-
-    return response.text();
   }
 };
 

@@ -99,6 +99,7 @@ export const createScenarioDcColumns = (isBaseline = false, utilCap = 85): Colum
     sortable: true,
     render: (row) => formatNumberOrNA(row.SpaceRequired),
   },
+  /*
   {
     key: 'SLABreachCount',
     header: 'SLA Breaches',
@@ -109,6 +110,7 @@ export const createScenarioDcColumns = (isBaseline = false, utilCap = 85): Colum
       </span>
     ),
   },
+  */
   {
     key: 'OvercapFlag',
     header: 'Flag',
@@ -128,202 +130,151 @@ export const createScenarioDcColumns = (isBaseline = false, utilCap = 85): Colum
 ];
 
 export const createScenarioLaneColumns = (): Column<ScenarioRunResultsLane>[] => [
-  { key: 'Dest3Zip', header: '3-Zip', width: '80px', sortable: true },
-  // { key: 'DestState', header: 'State', width: '60px', sortable: true },
-  { key: 'Channel', header: 'Channel', width: '80px', sortable: true },
-  { key: 'Terms', header: 'Terms', width: '80px', sortable: true },
-  { key: 'AssignedDC', header: 'Assigned DC', width: '120px', sortable: true },
-  {
-    key: 'CostingWarehouse',
-    header: 'Costing WH',
-    width: '120px',
-    sortable: true,
-    render: (row) => row.CostingWarehouse || row.AssignedDC,
-  },
+  { key: 'Dest3Zip', header: 'Destination 3ZIP', width: '120px', sortable: true },
   {
     key: 'DefaultShipFrom',
-    header: 'Default Ship From',
+    header: 'Default Warehouse',
     width: '140px',
     sortable: true,
-    render: (row) => row.DefaultShipFrom || '-',
+    render: (row) => row.DefaultShipFrom || row.AssignedDC || '-',
+  },
+  {
+    key: 'CostingWarehouse',
+    header: 'Costing Warehouse',
+    width: '140px',
+    sortable: true,
+    render: (row) => row.CostingWarehouse || row.DefaultShipFrom || '-',
+  },
+  {
+    key: 'RankedOption1DC',
+    header: 'Cheapest to Serve',
+    width: '140px',
+    sortable: true,
+    render: (row) => row.RankedOption1DC || '-',
   },
   {
     key: 'InboundSpend',
-    header: 'Inbound',
-    width: '90px',
+    header: 'Inbound Spend',
+    width: '110px',
     sortable: true,
     render: (row) => formatCurrencyOrNA(row.InboundSpend ?? null, 2),
   },
   {
+    key: 'DistributionCost',
+    header: 'Distribution Spend',
+    width: '130px',
+    sortable: true,
+    render: (row) => formatCurrencyOrNA(row.DistributionCost ?? null, 2),
+  },
+  {
     key: 'ParcelSpend',
-    header: 'Parcel',
-    width: '90px',
+    header: 'Parcel Spend',
+    width: '110px',
     sortable: true,
     render: (row) => formatCurrencyOrNA(row.ParcelSpend ?? null, 2),
   },
   {
-    key: 'LtlSpend',
-    header: 'LTL Spend',
+    key: 'DeliveryDays',
+    header: 'Service Days',
     width: '100px',
     sortable: true,
-    render: (row) => formatCurrencyOrNA(row.LtlSpend ?? 0, 2),
+    render: (row) => formatDecimalOrNA(row.DeliveryDays ?? row.AvgDeliveryDays, 1),
   },
   {
     key: 'TlSpend',
     header: 'TL Spend',
-    width: '100px',
+    width: '110px',
     sortable: true,
     render: (row) => formatCurrencyOrNA(row.TlSpend ?? 0, 2),
   },
   {
-    key: 'CostPerUnit',
-    header: 'Cost / Unit',
-    width: '100px',
+    key: 'LtlSpend',
+    header: 'LTL Spend',
+    width: '110px',
     sortable: true,
-    render: (row) => formatCurrencyOrNA(row.CostPerUnit ?? null, 2),
-  },
-  {
-    key: 'LaneCost',
-    header: 'Cost',
-    width: '90px',
-    sortable: true,
-    render: (row) => formatCurrencyOrNA(row.LaneCost, 2),
+    render: (row) => formatCurrencyOrNA(row.LtlSpend ?? 0, 2),
   },
   {
     key: 'TotalCost',
-    header: 'Total Cost',
-    width: '100px',
+    header: 'Total Spend',
+    width: '120px',
     sortable: true,
     render: (row) => formatCurrencyOrNA(row.TotalCost ?? row.LaneCost, 2),
   },
-  {
-    key: 'ScenarioType',
-    header: 'Scenario Type',
-    width: '160px',
-    sortable: true,
-    render: (row) => formatTextOrNA(row.ScenarioType),
-  },
-  {
-    key: 'CostDeltaVsBest',
-    header: 'Delta vs Best',
-    width: '100px',
-    sortable: true,
-    render: (row) => (
-      <span className={row.CostDeltaVsBest > 0 ? 'text-amber-600' : 'text-green-600'}>
-        {formatCurrencyOrNA(row.CostDeltaVsBest, 2)}
-      </span>
-    ),
-  },
-  {
-    key: 'DeliveryDays',
-    header: 'Days',
-    width: '70px',
-    sortable: true,
-    render: (row) => formatDecimalOrNA(row.DeliveryDays, 1),
-  },
-  {
-    key: 'SLABreachFlag',
-    header: 'SLA',
-    width: '60px',
-    sortable: true,
-    render: (row) => (
-      row.SLABreachFlag === 'Y' ? <span className="text-red-600 font-medium">Breach</span> : '-'
-    ),
-  },
-  {
-    key: 'OverrideAppliedFlag',
-    header: 'Override',
-    width: '80px',
-    render: (row) => (
-      row.OverrideAppliedFlag === 'Y' ? (
-        <span className="text
-        -blue-600 text-xs">{row.OverrideVersion}</span>
-      ) : '-'
-    ),
-  },
-  {
-    key: 'OvercapFlag',
-    header: 'Flag',
-    width: '90px',
-    sortable: true,
-    render: (row) => (
-      row.OvercapFlag === 'Y'
-        ? <span className="px-2 py-0.5 rounded bg-red-100 text-red-700 text-xs font-semibold">Overcap</span>
-        : <span className="text-slate-400">-</span>
-    ),
-  },
 ];
 
-const formatOptionDays = (value: unknown): string => {
-  if (value === null || value === undefined) return 'NA';
-  const str = String(value).trim();
-  if (str === '' || str.toLowerCase() === 'na') return 'NA';
-  const num = Number(str.replace(/,/g, ''));
-  if (Number.isNaN(num)) return str;
-  return String(Math.round(num * 1000) / 1000);
-};
-
 export const createScenarioRankedOptionsColumns = (): Column<ScenarioRunResultsLane>[] => [
-  { key: 'Dest3Zip', header: '3-Zip', width: '80px', sortable: true },
-  { key: 'Channel', header: 'Channel', width: '80px', sortable: true },
-  { key: 'Terms', header: 'Terms', width: '80px', sortable: true },
+  { key: 'Dest3Zip', header: 'Destination 3Zip', width: '120px', sortable: true },
   {
     key: 'RankedOption1DC',
-    header: 'Option #1',
-    width: '200px',
-    render: (row) => (
-      <div className="text-xs">
-        <div className="font-medium">{row.RankedOption1DC}</div>
-        <div className="text-slate-600">{formatCurrencyOrNA(row.RankedOption1Cost, 2)} | {formatOptionDays(row.RankedOption1Days)}d</div>
-      </div>
-    ),
+    header: 'Option 1',
+    width: '180px',
+    render: (row) => {
+      const dc = row.RankedOption1DC;
+      const cost = Number(row.RankedOption1Cost ?? 0);
+      if (!dc || cost <= 0) return <span className="text-slate-400 text-xs">- NA</span>;
+      return (
+        <div className="text-xs">
+          <div className="font-medium">{dc}</div>
+          <div className="text-slate-600">{formatCurrencyOrNA(cost, 2)}</div>
+        </div>
+      );
+    },
   },
   {
     key: 'RankedOption2DC',
-    header: 'Option #2',
-    width: '200px',
-    render: (row) => (
-      <div className="text-xs">
-        <div className="font-medium">{row.RankedOption2DC}</div>
-        <div className="text-slate-600">{formatCurrencyOrNA(row.RankedOption2Cost, 2)} | {formatOptionDays(row.RankedOption2Days)}d</div>
-      </div>
-    ),
+    header: 'Option 2',
+    width: '180px',
+    render: (row) => {
+      const dc = row.RankedOption2DC;
+      const cost = Number(row.RankedOption2Cost ?? 0);
+      if (!dc || cost <= 0) return <span className="text-slate-400 text-xs">- NA</span>;
+      return (
+        <div className="text-xs">
+          <div className="font-medium">{dc}</div>
+          <div className="text-slate-600">{formatCurrencyOrNA(cost, 2)}</div>
+        </div>
+      );
+    },
   },
   {
     key: 'RankedOption3DC',
-    header: 'Option #3',
-    width: '200px',
-    render: (row) => (
-      <div className="text-xs">
-        <div className="font-medium">{row.RankedOption3DC}</div>
-        <div className="text-slate-600">{formatCurrencyOrNA(row.RankedOption3Cost, 2)} | {formatOptionDays(row.RankedOption3Days)}d</div>
-      </div>
-    ),
+    header: 'Option 3',
+    width: '180px',
+    render: (row) => {
+      const dc = row.RankedOption3DC;
+      const cost = Number(row.RankedOption3Cost ?? 0);
+      if (!dc || cost <= 0) return <span className="text-slate-400 text-xs">- NA</span>;
+      return (
+        <div className="text-xs">
+          <div className="font-medium">{dc}</div>
+          <div className="text-slate-600">{formatCurrencyOrNA(cost, 2)}</div>
+        </div>
+      );
+    },
   },
   {
-    key: 'AssignedDC',
+    key: 'RankedOption4DC',
+    header: 'Option 4',
+    width: '180px',
+    render: (row) => {
+      const dc = (row as any).RankedOption4DC;
+      const cost = Number((row as any).RankedOption4Cost ?? 0);
+      if (!dc || cost <= 0) return <span className="text-slate-400 text-xs">- NA</span>;
+      return (
+        <div className="text-xs">
+          <div className="font-medium">{dc}</div>
+          <div className="text-slate-600">{formatCurrencyOrNA(cost, 2)}</div>
+        </div>
+      );
+    },
+  },
+  {
+    key: 'DefaultShipFrom',
     header: 'Selected',
-    width: '120px',
+    width: '140px',
     render: (row) => (
-      <div className="font-medium text-blue-600">{row.AssignedDC}</div>
-    ),
-  },
-  {
-    key: 'ChosenRank',
-    header: 'Rank',
-    width: '80px',
-    sortable: true,
-    render: (row) => `#${row.ChosenRank}`,
-  },
-  {
-    key: 'CostDeltaVsBest',
-    header: 'Delta',
-    width: '90px',
-    sortable: true,
-    render: (row) => (
-      <span className={row.CostDeltaVsBest > 0 ? 'text-amber-600' : 'text-green-600'}>
-        {formatCurrencyOrNA(row.CostDeltaVsBest, 2)}
-      </span>
+      <div className="font-medium text-blue-600">{row.DefaultShipFrom || row.AssignedDC || '-'}</div>
     ),
   },
 ];

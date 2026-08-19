@@ -59,7 +59,7 @@ export const ScenarioHeader: React.FC<ScenarioHeaderProps> = ({
                 )}
               </div>
               <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-sm text-slate-600">
-                <span>{scenario.ScenarioType} | {scenario.Region} | {scenario.EntityScope}</span>
+                <span>{scenario.Region} | {scenario.EntityScope}</span>
                 {scenario.ApprovedBy && (
                   <span>Approved by {scenario.ApprovedBy}</span>
                 )}

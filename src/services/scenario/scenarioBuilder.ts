@@ -22,6 +22,8 @@ import {
   scenarioTypeMatches,
 } from './scenarioTypeRules';
 
+import { enrichRankedOptionsForLanes } from '../domo/domoDataset';
+
 const buildScenarioId = (existingCount: number) => {
   const ts = Date.now().toString(36).toUpperCase();
   const suffix = Math.random().toString(36).substring(2, 6).toUpperCase();
@@ -30,7 +32,8 @@ const buildScenarioId = (existingCount: number) => {
 
 const CANADA_STRATFORD_LANE_DATASET_ID = String(import.meta.env.VITE_SCENARIO_CANADA_STRATFORD_DATASET_ID || '').trim();
 
-const dedupeRowsByKey = <T>(rows: T[], getKey: (row: T) => string): T[] => {
+const dedupeRowsByKey = <T>(rows: T[] | undefined | null, getKey: (row: T) => string): T[] => {
+  if (!rows || !Array.isArray(rows)) return [];
   const seen = new Set<string>();
   const result: T[] = [];
   rows.forEach((row) => {
@@ -42,15 +45,18 @@ const dedupeRowsByKey = <T>(rows: T[], getKey: (row: T) => string): T[] => {
   return result;
 };
 
-const canonicalizeBaselineLaneRows = (rows: ScenarioRunResultsLane[]): ScenarioRunResultsLane[] =>
-  dedupeRowsByKey(rows, (row) => [
+const canonicalizeBaselineLaneRows = (rows: ScenarioRunResultsLane[] | undefined | null): ScenarioRunResultsLane[] => {
+  if (!rows || !Array.isArray(rows)) return [];
+  return dedupeRowsByKey(rows, (row) => [
     row.Dest3Zip || '',
     row.Channel || '',
     row.Terms || '',
     row.DestState || '',
     row.PartyName || row.CustomerGroup || '',
+    row.CostingWarehouse || row.AssignedDC || row.DefaultShipFrom || '',
     row.ScenarioType || '',
   ].join('|'));
+};
 
 const getBaselineLaneRows = (
   context: ScenarioBuildContext,
@@ -94,7 +100,7 @@ const getBaselineLaneRows = (
         laneCount: rawMap[baselineScenarioId].length,
       });
     }
-    return canonicalizeBaselineLaneRows(rawMap[baselineScenarioId]);
+    return canonicalizeBaselineLaneRows(enrichRankedOptionsForLanes(rawMap[baselineScenarioId]));
   }
 
   const normalizedScenarioType = String(scenarioType || '').trim().toLowerCase();
@@ -772,18 +778,36 @@ export const buildScenarioArtifacts = (
       costingWH: row.CostingWarehouse,
     }));
 
-    console.groupCollapsed('[Scenario Builder] lane source');
-    console.log({
+    const datasetIdNames: Record<string, string> = {
+      [String(import.meta.env.VITE_SCENARIO_LANE_US_BASELINE_NEW_ID || '').trim()]: 'US Baseline New Lanes (VITE_SCENARIO_LANE_US_BASELINE_NEW_ID)',
+      [String(import.meta.env.VITE_SCENARIO_LANE_RAW_DATASET_ID || '').trim()]: 'Raw Lanes (VITE_SCENARIO_LANE_RAW_DATASET_ID)',
+      [String(import.meta.env.VITE_SCENARIO_LANE_TACTICAL_CONSOLIDATION_DATASET_ID || '').trim()]: 'Tactical Consolidation Lanes (VITE_SCENARIO_LANE_TACTICAL_CONSOLIDATION_DATASET_ID)',
+      [String(import.meta.env.VITE_SCENARIO_LANE_BCV_DATASET_ID || '').trim()]: 'BCV Lanes (VITE_SCENARIO_LANE_BCV_DATASET_ID)',
+      [String(import.meta.env.VITE_SCENARIO_LANE_CANADA_BASELINE_DATASET_ID || '').trim()]: 'Canada Baseline Lanes (VITE_SCENARIO_LANE_CANADA_BASELINE_DATASET_ID)',
+      [String(import.meta.env.VITE_SCENARIO_CANADA_STRATFORD_DATASET_ID || '').trim()]: 'Canada Stratford Lanes (VITE_SCENARIO_CANADA_STRATFORD_DATASET_ID)',
+    };
+
+    const sourceDatasetBreakdown = baselineLaneRows.reduce<Record<string, { count: number; datasetName: string }>>((acc, row) => {
+      const key = String(row.SourceDatasetId || 'missing');
+      const name = datasetIdNames[key] || 'Other / Custom Dataset';
+      if (!acc[key]) {
+        acc[key] = { count: 0, datasetName: name };
+      }
+      acc[key].count += 1;
+      return acc;
+    }, {});
+
+    console.group('[Scenario Builder] Exact Selected Lanes Verification');
+    console.log('[Scenario Builder] Summary:', {
       scenarioId,
       scenarioType: normalizedPayload.input.scenarioType,
+      region: normalizedPayload.input.region,
       baselineScenarioId: baseline?.ScenarioRunID ?? normalizedPayload.input.baselineScenarioId ?? null,
-      exactBaselineScenarioId: exactBaseline?.ScenarioRunID ?? null,
-      laneSourceScenarioId: laneSourceBaseline?.ScenarioRunID ?? null,
+      selectedLaneCount: baselineLaneRows.length,
       sourceLabel,
-      rawCountBeforeCanon: rawCount,
-      laneCountAfterCanon: baselineLaneRows.length,
-      sampleDedupeKeys: sampleKeys,
+      sourceDatasetsUsed: sourceDatasetBreakdown,
     });
+    console.log('[Scenario Builder] Sample Selected Lanes (First 3):', sampleRows.slice(0, 3));
     console.groupEnd();
   }
 

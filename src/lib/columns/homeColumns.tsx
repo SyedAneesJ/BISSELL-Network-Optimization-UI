@@ -124,7 +124,7 @@ export const createScenarioColumns = ({
     ),
   },
   { key: 'Region', header: 'Region', width: '80px', sortable: true },
-  { key: 'ScenarioType', header: 'Scenario Type', width: '180px', sortable: true },
+  // { key: 'ScenarioType', header: 'Scenario Type', width: '180px', sortable: true },
   { key: 'EntityScope', header: 'Entity', width: '100px', sortable: true },
   {
     key: 'Status',
@@ -168,6 +168,7 @@ export const createScenarioColumns = ({
     sortable: true,
     render: (row) => formatNumberOrNA(row.TotalCount),
   },
+  /*
   {
     key: 'SLABreachPct',
     header: 'SLA Breach %',
@@ -186,6 +187,7 @@ export const createScenarioColumns = ({
     sortable: true,
       render: (row) => formatNumberOrNA(row.ExcludedBySLACount),
   },
+  */
   {
     key: 'MaxUtilPct',
     header: 'Utilization %',
@@ -251,6 +253,7 @@ export const createScenarioColumns = ({
     sortable: true,
     render: (row) => formatTextOrNA(row.CollectTreatment),
   },
+  /*
   {
     key: 'OverrideCount',
     header: 'Overrides',
@@ -258,6 +261,7 @@ export const createScenarioColumns = ({
     sortable: true,
     render: (row) => row.OverrideCount || '-',
   },
+  */
   {
     key: 'LastUpdatedAt',
     header: 'Last Updated',

@@ -9,6 +9,7 @@ import {
   DomoSpaceOverrideRow,
   getAdditionalCostsForDc,
 } from '@/data';
+import { enrichRankedOptionsForLanes } from '@/services/domo/domoDataset';
 import { downloadBlob, toCSV, useActionFeedback, normalizeZip3, normalizeWarehouseName } from '@/utils';
 import { createScenarioDcColumns, createScenarioLaneColumns, createScenarioRankedOptionsColumns } from '@/lib';
 import { ScenarioLaneOption } from '@/components/modals';
@@ -19,6 +20,8 @@ interface UseScenarioDetailsParams {
   scenarioRunConfigs: ScenarioRunConfig[];
   scenarioRunResultsDC: ScenarioRunResultsDC[];
   scenarioRunResultsLanes: ScenarioRunResultsLane[];
+  /** Raw multi-DC candidate pool from Domo lane dataset, used for ranked options enrichment */
+  rawLaneCandidatePool?: ScenarioRunResultsLane[];
   scenarioOverrides: ScenarioOverride[];
   costComponentRows?: DomoCostComponentRow[];
   spaceOverrideRows?: DomoSpaceOverrideRow[];
@@ -36,6 +39,7 @@ export const useScenarioDetails = ({
   scenarioRunConfigs,
   scenarioRunResultsDC,
   scenarioRunResultsLanes,
+  rawLaneCandidatePool,
   scenarioOverrides,
   costComponentRows,
   spaceOverrideRows,
@@ -75,8 +79,9 @@ export const useScenarioDetails = ({
   const isUsBaseline = useMemo(() => {
     if (!rawScenario) return false;
     return (
-      rawScenario.Region === 'US' &&
+      (rawScenario.Region === 'US' || rawScenario.Region === 'Canada') &&
       (rawScenario.ScenarioRunID === 'SR001' ||
+        rawScenario.ScenarioRunID === 'SR005' ||
         String(rawScenario.ScenarioType || '').toLowerCase().includes('baseline') ||
         String(rawScenario.RunName || '').toLowerCase().includes('baseline'))
     );
@@ -85,7 +90,7 @@ export const useScenarioDetails = ({
   // Broader flag: includes Tactical + Consolidation US scenarios
   const isUsSpaceOverrideScenario = useMemo(() => {
     if (!rawScenario) return false;
-    if (rawScenario.Region !== 'US') return false;
+    if (rawScenario.Region !== 'US' && rawScenario.Region !== 'Canada') return false;
     if (isUsBaseline) return true;
     const type = String(rawScenario.ScenarioType || '').toLowerCase();
     const name = String(rawScenario.RunName || '').toLowerCase();
@@ -479,8 +484,11 @@ export const useScenarioDetails = ({
     .join('|'), []);
 
   const laneOptionSort = useCallback((a: ScenarioRunResultsLane, b: ScenarioRunResultsLane) => {
-    const cpuA = a.CostPerUnit ?? a.LaneCost ?? 0;
-    const cpuB = b.CostPerUnit ?? b.LaneCost ?? 0;
+    const costA = Number(a.TotalCost ?? a.LaneCost ?? 0);
+    const costB = Number(b.TotalCost ?? b.LaneCost ?? 0);
+    if (costA !== costB && costA > 0 && costB > 0) return costA - costB;
+    const cpuA = a.CostPerUnit ?? 0;
+    const cpuB = b.CostPerUnit ?? 0;
     if (cpuA !== cpuB) return cpuA - cpuB;
     const warehouseA = `${a.CostingWarehouse || a.AssignedDC || ''}|${a.DefaultShipFrom || ''}`;
     const warehouseB = `${b.CostingWarehouse || b.AssignedDC || ''}|${b.DefaultShipFrom || ''}`;
@@ -513,9 +521,37 @@ export const useScenarioDetails = ({
     [scenarioId, scenarioOverrides],
   );
 
-  const visibleLaneResults = useMemo(
-    () => normalizedUniqueLaneResults,
-    [normalizedUniqueLaneResults],
+  const visibleLaneResults = useMemo(() => {
+    // Use rawLaneCandidatePool (full multi-DC Domo dataset) when available, so all 4 ranked
+    // options are populated. scenarioRunResultsLanes only has 1 DC per zip (assigned DC).
+    const candidatePool = rawLaneCandidatePool && rawLaneCandidatePool.length > 0
+      ? rawLaneCandidatePool
+      : scenarioRunResultsLanes;
+
+    const enriched = enrichRankedOptionsForLanes(normalizedUniqueLaneResults, candidatePool);
+
+    console.log(`[useScenarioDetails Flow: Lanes Processing] scenarioId=${scenarioId}:`, {
+      inputLanesCount: scenarioRunResultsLanes.length,
+      overriddenCount: overriddenLaneResults.length,
+      uniqueLanesCount: normalizedUniqueLaneResults.length,
+      candidatePoolSource: (rawLaneCandidatePool && rawLaneCandidatePool.length > 0) ? 'rawLaneCandidatePool (Full Multi-DC)' : 'scenarioRunResultsLanes',
+      candidatePoolCount: candidatePool.length,
+      enrichedLanesCount: enriched.length,
+      sampleFirst3EnrichedLanes: enriched.slice(0, 3).map((l) => ({
+        Zip: l.Dest3Zip,
+        Channel: l.Channel,
+        AssignedDC: l.AssignedDC,
+        CostingWarehouse: l.CostingWarehouse,
+        RankedOption1: `${l.RankedOption1DC} ($${l.RankedOption1Cost})`,
+        RankedOption2: `${l.RankedOption2DC} ($${l.RankedOption2Cost})`,
+        RankedOption3: `${l.RankedOption3DC} ($${l.RankedOption3Cost})`,
+        RankedOption4: `${l.RankedOption4DC} ($${l.RankedOption4Cost})`,
+      })),
+    });
+
+    return enriched;
+  },
+    [normalizedUniqueLaneResults, scenarioRunResultsLanes, rawLaneCandidatePool, scenarioId, overriddenLaneResults.length],
   );
 
   const laneOptions: ScenarioLaneOption[] = useMemo(() => visibleLaneResults.map((lane) => {
@@ -722,7 +758,7 @@ export const useScenarioDetails = ({
         const baseCostDisplay = isBaseline ? Math.max(0, dc.TotalCost - addCost) : dc.TotalCost;
         const totalCostDisplay = isBaseline ? dc.TotalCost : dc.TotalCost + (dc.IsSuppressed === 'N' ? addCost : 0);
 
-        const isUsBaselineHeader = scenario.Region === 'US' && isBaseline;
+        const isUsBaselineHeader = (scenario.Region === 'US' || scenario.Region === 'Canada') && isBaseline;
         const pctFields = isUsBaselineHeader && (dc as any).PctToTotalSales !== undefined ? {
           '% to total sales': (dc as any).PctToTotalSales,
           'IBF % of Revenue': (dc as any).IbfPctOfRevenue,
@@ -784,40 +820,17 @@ export const useScenarioDetails = ({
     scheduleExport('scenario_export_routing', () => {
       const rows = visibleLaneResults.map((lane) => ({
         ScenarioRunID: lane.ScenarioRunID,
-        Dest3Zip: lane.Dest3Zip,
-        DestState: lane.DestState,
-        Channel: lane.Channel,
-        Terms: lane.Terms,
-        FreightTerms: lane.FreightTerms || '',
-
-        AssignedDC: lane.AssignedDC,
-        CostRank: lane.CostRank ?? '',
-        LaneCost: lane.LaneCost,
-        CostDeltaVsBest: lane.CostDeltaVsBest ?? 0,
-        CostPerUnit: lane.CostPerUnit ?? '',
-        DeliveryDays: lane.DeliveryDays,
-        AvgDeliveryDays: lane.AvgDeliveryDays ?? '',
-        AvgTransitDays: lane.AvgTransitDays ?? '',
-        TotalUnits: lane.TotalUnits ?? lane.TotalCount ?? lane.VolumeUnits ?? '',
-        SLABreachFlag: lane.SLABreachFlag,
-        ExcludedBySLAFlag: lane.ExcludedBySLAFlag,
-        ScenarioType: lane.ScenarioType || '',
-        RunName: lane.RunName || '',
-        CostingWarehouse: lane.CostingWarehouse || '',
-        DefaultShipFrom: lane.DefaultShipFrom || '',
-        InboundSpend: lane.InboundSpend ?? '',
-        ParcelSpend: lane.ParcelSpend ?? '',
-        LtlSpend: lane.LtlSpend ?? '',
-        TotalCost: lane.TotalCost ?? lane.LaneCost,
-        WorkingCapacity: lane.WorkingCapacity ?? '',
-        DistributionCost: lane.DistributionCost ?? '',
-        TlSpend: lane.TlSpend ?? '',
-        BreachFlag: lane.BreachFlag || '',
-        OrderToDeliverCalendarDays: lane.OrderToDeliverCalendarDays ?? '',
-        ShipToDeliverCalendarDays: lane.ShipToDeliverCalendarDays ?? '',
-        State: lane.State || '',
-
-        Threshold: lane.Threshold ?? '',
+        'Destination 3ZIP': lane.Dest3Zip,
+        'Default Warehouse': lane.DefaultShipFrom || lane.AssignedDC || '',
+        'Costing Warehouse': lane.CostingWarehouse || lane.DefaultShipFrom || '',
+        'Cheapest to Serve': lane.RankedOption1DC || '',
+        'Inbound Spend': lane.InboundSpend ?? 0,
+        'Distribution Spend': lane.DistributionCost ?? 0,
+        'Parcel Spend': lane.ParcelSpend ?? 0,
+        'Service Days': lane.DeliveryDays ?? lane.AvgDeliveryDays ?? 0,
+        'TL Spend': lane.TlSpend ?? 0,
+        'LTL Spend': lane.LtlSpend ?? 0,
+        'Total Spend': lane.TotalCost ?? lane.LaneCost ?? 0,
       }));
       const csv = toCSV(rows);
       downloadBlob(csv, `${scenarioId}_lane_table.csv`, 'text/csv;charset=utf-8;');
@@ -828,57 +841,16 @@ export const useScenarioDetails = ({
     scheduleExport('scenario_export_lane', () => {
       const rows = visibleLaneResults.map((lane) => ({
         ScenarioRunID: lane.ScenarioRunID,
-        Dest3Zip: lane.Dest3Zip,
-        DestState: lane.DestState,
-        Channel: lane.Channel,
-        Terms: lane.Terms,
-        FreightTerms: lane.FreightTerms || '',
-
-        AssignedDC: lane.AssignedDC,
-        RankedOption1DC: lane.RankedOption1DC,
-        RankedOption1Cost: lane.RankedOption1Cost,
-        RankedOption1Days: lane.RankedOption1Days,
-        RankedOption2DC: lane.RankedOption2DC,
-        RankedOption2Cost: lane.RankedOption2Cost,
-        RankedOption2Days: lane.RankedOption2Days,
-        RankedOption3DC: lane.RankedOption3DC,
-        RankedOption3Cost: lane.RankedOption3Cost,
-        RankedOption3Days: lane.RankedOption3Days,
-        ChosenRank: lane.ChosenRank,
-        LaneCost: lane.LaneCost,
-        CostDeltaVsBest: lane.CostDeltaVsBest,
-        DeliveryDays: lane.DeliveryDays,
-        AvgDeliveryDays: lane.AvgDeliveryDays ?? '',
-        AvgTransitDays: lane.AvgTransitDays ?? '',
-        TotalUnits: lane.TotalUnits ?? lane.TotalCount ?? lane.VolumeUnits ?? '',
-        OvercapFlag: lane.OvercapFlag ?? '',
-        SLABreachFlag: lane.SLABreachFlag,
-        ExcludedBySLAFlag: lane.ExcludedBySLAFlag,
-        FootprintContribution: lane.FootprintContribution,
-        UtilImpactPct: lane.UtilImpactPct,
-        OverrideAppliedFlag: lane.OverrideAppliedFlag,
-        OverrideVersion: lane.OverrideVersion,
-        NotesFlag: lane.NotesFlag,
-        ScenarioType: lane.ScenarioType || '',
-        RunName: lane.RunName || '',
-        CostingWarehouse: lane.CostingWarehouse || '',
-        DefaultShipFrom: lane.DefaultShipFrom || '',
-        InboundSpend: lane.InboundSpend ?? '',
-        ParcelSpend: lane.ParcelSpend ?? '',
-        LtlSpend: lane.LtlSpend ?? '',
-        TotalCost: lane.TotalCost ?? lane.LaneCost,
-        CostRank: lane.CostRank ?? '',
-        CostPerUnit: lane.CostPerUnit ?? '',
-        WorkingCapacity: lane.WorkingCapacity ?? '',
-        DistributionCost: lane.DistributionCost ?? '',
-        TlSpend: lane.TlSpend ?? '',
-        BreachFlag: lane.BreachFlag || '',
-        OrderToDeliverCalendarDays: lane.OrderToDeliverCalendarDays ?? '',
-        ShipToDeliverCalendarDays: lane.ShipToDeliverCalendarDays ?? '',
-        State: lane.State || '',
-
-        Threshold: lane.Threshold ?? '',
-        SourceDatasetId: lane.SourceDatasetId || '',
+        'Destination 3Zip': lane.Dest3Zip,
+        'Option 1 DC': lane.RankedOption1DC || '',
+        'Option 1 Total Cost': lane.RankedOption1Cost ?? 0,
+        'Option 2 DC': lane.RankedOption2DC || '',
+        'Option 2 Total Cost': lane.RankedOption2Cost ?? 0,
+        'Option 3 DC': lane.RankedOption3DC || '',
+        'Option 3 Total Cost': lane.RankedOption3Cost ?? 0,
+        'Option 4 DC': (lane as any).RankedOption4DC || '',
+        'Option 4 Total Cost': (lane as any).RankedOption4Cost ?? 0,
+        Selected: lane.DefaultShipFrom || lane.AssignedDC || '',
       }));
       const csv = toCSV(rows);
       downloadBlob(csv, `${scenarioId}_routing_assignments.csv`, 'text/csv;charset=utf-8;');
