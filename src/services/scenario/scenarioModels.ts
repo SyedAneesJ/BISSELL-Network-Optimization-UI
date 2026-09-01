@@ -71,6 +71,8 @@ export interface ScenarioBuildSummary {
   avgTransitDays: number | null;
   maxUtil: number;
   totalSpaceRequired: number;
+  spaceCore: number;
+  spaceBCV: number;
   excludedBySla: number;
   slaBreachCount: number;
   slaBreachPct: number;

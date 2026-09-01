@@ -134,7 +134,14 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
   const tlCostTotal = dcResults.reduce((sum, dc) => sum + (dc.TlSpend ?? 0), 0);
   const outboundCostTotal = parcelCostTotal + ltlCostTotal + tlCostTotal;
 
-  const isBaseline = scenario.ScenarioRunID === 'SR001' || scenario.ScenarioRunID === 'SR005' || String(scenario.ScenarioType || '').toLowerCase().includes('baseline');
+  const isCustom = !String(scenario.DataflowID || '').trim() ||
+    !['3267'].includes(String(scenario.DataflowID || '').trim());
+  const isBaseline = !isCustom && (
+    scenario.ScenarioRunID === 'SR001' ||
+    scenario.ScenarioRunID === 'SR005' ||
+    String(scenario.DataflowID || '') === '3267' ||
+    scenario.ScenarioRunID === 'SR_ETL_11_CANADA_CANADA_BASELINE_NA'
+  );
   const isUsBaseline = (scenario.Region === 'US' || scenario.Region === 'Canada') && isBaseline;
 
   const activeDcs = dcResults.filter(dc => dc.IsSuppressed !== 'Y');

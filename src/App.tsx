@@ -418,16 +418,24 @@ const mergeScenarioStateWithRecords = (
         ? cloneScenarioResultsDC(baseDcRows)
         : cloneScenarioResultsDC(record.snapshot.resultsDC),
     );
+    const isCustomScenario = !String(record.snapshot?.header?.DataflowID || record.definition.dataflowId || '').trim() ||
+      !['3267'].includes(String(record.snapshot?.header?.DataflowID || record.definition.dataflowId || '').trim());
     const freshLanes = freshLanesByScenarioId.get(scenarioId);
     const hasFreshDomoLanes = Boolean(freshLanes && freshLanes.length > 0);
-    const rawSnapshotLanes = hasFreshDomoLanes
-      ? canonicalizeScenarioResultsLanes(freshLanes || [])
-      : canonicalizeScenarioResultsLanes((record.snapshot.resultsLanes || []).map(l => ({ ...l, ScenarioRunID: scenarioId })));
+    const snapshotLanes = (record.snapshot.resultsLanes || []).map(l => ({ ...l, ScenarioRunID: scenarioId }));
+    const hasSnapshotLanes = snapshotLanes.length > 0;
+
+    // Custom scenarios MUST strictly preserve their stored snapshot lanes.
+    // Only published Domo baseline (dataflow 3267) or scenarios with 0 snapshot lanes fall back to fresh Domo lanes.
+    const rawSnapshotLanes = (isCustomScenario && hasSnapshotLanes)
+      ? canonicalizeScenarioResultsLanes(snapshotLanes)
+      : (hasFreshDomoLanes
+          ? canonicalizeScenarioResultsLanes(freshLanes || [])
+          : canonicalizeScenarioResultsLanes(snapshotLanes));
+
     // Migration: align CostingWarehouse with AssignedDC for custom scenario snapshots.
     // Older snapshots may have stored the original Domo CostingWarehouse (e.g. "R Virginia")
     // instead of the allocator-assigned DC (e.g. "Los Angeles"). AssignedDC is always ground truth.
-    const isCustomScenario = !String(record.snapshot?.header?.DataflowID || record.definition.dataflowId || '').trim() ||
-      !['3267'].includes(String(record.snapshot?.header?.DataflowID || record.definition.dataflowId || '').trim());
     const migratedLanes = isCustomScenario
       ? rawSnapshotLanes.map(l => ({
           ...l,
@@ -439,7 +447,10 @@ const mergeScenarioStateWithRecords = (
       scenarioName: record.definition.scenarioName,
       isCustomScenario,
       hasFreshDomoLanes,
-      laneSource: hasFreshDomoLanes ? 'Domo combinedLaneDatasetRows' : 'Repository Snapshot resultsLanes',
+      hasSnapshotLanes,
+      laneSource: (isCustomScenario && hasSnapshotLanes)
+        ? 'Repository Snapshot resultsLanes (Strict Custom Protection)'
+        : (hasFreshDomoLanes ? 'Domo combinedLaneDatasetRows' : 'Repository Snapshot resultsLanes'),
       rawSnapshotLaneCount: record.snapshot.resultsLanes?.length || 0,
       finalLaneCount: migratedLanes.length,
       sampleLanes: migratedLanes.slice(0, 2).map((l) => ({
@@ -1036,14 +1047,17 @@ function App() {
         header.ScenarioRunID === 'SR005' ||
         String(header.ScenarioType || '').toLowerCase().includes('baseline') ||
         String(header.ScenarioType || '').toLowerCase().includes('tactical') ||
+        String(header.ScenarioType || '').toLowerCase().includes('strategic') ||
         String(header.ScenarioType || '').toLowerCase().includes('consolidation') ||
         String(header.RunName || '').toLowerCase().includes('baseline') ||
         String(header.RunName || '').toLowerCase().includes('tactical') ||
+        String(header.RunName || '').toLowerCase().includes('strategic') ||
         String(header.RunName || '').toLowerCase().includes('consolidation')
       );
 
       let spaceRequiredOverride = header.TotalSpaceRequired;
       let spaceCoreOverride = header.SpaceCore;
+      let appliedSpaceOverride = false;
 
       if (isUsSpaceOverrideHeader && spaceOverrideRows && spaceOverrideRows.length > 0) {
         const activeDcNames = new Set(
@@ -1055,17 +1069,21 @@ function App() {
         if (matchingOverrides.length > 0) {
           spaceRequiredOverride = Math.round(matchingOverrides.reduce((sum, r) => sum + r.ContractedSquareFootage, 0));
           spaceCoreOverride = Math.round(matchingOverrides.reduce((sum, r) => sum + r.WorkingCapacitySqFt, 0));
+          appliedSpaceOverride = true;
         }
       }
 
-      // For space-override scenarios, derive MaxUtilPct from the DC-level UtilPct
-      // so the table aligns with scenario details (which also derives from dcResults).
+      // Contract-space override rows intentionally report total working capacity
+      // vs contracted space. Otherwise, trust the generated/stored DC scorecard.
       // For US Baseline: DCs have UtilPct from the space override dataset (PalletUtilization × 100).
       // For Tactical/Consolidation: DCs have engine-computed UtilPct.
 
-      const maxUtilOverride = spaceRequiredOverride > 0
+      const dcMaxUtilOverride = dcs.length > 0
+        ? Number(dcs.reduce((max, row) => Math.max(max, Number(row.UtilPct || 0)), 0).toFixed(2))
+        : null;
+      const maxUtilOverride = appliedSpaceOverride && spaceRequiredOverride > 0
         ? Number(((spaceCoreOverride / spaceRequiredOverride) * 100).toFixed(2))
-        : (header.MaxUtilPct || 0);
+        : (dcMaxUtilOverride ?? (header.MaxUtilPct || 0));
 
       // For US Baseline there is no utilization cap — the stored value is incorrectly
       // mapped from the dataset's maxUtilization column. Force it to 100%.
@@ -2300,8 +2318,11 @@ function App() {
       const repairedRecords: ScenarioRepositoryRecord[] = [];
       const repairedRecordIds = new Set<string>();
       persistedRecords.forEach((record) => {
+        const isCustom = !String(record.snapshot?.header?.DataflowID || record.definition.dataflowId || '').trim() ||
+          !['3267'].includes(String(record.snapshot?.header?.DataflowID || record.definition.dataflowId || '').trim());
         const freshLanes = freshLanesByScenarioId.get(record.definition.scenarioId) || [];
-        if (freshLanes.length > 0 && record.snapshot) {
+        // Only allow automatic lane repair for published Domo baseline scenarios (dataflow 3267), NEVER custom user scenarios
+        if (!isCustom && freshLanes.length > 0 && record.snapshot) {
           const nextLanes = canonicalizeScenarioResultsLanes(freshLanes);
           const existingLanes = record.snapshot.resultsLanes || [];
           if (!areScenarioLanesEqual(existingLanes, nextLanes)) {

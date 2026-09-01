@@ -563,6 +563,8 @@ const summarizeDcResults = (rows: ScenarioRunResultsDC[]): ScenarioBuildSummary 
       avgTransitDays: null,
       maxUtil: 0,
       totalSpaceRequired: 0,
+      spaceCore: 0,
+      spaceBCV: 0,
       excludedBySla: 0,
       slaBreachCount: 0,
       missingAvgDays: 0,
@@ -598,7 +600,8 @@ const summarizeDcResults = (rows: ScenarioRunResultsDC[]): ScenarioBuildSummary 
   const avgTransitDays = avgTransitDaysWeight > 0 ? avgTransitDaysNumerator / avgTransitDaysWeight : null;
   const totalSpaceRequired = rows.reduce((sum, row) => sum + row.SpaceRequired, 0);
   const totalSpaceCore = rows.reduce((sum, row) => sum + row.SpaceCore, 0);
-  const maxUtil = totalSpaceRequired > 0 ? (totalSpaceCore / totalSpaceRequired) * 100 : 0;
+  const totalSpaceBCV = rows.reduce((sum, row) => sum + row.SpaceBCV, 0);
+  const maxUtil = rows.reduce((max, row) => Math.max(max, row.UtilPct), 0);
   const excludedBySla = rows.reduce((sum, row) => sum + row.ExcludedBySLACount, 0);
   const slaBreachCount = rows.reduce((sum, row) => sum + row.SLABreachCount, 0);
   const missingAvgDays = rows.filter((row) => row.AvgDays === 0).length;
@@ -612,6 +615,8 @@ const summarizeDcResults = (rows: ScenarioRunResultsDC[]): ScenarioBuildSummary 
     avgTransitDays: avgTransitDays === null ? null : Number(avgTransitDays.toFixed(2)),
     maxUtil: Number(maxUtil.toFixed(2)),
     totalSpaceRequired,
+    spaceCore: totalSpaceCore,
+    spaceBCV: totalSpaceBCV,
     excludedBySla,
     slaBreachCount,
     slaBreachPct,
@@ -630,6 +635,8 @@ const summarizeBaselineFromHeader = (
   avgTransitDays: header.AvgTransitDays ?? null,
   maxUtil: Number(header.MaxUtilPct ?? 0),
   totalSpaceRequired: Number(header.TotalSpaceRequired ?? 0),
+  spaceCore: Number(header.SpaceCore ?? 0),
+  spaceBCV: Number(header.SpaceBCV ?? 0),
   excludedBySla: Number(header.ExcludedBySLACount ?? 0),
   slaBreachCount: rows.reduce((sum, row) => sum + row.SLABreachCount, 0),
   slaBreachPct: Number(header.SLABreachPct ?? 0),
@@ -693,6 +700,8 @@ const applySummaryToHeader = (
   TotalCount: summary.totalUnits,
   MaxUtilPct: summary.maxUtil,
   TotalSpaceRequired: summary.totalSpaceRequired,
+  SpaceCore: summary.spaceCore,
+  SpaceBCV: summary.spaceBCV,
   ExcludedBySLACount: summary.excludedBySla,
   SLABreachPct: summary.slaBreachPct,
   AlertFlags: buildAlertFlagsFromSummary(summary),
@@ -838,12 +847,15 @@ export const buildScenarioArtifacts = (
     const allocation = allocateScenarioOutputs({
       scenarioId,
       scenarioType: normalizedPayload.input.scenarioType,
+      entityScope: normalizedPayload.input.entityScope,
       lanes: baselineLaneRows,
       activeDcs: normalizedPayload.input.activeDCs,
       suppressedDcs: normalizedPayload.input.suppressedDCs,
       dcCapacityRows: context.dcCapacityRows,
       utilCap: normalizedPayload.input.utilCap,
       levelLoad: normalizedPayload.input.levelLoad,
+      allowRelocationPrepaid: normalizedPayload.input.allowRelocationPrepaid,
+      allowRelocationCollect: normalizedPayload.input.allowRelocationCollect,
     });
     resultsDC = allocation.resultsDC;
     resultsLanes = allocation.resultsLanes;
@@ -880,6 +892,8 @@ export const buildScenarioArtifacts = (
         ExcludedBySLACount: Number(baseline.ExcludedBySLACount ?? headerBase.ExcludedBySLACount ?? 0),
         MaxUtilPct: Number(baseline.MaxUtilPct ?? headerBase.MaxUtilPct ?? 0),
         TotalSpaceRequired: Number(baseline.TotalSpaceRequired ?? headerBase.TotalSpaceRequired ?? 0),
+        SpaceCore: Number(baseline.SpaceCore ?? headerBase.SpaceCore ?? 0),
+        SpaceBCV: Number(baseline.SpaceBCV ?? headerBase.SpaceBCV ?? 0),
         FootprintMode: baseline.FootprintMode || headerBase.FootprintMode || 'NA',
         LevelLoad: baseline.LevelLoad || headerBase.LevelLoad || 'NA',
         UtilizationCap: baseline.UtilizationCap || headerBase.UtilizationCap || 'NA',
@@ -895,6 +909,8 @@ export const buildScenarioArtifacts = (
         TotalCount: summary.totalUnits,
         MaxUtilPct: summary.maxUtil,
         TotalSpaceRequired: summary.totalSpaceRequired,
+        SpaceCore: summary.spaceCore,
+        SpaceBCV: summary.spaceBCV,
         ExcludedBySLACount: summary.excludedBySla,
         SLABreachPct: summary.slaBreachPct,
         AlertFlags: buildAlertFlagsFromSummary(summary),

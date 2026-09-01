@@ -95,11 +95,16 @@ const RAW_LANE_FIELD_ALIASES = {
     'totalcount',
     'TotalCount',
     '3zip_des_cases_received',
+    '3zip_des_cases_received (col,pp)',
     '3zip_des_ordvrs_cnt',
     '3zip des cases received',
   ],
   tlSpend: ['3-zip x Channel TL Spend', '3-zip x Channel TL Spend ', 'tlSpend', 'LtlSpend', '3zip_tl_spend', '3zip TL Spend', '3zip_TL_Spend'],
   workingCapacity: [
+    'Lane_Space',
+    'Lane Space',
+    'lane_space',
+    'laneSpace',
     'laneSpaceSqFt',
     '3-zip x Channel Containers x Origin', 
     'workingCapacity', 
@@ -117,12 +122,13 @@ const RAW_LANE_FIELD_ALIASES = {
   partyName: ['party_name', 'partyName', 'party name'],
   scenarioType: ['scenarioType', 'ScenarioType'],
   shipToDeliverDays: ['Ship to Deliver Calendar Days', 'ShipToDeliverCalendarDays', 'shipToDeliverDays'],
-  deliveryDays: ['servicedays_us&can_combined', 'servicedays_us_can_combined', 'servicedays_us_and_can_combined', 'Service Days', 'Service_Days', 'DeliveryDays', 'deliveryDays', 'servicedays', 'service_days'],
+  deliveryDays: ['servicedays_us&can_combnd', 'servicedays_us&can_combined', 'servicedays_us_can_combined', 'servicedays_us_and_can_combined', 'Service Days', 'Service_Days', 'DeliveryDays', 'deliveryDays', 'servicedays', 'service_days'],
   avgDeliveryDays: ['avg_delivery_days', 'avgDeliveryDays', 'AverageDeliveryDays', 'averageDeliveryDays', 'avg_delivery_days '],
   avgTransitDays: ['avg_transit_days', 'avgTransitDays', 'AverageTransitDays', 'averageTransitDays', 'avg_transit_days '],
-  squareFootage: ['Square Footage', 'SquareFootage', 'squareFootage'],
+  squareFootage: ['total_dc_sqft', 'total dc sqft', 'Square Footage', 'SquareFootage', 'squareFootage'],
   state: ['state', 'State'],
   terms: ['freight_terms', 'freight_terms ', 'freightterms', 'terms', 'Terms', 'freightTerms', 'freight terms'],
+  entityScope: ['entityScope', 'EntityScope', 'entity', 'Entity', 'dcEntity', 'DC_entity'],
   threshold: ['threshold', 'Threshold'],
   totalCost: ['totalCost', 'TotalCost', '3-zip x Channel Scenario Cost', '3-zip x Channel Scenario Cost ', '3zip_scenario cost', '3zip Scenario Cost', '3zip_scenario_cost'],
 } as const;
@@ -150,10 +156,10 @@ const NORMALIZED_LANE_FIELD_ALIASES = {
   chosenRank: ['ChosenRank', 'chosenRank'],
   laneCost: ['LaneCost', 'laneCost', '3-zip x Channel Scenario Cost', '3-zip x Channel Scenario Cost '],
   costDeltaVsBest: ['CostDeltaVsBest', 'costDeltaVsBest'],
-  deliveryDays: ['DeliveryDays', 'deliveryDays'],
+  deliveryDays: ['DeliveryDays', 'deliveryDays', 'servicedays_us&can_combnd', 'servicedays_us&can_combined', 'servicedays_us_can_combined'],
   slaBreachFlag: ['SLABreachFlag', 'slaBreachFlag'],
   excludedBySlaFlag: ['ExcludedBySLAFlag', 'excludedBySlaFlag'],
-  footprintContribution: ['FootprintContribution', 'footprintContribution'],
+  footprintContribution: ['FootprintContribution', 'footprintContribution', 'Lane_Space', 'Lane Space', 'lane_space', 'laneSpace'],
   utilImpactPct: ['UtilImpactPct', 'utilImpactPct'],
   overrideAppliedFlag: ['OverrideAppliedFlag', 'overrideAppliedFlag'],
   overrideVersion: ['OverrideVersion', 'overrideVersion'],
@@ -167,8 +173,8 @@ const NORMALIZED_LANE_FIELD_ALIASES = {
   ltlSpend: ['LtlSpend', 'LTL Spend', 'ltlSpend'],
   totalCost: ['TotalCost', 'totalCost', '3-zip x Channel Scenario Cost', '3-zip x Channel Scenario Cost '],
   costRank: ['CostRank', 'costRank'],
-  workingCapacity: ['WorkingCapacity', 'workingCapacity'],
-  squareFootage: ['Square Footage', 'SquareFootage', 'squareFootage'],
+  workingCapacity: ['WorkingCapacity', 'workingCapacity', 'Lane_Space', 'Lane Space', 'lane_space', 'laneSpace'],
+  squareFootage: ['total_dc_sqft', 'total dc sqft', 'Square Footage', 'SquareFootage', 'squareFootage'],
   distributionCost: ['DistributionCost', 'distributionCost'],
   tlSpend: ['TlSpend', 'tlSpend'],
   breachFlag: ['BreachFlag', 'breachFlag'],
@@ -181,6 +187,7 @@ const NORMALIZED_LANE_FIELD_ALIASES = {
   threshold: ['Threshold', 'threshold'],
   sourceDatasetId: ['SourceDatasetId', 'sourceDatasetId'],
   totalUnits: ['TotalUnits', 'totalUnits', 'TotalCount', 'totalCount', 'VolumeUnits', 'volumeUnits'],
+  entityScope: ['EntityScope', 'entityScope', 'Entity', 'entity', 'dcEntity', 'DC_entity'],
   costPerUnit: ['CostPerUnit', 'costPerUnit', 'Cost Per CWT', 'CostPerCWT', 'cost_per_cwt', 'Cost per CWT', 'costPerCWT', 'Cost/Unit', 'cost_per_unit'],
 } as const;
 
@@ -235,6 +242,8 @@ const LANE_NORMALIZED_SCHEMA = {
     { name: 'PartyName', type: 'STRING' },
     { name: 'Threshold', type: 'DOUBLE' },
     { name: 'SourceDatasetId', type: 'STRING' },
+    { name: 'EntityScope', type: 'STRING' },
+    { name: 'Entity', type: 'STRING' },
   ],
 };
 
@@ -438,6 +447,7 @@ const normalizeRawLaneRow = (
     readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.partyName]) ||
     'All';
   const state = readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.state]);
+  const entityScope = readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.entityScope]);
   const costingWarehouse = readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.costingWarehouse]);
   const defaultShipFrom = readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.defaultShipFrom]);
   const freightTerms = readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.terms]);
@@ -505,9 +515,8 @@ const normalizeRawLaneRow = (
     });
   }
   const laneUnits = totalUnits > 0 ? totalUnits : 0;
-  const footprintContribution = hasWorkingCapacityColumn
-    ? workingCapacity
-    : (threshold > 0 ? threshold : 0);
+  const footprintContribution = [workingCapacity, threshold, squareFootage]
+    .find((value) => Number.isFinite(value) && value > 0) ?? 0;
   const utilImpactPct = threshold > 0
     ? Number(((workingCapacity / threshold) * 100).toFixed(2))
     : 0;
@@ -577,6 +586,8 @@ const normalizeRawLaneRow = (
       String(sourceDatasetId || '').trim() ||
       RAW_LANE_DATASET_ENV_ID ||
       undefined,
+    EntityScope: entityScope || undefined,
+    Entity: entityScope || undefined,
   } as ScenarioRunResultsLane;
 };
 
@@ -613,6 +624,7 @@ const normalizeNormalizedLaneRow = (row: DomoLaneRow): ScenarioRunResultsLane | 
   const scenarioRunId = readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.scenarioRunId]) || normalized.ScenarioRunID;
   const scenarioType = readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.scenarioType]) || normalized.ScenarioType || '';
   const runName = readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.runName]) || normalized.RunName || '';
+  const entityScope = readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.entityScope]) || normalized.EntityScope || normalized.Entity || '';
   const squareFootage = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.squareFootage]), normalized.SquareFootage || 0);
 
   return {
@@ -689,6 +701,8 @@ const normalizeNormalizedLaneRow = (row: DomoLaneRow): ScenarioRunResultsLane | 
     TotalUnits: totalUnits || normalized.TotalUnits,
     VolumeUnits: totalUnits || normalized.VolumeUnits,
     SourceDatasetId: readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.sourceDatasetId]) || normalized.SourceDatasetId,
+    EntityScope: entityScope || undefined,
+    Entity: entityScope || undefined,
   };
 };
 

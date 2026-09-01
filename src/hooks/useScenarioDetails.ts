@@ -78,16 +78,17 @@ export const useScenarioDetails = ({
 
   const isUsBaseline = useMemo(() => {
     if (!rawScenario) return false;
+    const isCustom = !String(rawScenario.DataflowID || '').trim() ||
+      !['3267'].includes(String(rawScenario.DataflowID || '').trim());
+    if (isCustom) return false;
+
     return (
-      (rawScenario.Region === 'US' || rawScenario.Region === 'Canada') &&
-      (rawScenario.ScenarioRunID === 'SR001' ||
-        rawScenario.ScenarioRunID === 'SR005' ||
-        String(rawScenario.ScenarioType || '').toLowerCase().includes('baseline') ||
-        String(rawScenario.RunName || '').toLowerCase().includes('baseline'))
+      (rawScenario.Region === 'US' && (String(rawScenario.DataflowID || '') === '3267' || rawScenario.ScenarioRunID === 'SR001')) ||
+      (rawScenario.Region === 'Canada' && (rawScenario.ScenarioRunID === 'SR005' || rawScenario.ScenarioRunID === 'SR_ETL_11_CANADA_CANADA_BASELINE_NA'))
     );
   }, [rawScenario]);
 
-  // Broader flag: includes Tactical + Consolidation US scenarios
+  // Broader flag: these scenarios compare generated demand to the current contracted footprint.
   const isUsSpaceOverrideScenario = useMemo(() => {
     if (!rawScenario) return false;
     if (rawScenario.Region !== 'US' && rawScenario.Region !== 'Canada') return false;
@@ -96,8 +97,10 @@ export const useScenarioDetails = ({
     const name = String(rawScenario.RunName || '').toLowerCase();
     return (
       type.includes('tactical') ||
+      type.includes('strategic') ||
       type.includes('consolidation') ||
       name.includes('tactical') ||
+      name.includes('strategic') ||
       name.includes('consolidation')
     );
   }, [rawScenario, isUsBaseline]);
@@ -106,11 +109,9 @@ export const useScenarioDetails = ({
     () => {
       if (!rawScenario) return undefined;
       if (!isUsSpaceOverrideScenario || !spaceOverrideRows || spaceOverrideRows.length === 0) {
-        const totalSpace = rawScenario.TotalSpaceRequired || 0;
-        const coreSpace = rawScenario.SpaceCore || 0;
         return {
           ...rawScenario,
-          MaxUtilPct: totalSpace > 0 ? Number(((coreSpace / totalSpace) * 100).toFixed(2)) : (rawScenario.MaxUtilPct || 0),
+          MaxUtilPct: rawScenario.MaxUtilPct || 0,
         };
       }
       const activeDcNames = new Set(

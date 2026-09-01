@@ -151,28 +151,29 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = (props) => {
       networkCallStatus: baseLaneResults.length > 0 ? 'No network call needed - data is in client memory' : 'Querying AppDB custom_scenario_lanes',
     });
 
-    if (baseLaneResults.length > 0) {
+    // Use rawLaneCandidatePool (full multi-DC Domo dataset) as the candidate pool for enrichment
+    // so Options 2-4 can be populated. scenarioRunResultsLanes only has 1 DC per zip (assigned DC).
+    const candidatePool = props.rawLaneCandidatePool && props.rawLaneCandidatePool.length > 0
+      ? props.rawLaneCandidatePool
+      : props.scenarioRunResultsLanes;
+
+    if (candidatePool.length === 0) {
       setIsLaneDataLoading(false);
       return () => {
         cancelled = true;
       };
     }
 
-    console.log(`[Scenario Details Flow: AppDB Fallback] baseLaneResults was empty; querying AppDB collection '${APPDB_COLLECTIONS.customScenarioLanes}' for ${props.scenarioId}`);
-    setIsLaneDataLoading(true);
-    // Use rawLaneCandidatePool (full multi-DC Domo dataset) as the candidate pool for enrichment
-    // so Options 2-4 can be populated. scenarioRunResultsLanes only has 1 DC per zip (assigned DC).
-    const candidatePool = props.rawLaneCandidatePool && props.rawLaneCandidatePool.length > 0
-      ? props.rawLaneCandidatePool
-      : props.scenarioRunResultsLanes;
+    console.log(`[Scenario Details Flow: AppDB Hydration] refreshing lane snapshot from '${APPDB_COLLECTIONS.customScenarioLanes}' for ${props.scenarioId}`);
+    setIsLaneDataLoading(baseLaneResults.length === 0);
     void loadScenarioLaneSnapshotsFromAppDb(props.scenarioId, candidatePool)
       .then((laneRows) => {
         if (!cancelled && laneRows.length > 0) {
-          console.log(`[Scenario Details Flow: AppDB Fallback SUCCESS] Loaded and enriched ${laneRows.length} lane(s) from AppDB for ${props.scenarioId}`);
+          console.log(`[Scenario Details Flow: AppDB Hydration SUCCESS] Loaded and enriched ${laneRows.length} lane(s) from AppDB for ${props.scenarioId}`);
           const enriched = enrichRankedOptionsForLanes(laneRows, candidatePool);
           setHydratedLaneResults(enriched);
-        } else if (!cancelled) {
-          console.log(`[Scenario Details Flow: AppDB Fallback] No lanes found in AppDB for ${props.scenarioId}`);
+        } else if (!cancelled && baseLaneResults.length === 0) {
+          console.log(`[Scenario Details Flow: AppDB Hydration] No lanes found in AppDB for ${props.scenarioId}`);
         }
       })
       .catch((error) => {

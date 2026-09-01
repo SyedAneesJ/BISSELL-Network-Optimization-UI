@@ -214,6 +214,8 @@ export interface ScenarioRunResultsLane {
   VolumeUnits?: number;
   OvercapFlag?: 'Y' | 'N';
   SourceDatasetId?: string;
+  EntityScope?: string;
+  Entity?: string;
 }
 
 export interface ScenarioOverride {

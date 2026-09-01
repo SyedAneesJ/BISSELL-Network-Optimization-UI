@@ -11,6 +11,8 @@ export const summarizeDcResults = (rows: ScenarioRunResultsDC[]): ScenarioBuildS
       avgTransitDays: null,
       maxUtil: 0,
       totalSpaceRequired: 0,
+      spaceCore: 0,
+      spaceBCV: 0,
       excludedBySla: 0,
       slaBreachCount: 0,
       slaBreachPct: 0,
@@ -38,6 +40,8 @@ export const summarizeDcResults = (rows: ScenarioRunResultsDC[]): ScenarioBuildS
   const avgTransitDays = avgTransitDaysWeight > 0 ? avgTransitDaysNumerator / avgTransitDaysWeight : null;
   const maxUtil = rows.reduce((max, row) => Math.max(max, row.UtilPct), 0);
   const totalSpaceRequired = rows.reduce((sum, row) => sum + row.SpaceRequired, 0);
+  const spaceCore = rows.reduce((sum, row) => sum + row.SpaceCore, 0);
+  const spaceBCV = rows.reduce((sum, row) => sum + row.SpaceBCV, 0);
   const excludedBySla = rows.reduce((sum, row) => sum + row.ExcludedBySLACount, 0);
   const slaBreachCount = rows.reduce((sum, row) => sum + row.SLABreachCount, 0);
   const slaBreachPct = totalUnits > 0 ? (slaBreachCount / totalUnits) * 100 : 0;
@@ -51,6 +55,8 @@ export const summarizeDcResults = (rows: ScenarioRunResultsDC[]): ScenarioBuildS
     avgTransitDays: avgTransitDays === null ? null : Number(avgTransitDays.toFixed(2)),
     maxUtil: Number(maxUtil.toFixed(2)),
     totalSpaceRequired,
+    spaceCore,
+    spaceBCV,
     excludedBySla,
     slaBreachCount,
     slaBreachPct,

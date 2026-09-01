@@ -276,7 +276,7 @@ const scenarioTypeRules: ScenarioTypePolicy[] = [
       'canada strategic relo',
     ],
     allowedDcs: BASE_US_DCS,
-    allocationMode: 'overload',
+    allocationMode: 'unconstrained',
     collectPolicy: 'relocatable',
     collectTreatmentLabel: 'Collect Relocatable',
     defaults: {
@@ -310,7 +310,7 @@ const scenarioTypeRules: ScenarioTypePolicy[] = [
       overrides: false,
     },
     sortOrder: 8,
-    helpText: ['Collect relocatable strategic pro forma keeps the same 4-DC family with unconstrained footprint.'],
+    helpText: ['Collect relocatable strategic pro forma chooses each lane\'s cheapest eligible DC across the same 4-DC family with unconstrained footprint.'],
   },
   {
     scenarioType: 'Strategic Pro Forma',
@@ -318,7 +318,7 @@ const scenarioTypeRules: ScenarioTypePolicy[] = [
     familyLabel: 'Base US Family',
     aliases: ['strategic pro forma', 'strategic unconstrained footprint', 'canada strategic'],
     allowedDcs: BASE_US_DCS,
-    allocationMode: 'overload',
+    allocationMode: 'unconstrained',
     collectPolicy: 'fixed',
     collectTreatmentLabel: 'Fixed',
     defaults: {
@@ -326,7 +326,7 @@ const scenarioTypeRules: ScenarioTypePolicy[] = [
       utilCap: 100,
       levelLoad: false,
       allowRelocationPrepaid: true,
-    allowRelocationCollect: false,
+      allowRelocationCollect: false,
       bcvRuleSet: 'NA',
       allowManualOverride: false,
     },
@@ -352,7 +352,7 @@ const scenarioTypeRules: ScenarioTypePolicy[] = [
       overrides: false,
     },
     sortOrder: 3,
-    helpText: ['Strategic Pro Forma keeps util cap locked at 100% and uses unconstrained footprint.'],
+    helpText: ['Strategic Pro Forma chooses each lane\'s cheapest eligible DC, keeps collect fixed, and uses unconstrained footprint.'],
   },
   {
     scenarioType: 'BCV Ingestion (Collect Relocatable)',

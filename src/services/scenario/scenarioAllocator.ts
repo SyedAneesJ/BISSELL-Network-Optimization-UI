@@ -51,12 +51,15 @@ type DcAccumulator = {
 type AllocationInput = {
   scenarioId: string;
   scenarioType: string;
+  entityScope?: string;
   lanes: ScenarioRunResultsLane[];
   activeDcs: string[];
   suppressedDcs: string[];
   dcCapacityRows?: DomoDcCapacityRow[];
   utilCap: number;
   levelLoad?: boolean;
+  allowRelocationPrepaid?: boolean;
+  allowRelocationCollect?: boolean;
 };
 
 type AllocationResult = {
@@ -99,14 +102,66 @@ const laneGroupKey = (lane: ScenarioRunResultsLane): string =>
   ].join('|');
 
 const laneSpaceRequired = (lane: ScenarioRunResultsLane): number => {
-  // Use ?? so that an explicit 0 on WorkingCapacity is NOT skipped —
-  // ?? only skips null/undefined, not 0 or ''.
-  // If the column is present with value 0 or empty we must honour that as 0,
-  // not replace it with an arbitrary fallback of 1.
-  const raw = lane.WorkingCapacity ?? lane.FootprintContribution ?? lane.Threshold;
-  if (raw === null || raw === undefined) return 0; // column genuinely absent
-  const demand = Number(raw);
-  return Number.isFinite(demand) && demand > 0 ? demand : 0;
+  const typedLane = lane as ScenarioRunResultsLane & {
+    Threshold?: number;
+    SquareFootage?: number;
+  };
+  const candidates = [
+    lane.WorkingCapacity,
+    lane.FootprintContribution,
+    typedLane.Threshold,
+    typedLane.SquareFootage,
+  ];
+  for (const raw of candidates) {
+    const demand = Number(raw);
+    if (Number.isFinite(demand) && demand > 0) return demand;
+  }
+  return 0;
+};
+
+const normalizeEntityLabel = (value: unknown, scenarioEntityScope?: string): 'core' | 'bcv' | null => {
+  const text = normalizeText(value).toLowerCase();
+  if (!text || text === 'na') return null;
+  const scopeParts = normalizeText(scenarioEntityScope)
+    .split(/[+/]/)
+    .map((part) => part.trim().toLowerCase())
+    .filter(Boolean);
+  const secondEntity = scopeParts.find((part) => !part.includes('core'));
+  if (text.includes('bcv') || text.includes('entity b') || (secondEntity && text === secondEntity)) return 'bcv';
+  if (text.includes('core')) return 'core';
+  const firstEntity = scopeParts.find((part) => part.includes('core')) || scopeParts[0];
+  if (firstEntity && text === firstEntity) return 'core';
+  return null;
+};
+
+const splitLaneSpaceByEntity = (
+  lane: ScenarioRunResultsLane,
+  spaceDemand: number,
+  scenarioEntityScope?: string,
+): { core: number; bcv: number } => {
+  const typedLane = lane as ScenarioRunResultsLane & {
+    EntityScope?: string;
+    Entity?: string;
+    entityScope?: string;
+    entity?: string;
+    dcEntity?: string;
+  };
+  const laneEntity =
+    normalizeEntityLabel(typedLane.EntityScope, scenarioEntityScope) ||
+    normalizeEntityLabel(typedLane.Entity, scenarioEntityScope) ||
+    normalizeEntityLabel(typedLane.entityScope, scenarioEntityScope) ||
+    normalizeEntityLabel(typedLane.entity, scenarioEntityScope) ||
+    normalizeEntityLabel(typedLane.dcEntity, scenarioEntityScope);
+  if (laneEntity === 'bcv') return { core: 0, bcv: spaceDemand };
+  if (laneEntity === 'core') return { core: spaceDemand, bcv: 0 };
+
+  const scope = normalizeText(scenarioEntityScope).toLowerCase();
+  const hasCore = scope.includes('core');
+  const hasBcv = scope.includes('bcv');
+  if (hasBcv && !hasCore) return { core: 0, bcv: spaceDemand };
+  if (hasCore && !hasBcv) return { core: spaceDemand, bcv: 0 };
+
+  return { core: 0, bcv: 0 };
 };
 
 const inferLaneUnits = (lane: ScenarioRunResultsLane): number => {
@@ -580,6 +635,209 @@ const logBcvCollectRelocationSummary = (scenarioType: string, rows: ScenarioRunR
   console.groupEnd();
 };
 
+type LaneTermsBucket = 'Prepaid' | 'Collect' | 'Other';
+
+const laneTermsBucket = (lane: ScenarioRunResultsLane): LaneTermsBucket => {
+  const terms = laneTerms(lane);
+  if (terms.includes('collect')) return 'Collect';
+  if (terms.includes('prepaid') || terms === 'pp') return 'Prepaid';
+  return 'Other';
+};
+
+const laneUnitsForTrace = (lane: ScenarioRunResultsLane): number => {
+  const typedLane = lane as ScenarioRunResultsLane & {
+    TotalCount?: number;
+    TotalUnits?: number;
+    VolumeUnits?: number;
+  };
+  const units = Number(typedLane.TotalCount ?? typedLane.TotalUnits ?? typedLane.VolumeUnits ?? 0);
+  return Number.isFinite(units) && units > 0 ? units : 0;
+};
+
+const originalDcForTrace = (lane: ScenarioRunResultsLane): string => {
+  const debugRow = lane as ScenarioRunResultsLane & CollectRelocationDebugRow;
+  return formatDcDisplayName(debugRow.OriginalAssignedDC || lane.DefaultShipFrom || lane.CostingWarehouse || lane.AssignedDC) || 'NA';
+};
+
+const assignedDcForTrace = (lane: ScenarioRunResultsLane): string =>
+  formatDcDisplayName(lane.AssignedDC || lane.CostingWarehouse || lane.DefaultShipFrom) || 'NA';
+
+const laneMovedForTrace = (lane: ScenarioRunResultsLane): boolean => {
+  const originalDc = normalizeDcKey(originalDcForTrace(lane));
+  const assignedDc = normalizeDcKey(assignedDcForTrace(lane));
+  return Boolean(originalDc && assignedDc && originalDc !== assignedDc);
+};
+
+const laneAllocationDecisionReason = (
+  lane: ScenarioRunResultsLane,
+  input: AllocationInput,
+  suppressedSet: Set<string>,
+  mode: AllocationMode,
+): string => {
+  const termsBucket = laneTermsBucket(lane);
+  const originalDc = originalDcForTrace(lane);
+  const assignedDc = assignedDcForTrace(lane);
+  const originalKey = normalizeDcKey(originalDc);
+  const assignedKey = normalizeDcKey(assignedDc);
+  const moved = Boolean(originalKey && assignedKey && originalKey !== assignedKey);
+  const originalSuppressed = Boolean(originalKey && suppressedSet.has(originalKey));
+  const selectedRank = Number(lane.ChosenRank || selectedCandidateRank(lane, assignedDc) || 0);
+  const rankText = selectedRank > 0 ? `rank ${selectedRank}` : 'an eligible ranked option';
+
+  if (termsBucket === 'Collect') {
+    const collectPolicy = laneCollectPolicy(input);
+    if (moved) {
+      if (originalSuppressed) {
+        return `Moved because original collect DC ${originalDc} is suppressed; allocator selected ${assignedDc}.`;
+      }
+      if (collectPolicy === 'relocatable') {
+        return `Moved because scenario policy allows collect relocation; allocator selected ${rankText} ${assignedDc}.`;
+      }
+      return `Moved because the fixed collect source candidate was unavailable, so allocator selected eligible DC ${assignedDc}.`;
+    }
+    if (isStrictFixedBcvScenario(input)) {
+      return `Not moved because BCV ingestion collect policy fixes the lane to original DC ${originalDc}.`;
+    }
+    if (collectPolicy !== 'relocatable' && !originalSuppressed) {
+      return `Not moved because collect relocation is fixed while original DC ${originalDc} is active.`;
+    }
+    if (collectPolicy === 'relocatable') {
+      return `Not moved because ${originalDc} remained the best eligible collect assignment in ${mode} mode.`;
+    }
+    return `Not moved because no eligible alternate assignment was selected.`;
+  }
+
+  if (termsBucket === 'Prepaid') {
+    if (moved) {
+      if (originalSuppressed) {
+        return `Moved because original prepaid DC ${originalDc} is suppressed; allocator selected ${assignedDc}.`;
+      }
+      return `Moved because prepaid relocation is enabled; allocator selected ${rankText} ${assignedDc}.`;
+    }
+    if (input.allowRelocationPrepaid === false) {
+      return `Not moved because prepaid relocation is disabled for this scenario.`;
+    }
+    return `Not moved because ${originalDc} remained the best eligible prepaid assignment in ${mode} mode.`;
+  }
+
+  if (moved) {
+    return originalSuppressed
+      ? `Moved because original DC ${originalDc} is suppressed; allocator selected ${assignedDc}.`
+      : `Moved because allocator selected ${rankText} ${assignedDc} for this lane.`;
+  }
+
+  return `Not moved because ${originalDc} remained the selected eligible assignment.`;
+};
+
+const logScenarioLaneAllocationTrace = (
+  input: AllocationInput,
+  rows: ScenarioRunResultsLane[],
+  suppressedSet: Set<string>,
+  mode: AllocationMode,
+) => {
+  if (rows.length === 0) return;
+
+  const summary = new Map<LaneTermsBucket, {
+    laneCount: number;
+    movedLaneCount: number;
+    units: number;
+    movedUnits: number;
+    totalCost: number;
+  }>();
+  const movementMatrix = new Map<string, { terms: LaneTermsBucket; movement: string; laneCount: number; units: number; totalCost: number }>();
+  const reasonCounts = new Map<string, { terms: LaneTermsBucket; moved: string; reason: string; laneCount: number }>();
+
+  rows.forEach((lane) => {
+    const terms = laneTermsBucket(lane);
+    const moved = laneMovedForTrace(lane);
+    const units = laneUnitsForTrace(lane);
+    const totalCost = Number(lane.TotalCost ?? lane.LaneCost ?? 0) || 0;
+    const existingSummary = summary.get(terms) || { laneCount: 0, movedLaneCount: 0, units: 0, movedUnits: 0, totalCost: 0 };
+    existingSummary.laneCount += 1;
+    existingSummary.movedLaneCount += moved ? 1 : 0;
+    existingSummary.units += units;
+    existingSummary.movedUnits += moved ? units : 0;
+    existingSummary.totalCost += totalCost;
+    summary.set(terms, existingSummary);
+
+    const movement = `${originalDcForTrace(lane)} -> ${assignedDcForTrace(lane)}`;
+    const movementKey = `${terms}|${movement}`;
+    const existingMovement = movementMatrix.get(movementKey) || { terms, movement, laneCount: 0, units: 0, totalCost: 0 };
+    existingMovement.laneCount += 1;
+    existingMovement.units += units;
+    existingMovement.totalCost += totalCost;
+    movementMatrix.set(movementKey, existingMovement);
+
+    const reason = laneAllocationDecisionReason(lane, input, suppressedSet, mode);
+    const reasonKey = `${terms}|${moved ? 'Moved' : 'Not moved'}|${reason}`;
+    const existingReason = reasonCounts.get(reasonKey) || { terms, moved: moved ? 'Moved' : 'Not moved', reason, laneCount: 0 };
+    existingReason.laneCount += 1;
+    reasonCounts.set(reasonKey, existingReason);
+  });
+
+  const summaryRows = Array.from(summary.entries())
+    .map(([terms, value]) => ({
+      Terms: terms,
+      LaneCount: value.laneCount,
+      MovedLaneCount: value.movedLaneCount,
+      StayedLaneCount: value.laneCount - value.movedLaneCount,
+      Units: Number(value.units.toFixed(2)),
+      MovedUnits: Number(value.movedUnits.toFixed(2)),
+      TotalCost: Number(value.totalCost.toFixed(2)),
+    }))
+    .sort((a, b) => a.Terms.localeCompare(b.Terms));
+
+  const movementRows = Array.from(movementMatrix.values())
+    .map((value) => ({
+      Terms: value.terms,
+      Movement: value.movement,
+      LaneCount: value.laneCount,
+      Units: Number(value.units.toFixed(2)),
+      TotalCost: Number(value.totalCost.toFixed(2)),
+    }))
+    .sort((a, b) => b.LaneCount - a.LaneCount || a.Terms.localeCompare(b.Terms) || a.Movement.localeCompare(b.Movement));
+
+  const reasonRows = Array.from(reasonCounts.values())
+    .filter((value) => value.terms === 'Collect' || value.terms === 'Prepaid')
+    .sort((a, b) => b.laneCount - a.laneCount || a.terms.localeCompare(b.terms) || a.moved.localeCompare(b.moved));
+
+  const collectDecisionSample = rows
+    .filter((lane) => laneTermsBucket(lane) === 'Collect')
+    .slice(0, 12)
+    .map((lane) => ({
+      Dest3Zip: lane.Dest3Zip,
+      Channel: lane.Channel,
+      OriginalDC: originalDcForTrace(lane),
+      AssignedDC: assignedDcForTrace(lane),
+      Moved: laneMovedForTrace(lane) ? 'Y' : 'N',
+      ChosenRank: lane.ChosenRank || selectedCandidateRank(lane, assignedDcForTrace(lane)),
+      TotalCost: Number(Number(lane.TotalCost ?? lane.LaneCost ?? 0).toFixed(2)),
+      Reason: laneAllocationDecisionReason(lane, input, suppressedSet, mode),
+    }));
+
+  console.groupCollapsed('[Scenario Allocation] Scenario-wise terms movement trace');
+  console.log({
+    scenarioId: input.scenarioId,
+    scenarioType: input.scenarioType,
+    mode,
+    utilCapPct: input.utilCap,
+    collectPolicy: laneCollectPolicy(input),
+    allowRelocationCollectRequested: input.allowRelocationCollect,
+    allowRelocationPrepaid: input.allowRelocationPrepaid !== false,
+    activeDcs: input.activeDcs,
+    suppressedDcs: input.suppressedDcs,
+  });
+  console.table(summaryRows);
+  console.table(movementRows);
+  if (reasonRows.length > 0) {
+    console.table(reasonRows);
+  }
+  if (collectDecisionSample.length > 0) {
+    console.table(collectDecisionSample);
+  }
+  console.groupEnd();
+};
+
 const selectBaselineRows = (
   scenarioId: string,
   laneGroups: LaneGroup[],
@@ -624,13 +882,7 @@ const selectOverloadRows = (
     if (eligible.length === 0) return null;
     const actual = eligible.find((candidate) => normalizeDcKey(candidate.dc) === globalCheapestDc);
     if (actual) return actual;
-    const fallback = eligible[0];
-    return {
-      dc: globalCheapestDc || fallback.dc,
-      costPerUnit: fallback.costPerUnit,
-      days: fallback.days,
-      sourceIndex: fallback.sourceIndex,
-    };
+    return eligible[0];
   };
 
   const selectedRows: ScenarioRunResultsLane[] = [];
@@ -904,6 +1156,7 @@ const buildDcRows = (
   activeSet: Set<string>,
   suppressedSet: Set<string>,
   capacityMap: Map<string, number>,
+  entityScope?: string,
 ): ScenarioRunResultsDC[] => {
   const allDcNames = Array.from(new Set([
     ...Array.from(activeSet),
@@ -979,9 +1232,11 @@ const buildDcRows = (
       acc.avgTransitDaysNumerator += Number(row.AvgTransitDays) * laneUnits;
       acc.avgTransitDaysWeight += laneUnits;
     }
-    acc.spaceRequired += Number(row.WorkingCapacity ?? row.FootprintContribution ?? 0);
-    acc.spaceCore += Number(row.WorkingCapacity ?? row.FootprintContribution ?? 0);
-    acc.spaceBCV += Number(row.WorkingCapacity ?? row.FootprintContribution ?? 0);
+    const spaceDemand = laneSpaceRequired(row);
+    const entitySpace = splitLaneSpaceByEntity(row, spaceDemand, entityScope);
+    acc.spaceRequired += spaceDemand;
+    acc.spaceCore += entitySpace.core;
+    acc.spaceBCV += entitySpace.bcv;
     if (isLaneSlaBreach(row)) {
       acc.slaBreachCount += laneUnits;
       acc.excludedBySlaCount += laneUnits;
@@ -1098,7 +1353,7 @@ export const allocateScenarioOutputs = (input: AllocationInput): AllocationResul
     resultsLanes = selectConstrainedRows(input.scenarioId, laneGroups, activeSet, suppressedSet, capacityMap.byName, input);
   }
 
-  const dcRows = buildDcRows(input.scenarioId, resultsLanes, activeSet, suppressedSet, capacityMap.byName);
+  const dcRows = buildDcRows(input.scenarioId, resultsLanes, activeSet, suppressedSet, capacityMap.byName, input.entityScope);
   const annotated = annotateCapacityOutputs(
     input.scenarioId,
     resultsLanes,
@@ -1114,7 +1369,8 @@ export const allocateScenarioOutputs = (input: AllocationInput): AllocationResul
     const reassignmentCounts: Record<string, { totalLanes: number; movedLanes: number; totalCost: number }> = {};
     const movementMatrix: Record<string, number> = {};
     resultsLanes.forEach((lane) => {
-      const origDc = normalizeText(canonicalizeDcName(lane.OriginalAssignedDC || lane.DefaultShipFrom || 'NA'));
+      const debugRow = lane as ScenarioRunResultsLane & CollectRelocationDebugRow;
+      const origDc = normalizeText(canonicalizeDcName(debugRow.OriginalAssignedDC || lane.DefaultShipFrom || 'NA'));
       const assignedDc = normalizeText(canonicalizeDcName(lane.AssignedDC || lane.CostingWarehouse || 'NA'));
       const moveKey = `${origDc} -> ${assignedDc}`;
       movementMatrix[moveKey] = (movementMatrix[moveKey] || 0) + 1;
@@ -1209,6 +1465,7 @@ export const allocateScenarioOutputs = (input: AllocationInput): AllocationResul
       console.groupEnd();
     }
 
+    logScenarioLaneAllocationTrace(input, resultsLanes, suppressedSet, mode);
     logBcvCollectRelocationSummary(input.scenarioType, resultsLanes);
   }
 
