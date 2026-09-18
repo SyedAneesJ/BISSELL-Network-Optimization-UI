@@ -722,6 +722,7 @@ const normalizeString = (value: unknown, fallback: string): string => {
 export const normalizeScenarioTypeSpecificInput = <T extends {
   region?: 'US' | 'Canada';
   scenarioType: string;
+  termsScope?: string;
   activeDCs: Set<string> | string[];
   suppressedDCs: Set<string> | string[];
   footprintMode: string;
@@ -758,6 +759,11 @@ export const normalizeScenarioTypeSpecificInput = <T extends {
 
   return {
     ...input,
+    // Tactical baseline and Tactical Collect Relocatable must compare the
+    // same lane population; relocation is the only intended difference.
+    termsScope: policy.scenarioType === 'Tactical Pro Forma'
+      ? 'Collect+Prepaid'
+      : input.termsScope,
     activeDCs: active instanceof Set ? new Set(activeFallback) : [...activeFallback],
     suppressedDCs: suppressedFiltered,
     footprintMode: policy.locks.footprintMode
@@ -823,7 +829,7 @@ const STEP1_DEFAULTS_BY_SCENARIO_TYPE: Record<string, Step1ScenarioDefaults> = {
     region: 'US',
     entityScope: 'Core',
     channelScope: ['B2C Home Delivery + B2B Retailer + D2C/eCom'],
-    termsScope: 'Prepaid',
+    termsScope: 'Collect+Prepaid',
   },
   'Tactical Pro Forma (Collect Relocatable)': {
     region: 'US',

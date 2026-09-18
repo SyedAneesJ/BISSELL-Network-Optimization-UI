@@ -13,6 +13,9 @@ type LaneCandidate = {
   days: number;
   totalCost?: number;
   sourceIndex: 1 | 2 | 3 | 4;
+  // When candidates come from lane-level rows, retain the complete row so the
+  // selected assignment uses that candidate's exact cost components.
+  sourceRow?: ScenarioRunResultsLane;
 };
 
 type LaneGroup = {
@@ -78,6 +81,15 @@ const laneTerms = (lane: ScenarioRunResultsLane): string => normalizeText(lane.T
 
 const laneSourceDc = (lane: ScenarioRunResultsLane): string =>
   normalizeText(canonicalizeDcName(lane.AssignedDC || lane.CostingWarehouse || lane.DefaultShipFrom));
+
+const laneTotalCost = (lane: ScenarioRunResultsLane): number => {
+  const componentTotal = [lane.InboundSpend, lane.DistributionCost, lane.ParcelSpend, lane.LtlSpend, lane.TlSpend]
+    .map(Number)
+    .filter(Number.isFinite)
+    .reduce((sum, value) => sum + value, 0);
+  if (componentTotal > 0) return componentTotal;
+  return Number(lane.TotalCost ?? lane.LaneCost ?? 0) || 0;
+};
 
 const formatDcDisplayName = (value: unknown): string => {
   const text = normalizeText(canonicalizeDcName(value));
@@ -282,8 +294,8 @@ const canonicalizeLaneRows = (rows: ScenarioRunResultsLane[]): ScenarioRunResult
     group.sort((a, b) => {
       const scoreDelta = laneQualityScore(b) - laneQualityScore(a);
       if (scoreDelta !== 0) return scoreDelta;
-      const costA = Number(a.TotalCost ?? a.LaneCost ?? a.RankedOption1Cost ?? 0);
-      const costB = Number(b.TotalCost ?? b.LaneCost ?? b.RankedOption1Cost ?? 0);
+      const costA = laneTotalCost(a) || Number(a.RankedOption1Cost ?? 0);
+      const costB = laneTotalCost(b) || Number(b.RankedOption1Cost ?? 0);
       if (costA !== costB && costA > 0 && costB > 0) return costA - costB;
       const cpuA = Number(a.CostPerUnit ?? 0);
       const cpuB = Number(b.CostPerUnit ?? 0);
@@ -306,8 +318,8 @@ const buildLaneGroups = (rows: ScenarioRunResultsLane[]): LaneGroup[] => {
 
   return Array.from(grouped.entries()).map(([key, groupRows]) => {
     const sortedGroupRows = [...groupRows].sort((a, b) => {
-      const costA = Number(a.TotalCost ?? a.LaneCost ?? 0);
-      const costB = Number(b.TotalCost ?? b.LaneCost ?? 0);
+      const costA = laneTotalCost(a);
+      const costB = laneTotalCost(b);
       if (costA !== costB && costA > 0 && costB > 0) return costA - costB;
       const cpuA = Number(a.CostPerUnit ?? 0);
       const cpuB = Number(b.CostPerUnit ?? 0);
@@ -328,13 +340,14 @@ const buildLaneGroups = (rows: ScenarioRunResultsLane[]): LaneGroup[] => {
       seenDcs.add(dcKey);
       const cpu = Number(row.CostPerUnit ?? 0);
       const days = Number(row.DeliveryDays ?? row.AvgDeliveryDays ?? 0);
-      const totalCost = Number(row.TotalCost ?? row.LaneCost ?? 0);
+      const totalCost = laneTotalCost(row);
       candidatesFromGroupRows.push({
         dc: dcName,
         costPerUnit: Number.isFinite(cpu) ? cpu : 0,
         days: Number.isFinite(days) ? days : 0,
         totalCost: Number.isFinite(totalCost) && totalCost > 0 ? totalCost : undefined,
         sourceIndex: (candidatesFromGroupRows.length + 1) as 1 | 2 | 3 | 4,
+        sourceRow: row,
       });
     });
 
@@ -507,8 +520,23 @@ const buildSelectedLaneRow = (
   let ltlSpend = sourceRow.LtlSpend;
   let tlSpend = sourceRow.TlSpend;
 
-  if (isOriginalDc && Number(sourceRow.TotalCost ?? sourceRow.LaneCost ?? 0) > 0) {
-    selectedTotal = Number(sourceRow.TotalCost ?? sourceRow.LaneCost ?? 0);
+  // A candidate row is the authoritative source for its complete metric set.
+  // This is especially important for relocatable strategic pro forma lanes:
+  // selecting Los Angeles must carry Los Angeles' inbound/distribution/parcel/
+  // LTL/TL values and TotalCost, rather than scaling the original DC's values.
+  const candidateRow = selected.sourceRow;
+  if (candidateRow) {
+    const candidateTotal = laneTotalCost(candidateRow);
+    selectedTotal = candidateTotal > 0
+      ? candidateTotal
+      : laneTotalCost(sourceRow);
+    inboundSpend = candidateRow.InboundSpend;
+    distributionCost = candidateRow.DistributionCost;
+    parcelSpend = candidateRow.ParcelSpend;
+    ltlSpend = candidateRow.LtlSpend;
+    tlSpend = candidateRow.TlSpend;
+  } else if (isOriginalDc && laneTotalCost(sourceRow) > 0) {
+    selectedTotal = laneTotalCost(sourceRow);
   } else {
     const baseCpu = Number(sourceRow.CostPerUnit ?? 0);
     const cpuRatio = baseCpu > 0 ? selectedCpu / baseCpu : 1;
@@ -523,6 +551,7 @@ const buildSelectedLaneRow = (
 
   return {
     ...sourceRow,
+    ...(candidateRow || {}),
     ScenarioRunID: scenarioId,
     OriginalAssignedDC: formatDcDisplayName(laneSourceDc(sourceRow)),
     OriginalCostPerUnit: Number(Number(sourceRow.CostPerUnit ?? 0).toFixed(2)),

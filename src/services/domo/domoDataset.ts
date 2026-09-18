@@ -538,7 +538,9 @@ const normalizeRawLaneRow = (
   const rawTotalCost = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.totalCost]));
   const breachFlag = normalizeLaneBreachFlag(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.breachFlag]));
   const assignedDc = costingWarehouse || defaultShipFrom || '';
-  const laneCost = rawTotalCost > 0 ? rawTotalCost : Math.max(0, distributionCost + inboundSpend + parcelSpend + ltlSpend + tlSpend);
+  // Rebuild totals from the component spends; spreadsheet totals can be stale.
+  const componentTotalCost = Math.max(0, distributionCost + inboundSpend + parcelSpend + ltlSpend + tlSpend);
+  const laneCost = componentTotalCost > 0 ? componentTotalCost : rawTotalCost;
   const deliveryDays = rawDeliveryDays > 0
     ? rawDeliveryDays
     : avgDeliveryDays > 0
@@ -619,7 +621,7 @@ const normalizeRawLaneRow = (
     InboundSpend: inboundSpend,
     ParcelSpend: parcelSpend,
     LtlSpend: ltlSpend,
-    TotalCost: rawTotalCost || laneCost,
+    TotalCost: laneCost,
     CostRank: 0,
     CostPerUnit: costPerUnit > 0 ? costPerUnit : undefined,
     WorkingCapacity: hasWorkingCapacityColumn ? workingCapacity : (workingCapacity || undefined),
@@ -658,7 +660,7 @@ const normalizeNormalizedLaneRow = (row: DomoLaneRow): ScenarioRunResultsLane | 
     readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.costPerUnit]),
     normalized.CostPerUnit || 0,
   );
-  const laneCost = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.laneCost]), normalized.LaneCost);
+  const sourceLaneCost = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.laneCost]), normalized.LaneCost);
   const deliveryDays = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.deliveryDays]), normalized.DeliveryDays);
   const avgDeliveryDays = asNumber(
     readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.avgDeliveryDays]),
@@ -681,6 +683,13 @@ const normalizeNormalizedLaneRow = (row: DomoLaneRow): ScenarioRunResultsLane | 
   const runName = readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.runName]) || normalized.RunName || '';
   const entityScope = readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.entityScope]) || normalized.EntityScope || normalized.Entity || '';
   const squareFootage = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.squareFootage]), normalized.SquareFootage || 0);
+  const inboundSpend = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.inboundSpend]), normalized.InboundSpend || 0);
+  const distributionCost = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.distributionCost]), normalized.DistributionCost || 0);
+  const parcelSpend = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.parcelSpend]), normalized.ParcelSpend || 0);
+  const ltlSpend = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.ltlSpend]), normalized.LtlSpend || 0);
+  const tlSpend = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.tlSpend]), normalized.TlSpend || 0);
+  const componentTotalCost = Math.max(0, distributionCost + inboundSpend + parcelSpend + ltlSpend + tlSpend);
+  const laneCost = componentTotalCost > 0 ? componentTotalCost : sourceLaneCost;
 
   return {
     ...normalized,
@@ -731,10 +740,10 @@ const normalizeNormalizedLaneRow = (row: DomoLaneRow): ScenarioRunResultsLane | 
     RunName: runName || normalized.RunName,
     CostingWarehouse: readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.costingWarehouse]) || normalized.CostingWarehouse,
     DefaultShipFrom: readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.defaultShipFrom]) || normalized.DefaultShipFrom,
-    InboundSpend: asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.inboundSpend]), normalized.InboundSpend || 0),
-    ParcelSpend: asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.parcelSpend]), normalized.ParcelSpend || 0),
-    LtlSpend: asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.ltlSpend]), normalized.LtlSpend || 0),
-    TotalCost: asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.totalCost]), normalized.TotalCost || laneCost),
+    InboundSpend: inboundSpend,
+    ParcelSpend: parcelSpend,
+    LtlSpend: ltlSpend,
+    TotalCost: laneCost,
     CostRank: costRank,
     WorkingCapacity: (() => {
       const hasCol = hasRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.workingCapacity]);
@@ -743,8 +752,8 @@ const normalizeNormalizedLaneRow = (row: DomoLaneRow): ScenarioRunResultsLane | 
       }
       return normalized.WorkingCapacity;
     })(),
-    DistributionCost: asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.distributionCost]), normalized.DistributionCost || 0) || undefined,
-    TlSpend: asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.tlSpend]), normalized.TlSpend || 0),
+    DistributionCost: distributionCost || undefined,
+    TlSpend: tlSpend,
     BreachFlag: readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.breachFlag]) || normalized.BreachFlag,
     OrderToDeliverCalendarDays: asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.orderToDeliverDays]), normalized.OrderToDeliverCalendarDays || 0) || undefined,
     ShipToDeliverCalendarDays: asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.shipToDeliverDays]), normalized.ShipToDeliverCalendarDays || 0) || undefined,
@@ -1065,21 +1074,62 @@ export const enrichRankedOptionsForLanes = (
   
   const pool = (candidateSourcePool && candidateSourcePool.length > 0) ? candidateSourcePool : lanes;
 
-  const poolByZipChannel = new Map<string, ScenarioRunResultsLane[]>();
-  const poolByZip = new Map<string, ScenarioRunResultsLane[]>();
+  // A ranked option is only meaningful when it is another DC for the *same* lane
+  // population.  The old Zip + Channel key mixed rows from different scenarios,
+  // source datasets, terms, states, and customers, which could make (for example)
+  // the Dallas option show a cost belonging to another scenario's Dallas lane.
+  const keyPart = (value: unknown): string => String(value ?? '').trim().toLowerCase();
+  const candidateScopeKey = (row: ScenarioRunResultsLane): string => {
+    const sourceDatasetId = keyPart(row.SourceDatasetId);
+    return sourceDatasetId
+      ? `source:${sourceDatasetId}`
+      : `scenario:${keyPart(row.ScenarioRunID)}`;
+  };
+  const candidateLaneKey = (row: ScenarioRunResultsLane): string => [
+    candidateScopeKey(row),
+    keyPart(row.Dest3Zip),
+    keyPart(row.Channel),
+    keyPart(row.Terms),
+    keyPart(row.DestState || row.State),
+    keyPart(row.PartyName || row.CustomerGroup),
+  ].join('|');
+  const laneTotalCost = (row: ScenarioRunResultsLane): number => {
+    const componentTotal = [row.InboundSpend, row.DistributionCost, row.ParcelSpend, row.LtlSpend, row.TlSpend]
+      .map(Number)
+      .filter(Number.isFinite)
+      .reduce((sum, value) => sum + value, 0);
+    if (componentTotal > 0) return componentTotal;
+    const totalCost = Number(row.TotalCost);
+    if (Number.isFinite(totalCost) && totalCost > 0) return totalCost;
+    const laneCost = Number(row.LaneCost);
+    return Number.isFinite(laneCost) && laneCost > 0 ? laneCost : 0;
+  };
+  const laneDays = (row: ScenarioRunResultsLane): number =>
+    Number(row.DeliveryDays ?? row.AvgDeliveryDays ?? 0) || 0;
+  const synchronizeSelectedOption = (row: ScenarioRunResultsLane): void => {
+    const selectedDc = String(row.CostingWarehouse || row.AssignedDC || row.DefaultShipFrom || '').trim();
+    const selectedCost = laneTotalCost(row);
+    if (!selectedDc || selectedCost <= 0) return;
+
+    ([1, 2, 3, 4] as const).forEach((rank) => {
+      const dcField = `RankedOption${rank}DC` as const;
+      const costField = `RankedOption${rank}Cost` as const;
+      const daysField = `RankedOption${rank}Days` as const;
+      if (keyPart(row[dcField]) === keyPart(selectedDc)) {
+        row[costField] = selectedCost;
+        row[daysField] = laneDays(row);
+      }
+    });
+  };
+
+  const poolByLane = new Map<string, ScenarioRunResultsLane[]>();
 
   pool.forEach((lane) => {
-    const zip = (lane.Dest3Zip || '').trim();
-    if (!zip) return;
-    const zipChannelKey = `${zip}|${(lane.Channel || '').trim()}`;
-
-    const listZC = poolByZipChannel.get(zipChannelKey) || [];
-    listZC.push(lane);
-    poolByZipChannel.set(zipChannelKey, listZC);
-
-    const listZ = poolByZip.get(zip) || [];
-    listZ.push(lane);
-    poolByZip.set(zip, listZ);
+    const key = candidateLaneKey(lane);
+    if (!keyPart(lane.Dest3Zip)) return;
+    const list = poolByLane.get(key) || [];
+    list.push(lane);
+    poolByLane.set(key, list);
   });
 
   const candidatesCache = new Map<string, { dc: string; cost: number; days: number }[]>();
@@ -1088,8 +1138,8 @@ export const enrichRankedOptionsForLanes = (
     if (candidatesCache.has(key)) return candidatesCache.get(key)!;
 
     const sortedRows = [...rows].sort((a, b) => {
-      const costA = Number(a.TotalCost ?? a.LaneCost ?? 0);
-      const costB = Number(b.TotalCost ?? b.LaneCost ?? 0);
+      const costA = laneTotalCost(a);
+      const costB = laneTotalCost(b);
       if (costA !== costB && costA > 0 && costB > 0) return costA - costB;
       const cpuA = Number(a.CostPerUnit ?? 0);
       const cpuB = Number(b.CostPerUnit ?? 0);
@@ -1105,8 +1155,8 @@ export const enrichRankedOptionsForLanes = (
       seenDcs.add(dcName.toLowerCase());
       candidates.push({
         dc: dcName,
-        cost: Number(row.TotalCost ?? row.LaneCost ?? 0),
-        days: Number(row.DeliveryDays ?? row.AvgDeliveryDays ?? 0),
+        cost: laneTotalCost(row),
+        days: laneDays(row),
       });
     });
 
@@ -1115,18 +1165,30 @@ export const enrichRankedOptionsForLanes = (
   };
 
   lanes.forEach((row) => {
-    const zip = (row.Dest3Zip || '').trim();
-    const zipChannelKey = `${zip}|${(row.Channel || '').trim()}`;
+    const matchingRows = poolByLane.get(candidateLaneKey(row));
+    if (!matchingRows || matchingRows.length === 0) {
+      // Preserve persisted options when their source rows are unavailable, while
+      // still preventing the selected lane from showing a different cost.
+      synchronizeSelectedOption(row);
+      return;
+    }
 
-    let candidates = poolByZipChannel.has(zipChannelKey)
-      ? getCandidatesForKey(zipChannelKey, poolByZipChannel.get(zipChannelKey)!)
-      : [];
+    const candidates = getCandidatesForKey(candidateLaneKey(row), matchingRows)
+      .map((candidate) => ({ ...candidate }));
 
-    if (candidates.length < 2 && poolByZip.has(zip)) {
-      const zipCandidates = getCandidatesForKey(`ZIP_${zip}`, poolByZip.get(zip)!);
-      if (zipCandidates.length > candidates.length) {
-        candidates = zipCandidates;
-      }
+    // The Lanes table is the source of truth for the selected route.  When that
+    // DC appears in the ranked list, use exactly its displayed TotalCost and days.
+    // This keeps Dallas ($130) identical in Lanes, Ranked Options, and CSV output.
+    const selectedDc = String(row.CostingWarehouse || row.AssignedDC || row.DefaultShipFrom || '').trim();
+    const selectedCost = laneTotalCost(row);
+    const selectedDays = laneDays(row);
+    const selectedIndex = candidates.findIndex(
+      (candidate) => keyPart(candidate.dc) === keyPart(selectedDc),
+    );
+    if (selectedIndex >= 0 && selectedCost > 0) {
+      candidates[selectedIndex].cost = selectedCost;
+      candidates[selectedIndex].days = selectedDays;
+      candidates.sort((a, b) => a.cost - b.cost || a.dc.localeCompare(b.dc));
     }
 
     const opt1 = candidates[0];
@@ -1149,6 +1211,7 @@ export const enrichRankedOptionsForLanes = (
     row.RankedOption4DC = opt4 ? opt4.dc : '';
     row.RankedOption4Cost = opt4 ? opt4.cost : 0;
     row.RankedOption4Days = opt4 ? opt4.days : 0;
+    synchronizeSelectedOption(row);
   });
 
   return lanes;

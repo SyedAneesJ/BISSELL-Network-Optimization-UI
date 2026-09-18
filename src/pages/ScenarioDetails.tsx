@@ -197,6 +197,7 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = (props) => {
     entityLabels,
     scenarioConfig,
     dcResults,
+    totalExtendedRevenue,
     laneResults,
     laneOptions,
     baselineScenarioId,
@@ -284,6 +285,7 @@ export const ScenarioDetails: React.FC<ScenarioDetailsProps> = (props) => {
           scenarioConfig={scenarioConfig}
           entityLabels={entityLabels}
           dcResults={dcResults}
+          totalExtendedRevenue={totalExtendedRevenue}
           laneResults={laneResults}
           topFootprintLanes={topFootprintLanes}
           onExportDCDetails={handleExportDCDetails}

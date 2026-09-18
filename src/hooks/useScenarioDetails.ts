@@ -105,6 +105,23 @@ export const useScenarioDetails = ({
     );
   }, [rawScenario, isUsBaseline]);
 
+  // Revenue is a property of the lane population, not of the selected DC
+  // assignment. Include every DC in the scenario's family, including
+  // suppressed DCs, so suppression/relocation cannot change the denominator.
+  const totalExtendedRevenue = useMemo(() => {
+    if (!spaceOverrideRows || spaceOverrideRows.length === 0) return 0;
+    const scenarioDcNames = new Set(
+      scenarioRunResultsDC
+        .filter((dc) => dc.ScenarioRunID === scenarioId)
+        .map((dc) => normalizeWarehouseName(dc.DCName))
+        .filter(Boolean),
+    );
+    const relevantRows = scenarioDcNames.size > 0
+      ? spaceOverrideRows.filter((row) => scenarioDcNames.has(normalizeWarehouseName(row.Location)))
+      : spaceOverrideRows;
+    return relevantRows.reduce((sum, row) => sum + Number(row.TotalExtendedPrice ?? 0), 0);
+  }, [scenarioId, scenarioRunResultsDC, spaceOverrideRows]);
+
   const scenario = useMemo(
     () => {
       if (!rawScenario) return undefined;
@@ -347,6 +364,7 @@ export const useScenarioDetails = ({
       const spaceFields = spaceOverride ? {
         ActualSpace: spaceOverride.ContractedSquareFootage,
         SpaceCore: spaceOverride.WorkingCapacitySqFt,
+        TotalExtendedPrice: Number(spaceOverride.TotalExtendedPrice ?? 0),
         ...(isUsBaseline ? {
           UtilPct: Number((spaceOverride.PalletUtilization * 100).toFixed(2)),
           SpaceRequired: Number((spaceOverride.ContractedSquareFootage * spaceOverride.PalletUtilization).toFixed(2)),
@@ -819,11 +837,15 @@ export const useScenarioDetails = ({
 
   const handleExportRoutingCSV = () => {
     scheduleExport('scenario_export_routing', () => {
-      const rows = visibleLaneResults.map((lane) => ({
+      const rows = filteredLanes.map((lane) => ({
         ScenarioRunID: lane.ScenarioRunID,
         'Destination 3ZIP': lane.Dest3Zip,
+        Terms: lane.Terms || lane.FreightTerms || '',
+        // Keep the original/default source separate from the scenario assignment.
+        // A relocated Collect lane can have DefaultShipFrom = R Virginia while
+        // AssignedDC/CostingWarehouse = Elwood.
         'Default Warehouse': lane.DefaultShipFrom || lane.AssignedDC || '',
-        'Costing Warehouse': lane.CostingWarehouse || lane.DefaultShipFrom || '',
+        'Costing Warehouse': lane.CostingWarehouse || lane.AssignedDC || lane.DefaultShipFrom || '',
         'Cheapest to Serve': lane.RankedOption1DC || '',
         'Inbound Spend': lane.InboundSpend ?? 0,
         'Distribution Spend': lane.DistributionCost ?? 0,
@@ -840,9 +862,10 @@ export const useScenarioDetails = ({
 
   const handleExportLaneCSV = () => {
     scheduleExport('scenario_export_lane', () => {
-      const rows = visibleLaneResults.map((lane) => ({
+      const rows = filteredLanes.map((lane) => ({
         ScenarioRunID: lane.ScenarioRunID,
         'Destination 3Zip': lane.Dest3Zip,
+        Terms: lane.Terms || lane.FreightTerms || '',
         'Option 1 DC': lane.RankedOption1DC || '',
         'Option 1 Total Cost': lane.RankedOption1Cost ?? 0,
         'Option 2 DC': lane.RankedOption2DC || '',
@@ -851,7 +874,7 @@ export const useScenarioDetails = ({
         'Option 3 Total Cost': lane.RankedOption3Cost ?? 0,
         'Option 4 DC': (lane as any).RankedOption4DC || '',
         'Option 4 Total Cost': (lane as any).RankedOption4Cost ?? 0,
-        Selected: lane.DefaultShipFrom || lane.AssignedDC || '',
+        Selected: lane.AssignedDC || lane.CostingWarehouse || lane.DefaultShipFrom || '',
       }));
       const csv = toCSV(rows);
       downloadBlob(csv, `${scenarioId}_routing_assignments.csv`, 'text/csv;charset=utf-8;');
@@ -940,6 +963,7 @@ export const useScenarioDetails = ({
     entityLabels,
     scenarioConfig,
     dcResults,
+    totalExtendedRevenue,
     laneResults: visibleLaneResults,
     overrides,
     laneOptions,

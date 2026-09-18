@@ -60,6 +60,7 @@ interface ScenarioSummaryTabProps {
   scenarioConfig?: ScenarioRunConfig;
   entityLabels: { first: string; second: string };
   dcResults: ScenarioRunResultsDC[];
+  totalExtendedRevenue: number;
   laneResults: ScenarioRunResultsLane[];
   topFootprintLanes: ScenarioRunResultsLane[];
   onExportDCDetails?: () => void;
@@ -71,6 +72,7 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
   scenarioConfig,
   entityLabels,
   dcResults,
+  totalExtendedRevenue,
   laneResults,
   topFootprintLanes,
   onExportDCDetails,
@@ -134,39 +136,16 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
   const tlCostTotal = dcResults.reduce((sum, dc) => sum + (dc.TlSpend ?? 0), 0);
   const outboundCostTotal = parcelCostTotal + ltlCostTotal + tlCostTotal;
 
-  const isCustom = !String(scenario.DataflowID || '').trim() ||
-    !['3267'].includes(String(scenario.DataflowID || '').trim());
-  const isBaseline = !isCustom && (
-    scenario.ScenarioRunID === 'SR001' ||
-    scenario.ScenarioRunID === 'SR005' ||
-    String(scenario.DataflowID || '') === '3267' ||
-    scenario.ScenarioRunID === 'SR_ETL_11_CANADA_CANADA_BASELINE_NA'
-  );
-  const isUsBaseline = (scenario.Region === 'US' || scenario.Region === 'Canada') && isBaseline;
-
-  const activeDcs = dcResults.filter(dc => dc.IsSuppressed !== 'Y');
-
-  const totalDenominator = scenario.TotalCost || 1;
-  const totalExtendedPriceSum = activeDcs.reduce((sum, dc) => sum + ((dc as any).TotalExtendedPrice || 0), 0);
-  const salesDenominator = isUsBaseline && totalExtendedPriceSum > 0 ? totalExtendedPriceSum : totalDenominator;
-
-  const inboundPctVal = (inboundCostTotal / salesDenominator) * 100;
-  const dstPctVal = (distributionCostTotal / salesDenominator) * 100;
-  const parcelPctVal = (parcelCostTotal / salesDenominator) * 100;
-  const ltlPctVal = (ltlCostTotal / salesDenominator) * 100;
-  const tlPctVal = (tlCostTotal / salesDenominator) * 100;
-  const outboundPctVal = (outboundCostTotal / salesDenominator) * 100;
-  const totalPctVal = ((inboundCostTotal + distributionCostTotal + outboundCostTotal) / salesDenominator) * 100;
-  const pctToSalesVal = ((inboundCostTotal + distributionCostTotal + outboundCostTotal) / salesDenominator) * 100;
-
-  const inboundPct = `${inboundPctVal.toFixed(isUsBaseline ? 2 : 1)}%`;
-  const dstPct = `${dstPctVal.toFixed(isUsBaseline ? 2 : 1)}%`;
-  const parcelPct = `${parcelPctVal.toFixed(isUsBaseline ? 2 : 1)}%`;
-  const ltlPct = `${ltlPctVal.toFixed(isUsBaseline ? 2 : 1)}%`;
-  const tlPct = `${tlPctVal.toFixed(isUsBaseline ? 2 : 1)}%`;
-  const outboundPct = `${outboundPctVal.toFixed(isUsBaseline ? 2 : 1)}%`;
-  const totalPct = `${totalPctVal.toFixed(isUsBaseline ? 2 : 1)}%`;
-  const pctToSales = `${pctToSalesVal.toFixed(isUsBaseline ? 2 : 1)}%`;
+  const hasRevenueDenominator = Number.isFinite(totalExtendedRevenue) && totalExtendedRevenue > 0;
+  const revenuePct = (cost: number): string => hasRevenueDenominator
+    ? `${((cost / totalExtendedRevenue) * 100).toFixed(2)}%`
+    : 'NA';
+  const inboundPct = revenuePct(inboundCostTotal);
+  const dstPct = revenuePct(distributionCostTotal);
+  const parcelPct = revenuePct(parcelCostTotal);
+  const ltlPct = revenuePct(ltlCostTotal);
+  const tlPct = revenuePct(tlCostTotal);
+  const outboundPct = revenuePct(outboundCostTotal);
 
   const formatCostPct = (cost: number, pctStr: string) => (
     <span className="inline-flex items-baseline gap-1 flex-wrap">
@@ -210,6 +189,7 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
           </h4>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <KPICard label="Total Cost" value={scenario.TotalCost} format="currency" />
+            <KPICard label="Total Extended Revenue" value={hasRevenueDenominator ? totalExtendedRevenue : 'NA'} format={hasRevenueDenominator ? 'currency' : undefined} />
             <KPICard label="Variable Cost" value={baseCost} format="currency" />
             <KPICard label="Fixed Cost" value={additionalCost} format="currency" />
             <KPICard label="Cost per Unit" value={formatCurrencyOrNA(scenario.CostPerUnit, 2)} />
@@ -233,10 +213,6 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
                 value={formatCostPct(outboundCostTotal, outboundPct)} 
                 tooltip={`Parcel: $${parcelCostTotal.toLocaleString()}\nLTL: $${ltlCostTotal.toLocaleString()}\nTL: $${tlCostTotal.toLocaleString()}`}
               />
-              {/* <KPICard 
-                label={`${activeDcs.length} DC Scenario Cost % Sales`} 
-                value={formatCostPct(inboundCostTotal + distributionCostTotal + outboundCostTotal, isUsBaseline ? pctToSales : totalPct)} 
-              /> */}
             </div>
           </div>
         )}

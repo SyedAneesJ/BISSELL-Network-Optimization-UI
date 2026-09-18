@@ -274,7 +274,7 @@ export const createScenarioRankedOptionsColumns = (): Column<ScenarioRunResultsL
     header: 'Selected',
     width: '140px',
     render: (row) => (
-      <div className="font-medium text-blue-600">{row.DefaultShipFrom || row.AssignedDC || '-'}</div>
+      <div className="font-medium text-blue-600">{row.AssignedDC || row.CostingWarehouse || row.DefaultShipFrom || '-'}</div>
     ),
   },
 ];
