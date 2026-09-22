@@ -148,6 +148,10 @@ export const HomeHeader: React.FC<HomeHeaderProps> = ({
 
             <NotificationBell count={notificationCount} onClick={onOpenNotifications} />
 
+            <span className="rounded-full bg-blue-600 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-white">
+              Test
+            </span>
+
             <div className="relative" ref={profileRef}>
               <button
                 type="button"

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { ChevronRight } from 'lucide-react';
 
 export const useAnimatedValue = (targetValue: number | string, duration = 800) => {
   const [currentValue, setCurrentValue] = useState<number | string>(() => {
@@ -85,6 +86,7 @@ interface KPICardProps {
   format?: 'currency' | 'percent' | 'number' | 'decimal';
   size?: 'small' | 'medium' | 'large';
   tooltip?: string;
+  expandableContent?: React.ReactNode;
 }
 
 export const KPICard: React.FC<KPICardProps> = ({
@@ -95,7 +97,9 @@ export const KPICard: React.FC<KPICardProps> = ({
   format = 'number',
   size = 'medium',
   tooltip,
+  expandableContent,
 }) => {
+  const [expanded, setExpanded] = useState(false);
   const isAnimatable = typeof value === 'string' || typeof value === 'number';
   const animatedValue = isAnimatable ? useAnimatedValue(value as string | number) : value;
 
@@ -134,6 +138,17 @@ export const KPICard: React.FC<KPICardProps> = ({
       <div className="flex items-start justify-between">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
+            {expandableContent && (
+              <button
+                type="button"
+                onClick={() => setExpanded((previous) => !previous)}
+                className="-ml-1 rounded p-0.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                aria-label={`${expanded ? 'Collapse' : 'Expand'} ${label} breakdown`}
+                aria-expanded={expanded}
+              >
+                <ChevronRight className={`h-3.5 w-3.5 transition-transform duration-200 ${expanded ? 'rotate-90' : ''}`} />
+              </button>
+            )}
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 break-words">{label}</p>
             {tooltip && (
               <div className="group relative">
@@ -161,6 +176,11 @@ export const KPICard: React.FC<KPICardProps> = ({
                 {format === 'percent' ? 'pp' : ''}
               </span>
               {deltaLabel && <span className="text-xs text-slate-500">{deltaLabel}</span>}
+            </div>
+          )}
+          {expandableContent && expanded && (
+            <div className="mt-3 border-l-2 border-blue-200 pl-3 text-xs text-slate-500">
+              {expandableContent}
             </div>
           )}
         </div>

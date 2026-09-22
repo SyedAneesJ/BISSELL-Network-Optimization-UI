@@ -11,7 +11,8 @@ type LaneCandidate = {
   dc: string;
   costPerUnit: number;
   days: number;
-  totalCost?: number;
+  totalCost: number;
+  relocatableCost: number;
   sourceIndex: 1 | 2 | 3 | 4;
   // When candidates come from lane-level rows, retain the complete row so the
   // selected assignment uses that candidate's exact cost components.
@@ -49,6 +50,8 @@ type DcAccumulator = {
   ltlSpend: number;
   tlSpend: number;
   distributionCost: number;
+  distributionVariableCost: number;
+  distributionFixedCost: number;
 };
 
 type AllocationInput = {
@@ -83,12 +86,27 @@ const laneSourceDc = (lane: ScenarioRunResultsLane): string =>
   normalizeText(canonicalizeDcName(lane.AssignedDC || lane.CostingWarehouse || lane.DefaultShipFrom));
 
 const laneTotalCost = (lane: ScenarioRunResultsLane): number => {
+  const directTotalCost = lane.TotalCost === null || lane.TotalCost === undefined || String(lane.TotalCost).trim() === ''
+    ? Number.NaN
+    : Number(lane.TotalCost);
+  if (Number.isFinite(directTotalCost)) return directTotalCost;
+  const directLaneCost = lane.LaneCost === null || lane.LaneCost === undefined || String(lane.LaneCost).trim() === ''
+    ? Number.NaN
+    : Number(lane.LaneCost);
+  if (Number.isFinite(directLaneCost)) return directLaneCost;
   const componentTotal = [lane.InboundSpend, lane.DistributionCost, lane.ParcelSpend, lane.LtlSpend, lane.TlSpend]
     .map(Number)
     .filter(Number.isFinite)
     .reduce((sum, value) => sum + value, 0);
-  if (componentTotal > 0) return componentTotal;
-  return Number(lane.TotalCost ?? lane.LaneCost ?? 0) || 0;
+  return componentTotal > 0 ? componentTotal : 0;
+};
+
+const laneRelocatableCost = (lane: ScenarioRunResultsLane): number => {
+  const direct = Number(lane.RelocatableCost);
+  if (Number.isFinite(direct)) return direct;
+  const total = laneTotalCost(lane);
+  const fixed = Number(lane.DistributionFixedCost ?? 0);
+  return Math.max(0, total - (Number.isFinite(fixed) ? fixed : 0));
 };
 
 const formatDcDisplayName = (value: unknown): string => {
@@ -215,23 +233,25 @@ const capacityValue = (row?: DomoDcCapacityRow): number => {
 
 const buildRawCandidates = (lane: ScenarioRunResultsLane): LaneCandidate[] => {
   const candidates: LaneCandidate[] = [];
-  const addCandidate = (dc: unknown, costPerUnit: unknown, days: unknown, sourceIndex: 1 | 2 | 3 | 4) => {
+  const addCandidate = (dc: unknown, totalCost: unknown, days: unknown, sourceIndex: 1 | 2 | 3 | 4, relocatableCost?: unknown) => {
     const dcName = normalizeText(dc);
     if (!dcName) return;
-    const parsedCpu = Number(costPerUnit);
+    const parsedTotalCost = Number(totalCost);
     const parsedDays = Number(days);
     candidates.push({
       dc: dcName,
-      costPerUnit: Number.isFinite(parsedCpu) ? parsedCpu : 0,
+      costPerUnit: 0,
       days: Number.isFinite(parsedDays) ? parsedDays : 0,
+      totalCost: Number.isFinite(parsedTotalCost) ? parsedTotalCost : 0,
+      relocatableCost: Number.isFinite(Number(relocatableCost)) ? Number(relocatableCost) : (Number.isFinite(parsedTotalCost) ? parsedTotalCost : 0),
       sourceIndex,
     });
   };
 
-  addCandidate(lane.RankedOption1DC, lane.RankedOption1Cost, lane.RankedOption1Days, 1);
-  addCandidate(lane.RankedOption2DC, lane.RankedOption2Cost, lane.RankedOption2Days, 2);
-  addCandidate(lane.RankedOption3DC, lane.RankedOption3Cost, lane.RankedOption3Days, 3);
-  addCandidate(lane.RankedOption4DC, lane.RankedOption4Cost, lane.RankedOption4Days, 4);
+  addCandidate(lane.RankedOption1DC, lane.RankedOption1Cost, lane.RankedOption1Days, 1, lane.RankedOption1RelocatableCost);
+  addCandidate(lane.RankedOption2DC, lane.RankedOption2Cost, lane.RankedOption2Days, 2, lane.RankedOption2RelocatableCost);
+  addCandidate(lane.RankedOption3DC, lane.RankedOption3Cost, lane.RankedOption3Days, 3, lane.RankedOption3RelocatableCost);
+  addCandidate(lane.RankedOption4DC, lane.RankedOption4Cost, lane.RankedOption4Days, 4, lane.RankedOption4RelocatableCost);
 
   if (candidates.length === 0) {
     const fallbackDc = normalizeText(lane.AssignedDC || lane.CostingWarehouse || lane.DefaultShipFrom);
@@ -246,6 +266,8 @@ const buildRawCandidates = (lane: ScenarioRunResultsLane): LaneCandidate[] => {
         dc: fallbackDc,
         costPerUnit: Number.isFinite(fallbackCpu) ? fallbackCpu : 0,
         days: Number(lane.DeliveryDays ?? 0) || 0,
+        totalCost: laneTotalCost(lane),
+        relocatableCost: laneRelocatableCost(lane),
         sourceIndex: 1,
       });
     }
@@ -254,9 +276,9 @@ const buildRawCandidates = (lane: ScenarioRunResultsLane): LaneCandidate[] => {
   return candidates
     .filter((candidate) => candidate.dc && normalizeDcKey(candidate.dc) !== 'na')
     .sort((a, b) => {
-      const costA = a.totalCost ?? a.costPerUnit;
-      const costB = b.totalCost ?? b.costPerUnit;
-      if (costA !== costB && costA > 0 && costB > 0) return costA - costB;
+      const costA = a.totalCost;
+      const costB = b.totalCost;
+      if (costA !== costB) return costA - costB;
       if (a.days !== b.days) return a.days - b.days;
       return a.sourceIndex - b.sourceIndex;
     });
@@ -296,7 +318,7 @@ const canonicalizeLaneRows = (rows: ScenarioRunResultsLane[]): ScenarioRunResult
       if (scoreDelta !== 0) return scoreDelta;
       const costA = laneTotalCost(a) || Number(a.RankedOption1Cost ?? 0);
       const costB = laneTotalCost(b) || Number(b.RankedOption1Cost ?? 0);
-      if (costA !== costB && costA > 0 && costB > 0) return costA - costB;
+      if (costA !== costB) return costA - costB;
       const cpuA = Number(a.CostPerUnit ?? 0);
       const cpuB = Number(b.CostPerUnit ?? 0);
       if (cpuA !== cpuB) return cpuA - cpuB;
@@ -320,13 +342,26 @@ const buildLaneGroups = (rows: ScenarioRunResultsLane[]): LaneGroup[] => {
     const sortedGroupRows = [...groupRows].sort((a, b) => {
       const costA = laneTotalCost(a);
       const costB = laneTotalCost(b);
-      if (costA !== costB && costA > 0 && costB > 0) return costA - costB;
+      if (costA !== costB) return costA - costB;
       const cpuA = Number(a.CostPerUnit ?? 0);
       const cpuB = Number(b.CostPerUnit ?? 0);
       return cpuA - cpuB;
     });
 
-    const sourceRow = { ...sortedGroupRows[0] };
+    // Keep the lane's original/default assignment as the source row whenever
+    // that DC is present among the candidate rows.  The cheapest candidate is
+    // still used for ranking, but must not overwrite the original warehouse
+    // used by fixed Collect/Prepaid policies or by the export's Default
+    // Warehouse column.
+    const originalDcKey = normalizeDcKey(
+      sortedGroupRows.find((row) => normalizeText(row.DefaultShipFrom))?.DefaultShipFrom ||
+      sortedGroupRows.find((row) => normalizeText(row.AssignedDC))?.AssignedDC ||
+      '',
+    );
+    const sourceRowCandidate = originalDcKey
+      ? sortedGroupRows.find((row) => normalizeDcKey(row.CostingWarehouse || row.AssignedDC || row.DefaultShipFrom) === originalDcKey)
+      : undefined;
+    const sourceRow = { ...(sourceRowCandidate || sortedGroupRows[0]) };
     const laneUnits = inferLaneUnits(sourceRow);
     const spaceReq = laneSpaceRequired(sourceRow);
 
@@ -345,7 +380,8 @@ const buildLaneGroups = (rows: ScenarioRunResultsLane[]): LaneGroup[] => {
         dc: dcName,
         costPerUnit: Number.isFinite(cpu) ? cpu : 0,
         days: Number.isFinite(days) ? days : 0,
-        totalCost: Number.isFinite(totalCost) && totalCost > 0 ? totalCost : undefined,
+        totalCost: Number.isFinite(totalCost) ? totalCost : 0,
+        relocatableCost: laneRelocatableCost(row),
         sourceIndex: (candidatesFromGroupRows.length + 1) as 1 | 2 | 3 | 4,
         sourceRow: row,
       });
@@ -358,19 +394,23 @@ const buildLaneGroups = (rows: ScenarioRunResultsLane[]): LaneGroup[] => {
     const opt4 = candidatesFromGroupRows[3];
 
     sourceRow.RankedOption1DC = opt1 ? formatDcDisplayName(opt1.dc) : '';
-    sourceRow.RankedOption1Cost = opt1 ? (opt1.totalCost ?? opt1.costPerUnit) : 0;
+    sourceRow.RankedOption1Cost = opt1 ? opt1.totalCost : 0;
+    sourceRow.RankedOption1RelocatableCost = opt1 ? opt1.relocatableCost : 0;
     sourceRow.RankedOption1Days = opt1 ? opt1.days : 0;
 
     sourceRow.RankedOption2DC = opt2 ? formatDcDisplayName(opt2.dc) : '';
-    sourceRow.RankedOption2Cost = opt2 ? (opt2.totalCost ?? opt2.costPerUnit) : 0;
+    sourceRow.RankedOption2Cost = opt2 ? opt2.totalCost : 0;
+    sourceRow.RankedOption2RelocatableCost = opt2 ? opt2.relocatableCost : 0;
     sourceRow.RankedOption2Days = opt2 ? opt2.days : 0;
 
     sourceRow.RankedOption3DC = opt3 ? formatDcDisplayName(opt3.dc) : '';
-    sourceRow.RankedOption3Cost = opt3 ? (opt3.totalCost ?? opt3.costPerUnit) : 0;
+    sourceRow.RankedOption3Cost = opt3 ? opt3.totalCost : 0;
+    sourceRow.RankedOption3RelocatableCost = opt3 ? opt3.relocatableCost : 0;
     sourceRow.RankedOption3Days = opt3 ? opt3.days : 0;
 
     sourceRow.RankedOption4DC = opt4 ? formatDcDisplayName(opt4.dc) : '';
-    sourceRow.RankedOption4Cost = opt4 ? (opt4.totalCost ?? opt4.costPerUnit) : 0;
+    sourceRow.RankedOption4Cost = opt4 ? opt4.totalCost : 0;
+    sourceRow.RankedOption4RelocatableCost = opt4 ? opt4.relocatableCost : 0;
     sourceRow.RankedOption4Days = opt4 ? opt4.days : 0;
 
     const finalCandidates = candidatesFromGroupRows.length > 0
@@ -486,6 +526,28 @@ const restrictCandidatesForLane = (
   return fixedCandidate ? [fixedCandidate] : candidates;
 };
 
+const candidateCostForGroup = (
+  group: LaneGroup,
+  candidate: LaneCandidate,
+  suppressedSet: Set<string>,
+): number => {
+  const sourceKey = normalizeDcKey(laneSourceDc(group.sourceRow));
+  const movedFromSuppressed = Boolean(sourceKey && suppressedSet.has(sourceKey));
+  const isMove = normalizeDcKey(candidate.dc) !== sourceKey;
+  return movedFromSuppressed && isMove ? candidate.relocatableCost : candidate.totalCost;
+};
+
+const sortCandidatesForGroup = (
+  group: LaneGroup,
+  candidates: LaneCandidate[],
+  suppressedSet: Set<string>,
+): LaneCandidate[] => [...candidates].sort((a, b) => {
+  const costDelta = candidateCostForGroup(group, a, suppressedSet) - candidateCostForGroup(group, b, suppressedSet);
+  if (costDelta !== 0) return costDelta;
+  if (a.days !== b.days) return a.days - b.days;
+  return a.sourceIndex - b.sourceIndex;
+});
+
 const selectedCandidateRank = (sourceRow: ScenarioRunResultsLane, selectedDc: string): number => {
   const rawCandidates = buildRawCandidates(sourceRow);
   const normalized = normalizeDcKey(selectedDc);
@@ -500,6 +562,7 @@ const buildSelectedLaneRow = (
   laneUnits: number,
   selected: LaneCandidate,
   selectedCapacity: number,
+  suppressedSet: Set<string>,
 ): ScenarioRunResultsLane => {
   const selectedCpu = Number(selected.costPerUnit.toFixed(2));
   const bestCpu = Number(
@@ -516,6 +579,8 @@ const buildSelectedLaneRow = (
   let selectedTotal: number;
   let inboundSpend = sourceRow.InboundSpend;
   let distributionCost = sourceRow.DistributionCost;
+  let distributionVariableCost = sourceRow.DistributionVariableCost;
+  let distributionFixedCost = sourceRow.DistributionFixedCost;
   let parcelSpend = sourceRow.ParcelSpend;
   let ltlSpend = sourceRow.LtlSpend;
   let tlSpend = sourceRow.TlSpend;
@@ -525,17 +590,30 @@ const buildSelectedLaneRow = (
   // selecting Los Angeles must carry Los Angeles' inbound/distribution/parcel/
   // LTL/TL values and TotalCost, rather than scaling the original DC's values.
   const candidateRow = selected.sourceRow;
-  if (candidateRow) {
-    const candidateTotal = laneTotalCost(candidateRow);
-    selectedTotal = candidateTotal > 0
-      ? candidateTotal
-      : laneTotalCost(sourceRow);
+  const movedDueToSuppression = suppressedSet.has(normalizeDcKey(laneSourceDc(sourceRow))) &&
+    normalizeDcKey(selected.dc) !== normalizeDcKey(laneSourceDc(sourceRow));
+  const selectedDirectTotal = Number(movedDueToSuppression ? selected.relocatableCost : selected.totalCost);
+  if (Number.isFinite(selectedDirectTotal)) {
+    selectedTotal = selectedDirectTotal;
+    if (candidateRow) {
+      inboundSpend = candidateRow.InboundSpend;
+      distributionCost = candidateRow.DistributionCost;
+      distributionVariableCost = candidateRow.DistributionVariableCost;
+      distributionFixedCost = candidateRow.DistributionFixedCost;
+      parcelSpend = candidateRow.ParcelSpend;
+      ltlSpend = candidateRow.LtlSpend;
+      tlSpend = candidateRow.TlSpend;
+    }
+  } else if (candidateRow) {
+    selectedTotal = laneTotalCost(candidateRow);
     inboundSpend = candidateRow.InboundSpend;
     distributionCost = candidateRow.DistributionCost;
+    distributionVariableCost = candidateRow.DistributionVariableCost;
+    distributionFixedCost = candidateRow.DistributionFixedCost;
     parcelSpend = candidateRow.ParcelSpend;
     ltlSpend = candidateRow.LtlSpend;
     tlSpend = candidateRow.TlSpend;
-  } else if (isOriginalDc && laneTotalCost(sourceRow) > 0) {
+  } else if (isOriginalDc && Number.isFinite(laneTotalCost(sourceRow))) {
     selectedTotal = laneTotalCost(sourceRow);
   } else {
     const baseCpu = Number(sourceRow.CostPerUnit ?? 0);
@@ -575,7 +653,16 @@ const buildSelectedLaneRow = (
     ).toFixed(2)),
     OvercapFlag: Number.isFinite(selectedCapacity) && selectedCapacity > 0 && demand > selectedCapacity ? 'Y' : 'N',
     InboundSpend: inboundSpend,
-    DistributionCost: distributionCost,
+    DistributionCost: movedDueToSuppression
+      ? (candidateRow?.DistributionVariableCost ?? Math.max(0, Number(distributionCost ?? 0) - Number(distributionFixedCost ?? 0)))
+      : distributionCost,
+    DistributionVariableCost: movedDueToSuppression
+      ? (candidateRow?.DistributionVariableCost ?? Math.max(0, Number(distributionCost ?? 0) - Number(distributionFixedCost ?? 0)))
+      : distributionVariableCost,
+    DistributionFixedCost: movedDueToSuppression ? 0 : distributionFixedCost,
+    RelocatableCost: movedDueToSuppression ? selectedTotal : laneRelocatableCost(candidateRow || sourceRow),
+    CostBasis: movedDueToSuppression ? 'EXCLUDING_DISTRIBUTION_FIXED' : 'FULL',
+    MovedDueToSuppression: movedDueToSuppression ? 'Y' : 'N',
     ParcelSpend: parcelSpend,
     LtlSpend: ltlSpend,
     TlSpend: tlSpend,
@@ -780,7 +867,7 @@ const logScenarioLaneAllocationTrace = (
     const terms = laneTermsBucket(lane);
     const moved = laneMovedForTrace(lane);
     const units = laneUnitsForTrace(lane);
-    const totalCost = Number(lane.TotalCost ?? lane.LaneCost ?? 0) || 0;
+    const totalCost = laneTotalCost(lane);
     const existingSummary = summary.get(terms) || { laneCount: 0, movedLaneCount: 0, units: 0, movedUnits: 0, totalCost: 0 };
     existingSummary.laneCount += 1;
     existingSummary.movedLaneCount += moved ? 1 : 0;
@@ -840,7 +927,7 @@ const logScenarioLaneAllocationTrace = (
       AssignedDC: assignedDcForTrace(lane),
       Moved: laneMovedForTrace(lane) ? 'Y' : 'N',
       ChosenRank: lane.ChosenRank || selectedCandidateRank(lane, assignedDcForTrace(lane)),
-      TotalCost: Number(Number(lane.TotalCost ?? lane.LaneCost ?? 0).toFixed(2)),
+      TotalCost: Number(laneTotalCost(lane).toFixed(2)),
       Reason: laneAllocationDecisionReason(lane, input, suppressedSet, mode),
     }));
 
@@ -889,12 +976,12 @@ const selectOverloadRows = (
   laneGroups.forEach((group) => {
     const eligibleCandidates = restrictCandidatesForLane(group.sourceRow, group.candidates, input, suppressedSet);
     const activeCandidates = eligibleCandidates.filter((candidate) => isCandidateActive(candidate.dc, activeSet, suppressedSet));
-    const eligible = activeCandidates.length > 0 ? activeCandidates : eligibleCandidates;
+    const eligible = sortCandidatesForGroup(group, activeCandidates.length > 0 ? activeCandidates : eligibleCandidates, suppressedSet);
     eligible.forEach((candidate) => {
       const dcKey = normalizeDcKey(candidate.dc);
       if (!dcKey) return;
       const currentScore = activeDcScores.get(dcKey) || 0;
-      activeDcScores.set(dcKey, currentScore + (candidate.costPerUnit * Math.max(group.laneUnits, 1)));
+      activeDcScores.set(dcKey, currentScore + candidateCostForGroup(group, candidate, suppressedSet));
     });
   });
 
@@ -907,7 +994,7 @@ const selectOverloadRows = (
   const buildForcedCandidate = (group: LaneGroup): LaneCandidate | null => {
     const eligibleCandidates = restrictCandidatesForLane(group.sourceRow, group.candidates, input, suppressedSet);
     const activeCandidates = eligibleCandidates.filter((candidate) => isCandidateActive(candidate.dc, activeSet, suppressedSet));
-    const eligible = activeCandidates.length > 0 ? activeCandidates : eligibleCandidates;
+    const eligible = sortCandidatesForGroup(group, activeCandidates.length > 0 ? activeCandidates : eligibleCandidates, suppressedSet);
     if (eligible.length === 0) return null;
     const actual = eligible.find((candidate) => normalizeDcKey(candidate.dc) === globalCheapestDc);
     if (actual) return actual;
@@ -920,7 +1007,7 @@ const selectOverloadRows = (
     const selected = buildForcedCandidate(group);
     if (!selected) return;
     const selectedCapacity = capacityMap.get(normalizeDcKey(selected.dc)) || Number.POSITIVE_INFINITY;
-    selectedRows.push(buildSelectedLaneRow(scenarioId, group.sourceRow, group.laneSpaceRequired, group.laneUnits, selected, selectedCapacity));
+    selectedRows.push(buildSelectedLaneRow(scenarioId, group.sourceRow, group.laneSpaceRequired, group.laneUnits, selected, selectedCapacity, suppressedSet));
   });
 
   return selectedRows;
@@ -939,11 +1026,11 @@ const selectUnconstrainedRows = (
   laneGroups.forEach((group) => {
     const eligibleCandidates = restrictCandidatesForLane(group.sourceRow, group.candidates, input, suppressedSet);
     const activeCandidates = eligibleCandidates.filter((candidate) => isCandidateActive(candidate.dc, activeSet, suppressedSet));
-    const eligible = activeCandidates.length > 0 ? activeCandidates : eligibleCandidates;
+    const eligible = sortCandidatesForGroup(group, activeCandidates.length > 0 ? activeCandidates : eligibleCandidates, suppressedSet);
     const selected = eligible[0] || group.candidates[0];
     if (!selected) return;
     const selectedCapacity = capacityMap.get(normalizeDcKey(selected.dc)) || Number.POSITIVE_INFINITY;
-    selectedRows.push(buildSelectedLaneRow(scenarioId, group.sourceRow, group.laneSpaceRequired, group.laneUnits, selected, selectedCapacity));
+    selectedRows.push(buildSelectedLaneRow(scenarioId, group.sourceRow, group.laneSpaceRequired, group.laneUnits, selected, selectedCapacity, suppressedSet));
   });
 
   return selectedRows;
@@ -963,18 +1050,22 @@ const selectConstrainedRows = (
   });
 
   const ordered = [...laneGroups].sort((a, b) => {
-    const activeA = a.candidates.filter((candidate) => isCandidateActive(candidate.dc, activeSet, suppressedSet));
-    const activeB = b.candidates.filter((candidate) => isCandidateActive(candidate.dc, activeSet, suppressedSet));
+    const activeA = sortCandidatesForGroup(a, a.candidates.filter((candidate) => isCandidateActive(candidate.dc, activeSet, suppressedSet)), suppressedSet);
+    const activeB = sortCandidatesForGroup(b, b.candidates.filter((candidate) => isCandidateActive(candidate.dc, activeSet, suppressedSet)), suppressedSet);
     const bestA = activeA[0] || a.candidates[0];
     const bestB = activeB[0] || b.candidates[0];
-    const regretA = ((activeA[1] || activeA[0] || a.candidates[1] || a.candidates[0])?.costPerUnit ?? Number.POSITIVE_INFINITY)
-      - (bestA?.costPerUnit ?? Number.POSITIVE_INFINITY);
-    const regretB = ((activeB[1] || activeB[0] || b.candidates[1] || b.candidates[0])?.costPerUnit ?? Number.POSITIVE_INFINITY)
-      - (bestB?.costPerUnit ?? Number.POSITIVE_INFINITY);
+    const secondA = activeA[1] || activeA[0] || a.candidates[1] || a.candidates[0];
+    const secondB = activeB[1] || activeB[0] || b.candidates[1] || b.candidates[0];
+    const regretA = bestA && secondA
+      ? candidateCostForGroup(a, secondA, suppressedSet) - candidateCostForGroup(a, bestA, suppressedSet)
+      : Number.POSITIVE_INFINITY;
+    const regretB = bestB && secondB
+      ? candidateCostForGroup(b, secondB, suppressedSet) - candidateCostForGroup(b, bestB, suppressedSet)
+      : Number.POSITIVE_INFINITY;
     if (regretA !== regretB) return regretB - regretA;
     if (a.laneSpaceRequired !== b.laneSpaceRequired) return b.laneSpaceRequired - a.laneSpaceRequired;
-    if ((bestA?.costPerUnit ?? Number.POSITIVE_INFINITY) !== (bestB?.costPerUnit ?? Number.POSITIVE_INFINITY)) {
-      return (bestA?.costPerUnit ?? Number.POSITIVE_INFINITY) - (bestB?.costPerUnit ?? Number.POSITIVE_INFINITY);
+    if ((bestA ? candidateCostForGroup(a, bestA, suppressedSet) : Number.POSITIVE_INFINITY) !== (bestB ? candidateCostForGroup(b, bestB, suppressedSet) : Number.POSITIVE_INFINITY)) {
+      return (bestA ? candidateCostForGroup(a, bestA, suppressedSet) : Number.POSITIVE_INFINITY) - (bestB ? candidateCostForGroup(b, bestB, suppressedSet) : Number.POSITIVE_INFINITY);
     }
     return a.key.localeCompare(b.key);
   });
@@ -987,7 +1078,7 @@ const selectConstrainedRows = (
   ordered.forEach((group) => {
     const eligibleCandidates = restrictCandidatesForLane(group.sourceRow, group.candidates, input, suppressedSet);
     const activeCandidates = eligibleCandidates.filter((candidate) => isCandidateActive(candidate.dc, activeSet, suppressedSet));
-    const eligible = activeCandidates.length > 0 ? activeCandidates : eligibleCandidates;
+    const eligible = sortCandidatesForGroup(group, activeCandidates.length > 0 ? activeCandidates : eligibleCandidates, suppressedSet);
 
     // Get all candidates that physically fit within their remaining capacity
     const fittingCandidates = eligible.filter((candidate) => {
@@ -1044,13 +1135,13 @@ const selectConstrainedRows = (
       remainingCapacity.set(dcKey, currentRemaining - group.laneSpaceRequired);
     }
     const selectedCapacity = capacityMap.get(dcKey) || Number.POSITIVE_INFINITY;
-    selectedRows.push(buildSelectedLaneRow(scenarioId, group.sourceRow, group.laneSpaceRequired, group.laneUnits, fitting, selectedCapacity));
+    selectedRows.push(buildSelectedLaneRow(scenarioId, group.sourceRow, group.laneSpaceRequired, group.laneUnits, fitting, selectedCapacity, suppressedSet));
   });
 
   unallocated.forEach((group) => {
     const eligibleCandidates = restrictCandidatesForLane(group.sourceRow, group.candidates, input, suppressedSet);
     const activeCandidates = eligibleCandidates.filter((candidate) => isCandidateActive(candidate.dc, activeSet, suppressedSet));
-    const eligible = activeCandidates.length > 0 ? activeCandidates : eligibleCandidates;
+    const eligible = sortCandidatesForGroup(group, activeCandidates.length > 0 ? activeCandidates : eligibleCandidates, suppressedSet);
     
     let selected: LaneCandidate | undefined;
     
@@ -1087,7 +1178,7 @@ const selectConstrainedRows = (
       remainingCapacity.set(dcKey, currentRemaining - group.laneSpaceRequired);
     }
     const selectedCapacity = capacityMap.get(dcKey) || Number.POSITIVE_INFINITY;
-    selectedRows.push(buildSelectedLaneRow(scenarioId, group.sourceRow, group.laneSpaceRequired, group.laneUnits, selected, selectedCapacity));
+    selectedRows.push(buildSelectedLaneRow(scenarioId, group.sourceRow, group.laneSpaceRequired, group.laneUnits, selected, selectedCapacity, suppressedSet));
   });
 
   return selectedRows;
@@ -1228,6 +1319,8 @@ const buildDcRows = (
       ltlSpend: 0,
       tlSpend: 0,
       distributionCost: 0,
+      distributionVariableCost: 0,
+      distributionFixedCost: 0,
     });
   });
 
@@ -1251,9 +1344,11 @@ const buildDcRows = (
       ltlSpend: 0,
       tlSpend: 0,
       distributionCost: 0,
+      distributionVariableCost: 0,
+      distributionFixedCost: 0,
     };
     const laneUnits = inferLaneUnits(row);
-    acc.totalCost += Number(row.TotalCost ?? row.LaneCost ?? 0);
+    acc.totalCost += laneTotalCost(row);
     acc.volumeUnits += laneUnits;
     acc.avgDaysNumerator += Number(row.DeliveryDays ?? 0) * laneUnits;
     acc.avgDaysWeight += laneUnits;
@@ -1275,6 +1370,8 @@ const buildDcRows = (
     acc.ltlSpend += Number(row.LtlSpend ?? 0);
     acc.tlSpend += Number(row.TlSpend ?? 0);
     acc.distributionCost += Number(row.DistributionCost ?? 0);
+    acc.distributionVariableCost += Number(row.DistributionVariableCost ?? Math.max(0, Number(row.DistributionCost ?? 0) - Number(row.DistributionFixedCost ?? 0)));
+    acc.distributionFixedCost += Number(row.DistributionFixedCost ?? 0);
     dcAccum.set(dcKey, acc);
   });
 
@@ -1299,6 +1396,8 @@ const buildDcRows = (
       ltlSpend: 0,
       tlSpend: 0,
       distributionCost: 0,
+      distributionVariableCost: 0,
+      distributionFixedCost: 0,
     };
     const isSuppressed = suppressedSet.has(dcKey) || (activeSet.size > 0 && !activeSet.has(dcKey));
     const utilPct = Number.isFinite(capacity as number) && Number(capacity) > 0
@@ -1323,6 +1422,8 @@ const buildDcRows = (
       LtlSpend: isSuppressed ? 0 : Number(acc.ltlSpend.toFixed(2)),
       TlSpend: isSuppressed ? 0 : Number(acc.tlSpend.toFixed(2)),
       DistributionCost: isSuppressed ? 0 : Number(acc.distributionCost.toFixed(2)),
+      DistributionVariableCost: isSuppressed ? 0 : Number(acc.distributionVariableCost.toFixed(2)),
+      DistributionFixedCost: isSuppressed ? 0 : Number(acc.distributionFixedCost.toFixed(2)),
       RankOverall: 0,
       IsSuppressed: isSuppressed ? 'Y' : 'N',
       ...costs,
@@ -1411,7 +1512,7 @@ export const allocateScenarioOutputs = (input: AllocationInput): AllocationResul
       if (origDc !== assignedDc) {
         reassignmentCounts[assignedDc].movedLanes += 1;
       }
-      reassignmentCounts[assignedDc].totalCost += Number(lane.TotalCost ?? lane.LaneCost ?? 0);
+      reassignmentCounts[assignedDc].totalCost += laneTotalCost(lane);
     });
 
     console.groupCollapsed('[Scenario Allocation] Detailed Lane Reassignment Trace');
@@ -1481,7 +1582,7 @@ export const allocateScenarioOutputs = (input: AllocationInput): AllocationResul
           ActualDC: origDc || 'NA',
           MovedToDC: movedToDc || 'NA',
           BeforeCost: `$${beforeCostVal.toFixed(2)}`,
-          AfterCost: `$${Number(lane.TotalCost ?? lane.LaneCost ?? 0).toFixed(2)}`,
+          AfterCost: `$${laneTotalCost(lane).toFixed(2)}`,
           CandidateOptionsWithCost: candidateOptions,
           ReassignmentReason: reason,
         };

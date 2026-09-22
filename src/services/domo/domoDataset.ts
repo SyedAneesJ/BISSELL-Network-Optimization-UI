@@ -87,18 +87,30 @@ const REGISTRY_SCHEMA = {
 const RAW_LANE_FIELD_ALIASES = {
   scenarioRunId: ['ScenarioRunID', 'scenarioRunId', 'scenario_id', 'Scenario Run ID', 'scenarioRunID'],
   zip3: ['3-zip', '3Zip', '3-Zip', 'Dest3Zip', 'dest3Zip', 'zip3', 'Destination_3Zip', 'Destination 3Zip', 'Dest 3Zip'],
-  distributionCost: [
+  distributionVariableCost: [
     '3zip_Distribution Spend Variable',
     '3zip Distribution Spend Variable',
     '3zip_Distribution_Spend_Variable',
     '3zip_distribution_spend_variable',
+    '3-zip x Channel Distribution Cost Variable',
+    '3-zip x Channel Distribution Spend Variable',
+    'Distribution Spend Variable',
+    'distributionVariableCost',
+    'distribution_variable_cost',
+  ],
+  distributionFixedCost: [
     '3zip_Distribution Spend Fixed',
     '3zip Distribution Spend Fixed',
     '3zip_Distribution_Spend_Fixed',
     '3zip_distribution_spend_fixed',
-    '3-zip x Channel Distribution Cost',
     '3-zip x Channel Distribution Cost Fixed',
     '3-zip x Channel Distribution Spend Fixed',
+    'Distribution Spend Fixed',
+    'distributionFixedCost',
+    'distribution_fixed_cost',
+  ],
+  distributionCost: [
+    '3-zip x Channel Distribution Cost',
     'distributionCost',
     'distribution_cost',
     '3zip_Distribution Spend',
@@ -158,7 +170,8 @@ const RAW_LANE_FIELD_ALIASES = {
   terms: ['freight_terms', 'freight_terms ', 'freightterms', 'terms', 'Terms', 'freightTerms', 'freight terms'],
   entityScope: ['entityScope', 'EntityScope', 'entity', 'Entity', 'dcEntity', 'DC_entity'],
   threshold: ['threshold', 'Threshold'],
-  totalCost: ['totalCost', 'TotalCost', '3-zip x Channel Scenario Cost', '3-zip x Channel Scenario Cost ', '3zip_scenario cost', '3zip Scenario Cost', '3zip_scenario_cost'],
+  totalCost: ['3zip_scenario cost', '3zip Scenario Cost', '3zip_scenario_cost', 'totalCost', 'TotalCost', '3-zip x Channel Scenario Cost', '3-zip x Channel Scenario Cost '],
+  relocatableCost: ['3zip_scenario cost (exclu_dist_cost_spd_fxd)', '3zip Scenario Cost (Exclu Dist Cost Spd Fxd)', '3zip_scenario_cost_excluding_distribution_fixed', 'RelocatableCost', 'relocatableCost'],
 } as const;
 
 const NORMALIZED_LANE_FIELD_ALIASES = {
@@ -171,18 +184,29 @@ const NORMALIZED_LANE_FIELD_ALIASES = {
   assignedDc: ['AssignedDC', 'assignedDc'],
   rankedOption1Dc: ['RankedOption1DC', 'rankedOption1Dc'],
   rankedOption1Cost: ['RankedOption1Cost', 'rankedOption1Cost'],
+  rankedOption1RelocatableCost: ['RankedOption1RelocatableCost', 'rankedOption1RelocatableCost'],
   rankedOption1Days: ['RankedOption1Days', 'rankedOption1Days'],
   rankedOption2Dc: ['RankedOption2DC', 'rankedOption2Dc'],
   rankedOption2Cost: ['RankedOption2Cost', 'rankedOption2Cost'],
+  rankedOption2RelocatableCost: ['RankedOption2RelocatableCost', 'rankedOption2RelocatableCost'],
   rankedOption2Days: ['RankedOption2Days', 'rankedOption2Days'],
   rankedOption3Dc: ['RankedOption3DC', 'rankedOption3Dc'],
   rankedOption3Cost: ['RankedOption3Cost', 'rankedOption3Cost'],
+  rankedOption3RelocatableCost: ['RankedOption3RelocatableCost', 'rankedOption3RelocatableCost'],
   rankedOption3Days: ['RankedOption3Days', 'rankedOption3Days'],
   rankedOption4Dc: ['RankedOption4DC', 'rankedOption4Dc', 'Option4DC', 'Option 4 DC'],
   rankedOption4Cost: ['RankedOption4Cost', 'rankedOption4Cost', 'Option4Cost', 'Option 4 Cost'],
   rankedOption4Days: ['RankedOption4Days', 'rankedOption4Days', 'Option4Days', 'Option 4 Days'],
   chosenRank: ['ChosenRank', 'chosenRank'],
-  laneCost: ['LaneCost', 'laneCost', '3-zip x Channel Scenario Cost', '3-zip x Channel Scenario Cost '],
+  laneCost: [
+    '3zip_scenario cost',
+    '3zip Scenario Cost',
+    '3zip_scenario_cost',
+    'LaneCost',
+    'laneCost',
+    '3-zip x Channel Scenario Cost',
+    '3-zip x Channel Scenario Cost ',
+  ],
   costDeltaVsBest: ['CostDeltaVsBest', 'costDeltaVsBest'],
   deliveryDays: ['DeliveryDays', 'deliveryDays', 'servicedays_us&can_combnd', 'servicedays_us&can_combined', 'servicedays_us_can_combined'],
   slaBreachFlag: ['SLABreachFlag', 'slaBreachFlag'],
@@ -210,23 +234,45 @@ const NORMALIZED_LANE_FIELD_ALIASES = {
   ],
   parcelSpend: ['ParcelSpend', 'Parcel Spend', 'parcelSpend'],
   ltlSpend: ['LtlSpend', 'LTL Spend', 'ltlSpend'],
-  totalCost: ['TotalCost', 'totalCost', '3-zip x Channel Scenario Cost', '3-zip x Channel Scenario Cost '],
+  totalCost: [
+    '3zip_scenario cost',
+    '3zip Scenario Cost',
+    '3zip_scenario_cost',
+    'TotalCost',
+    'totalCost',
+    '3-zip x Channel Scenario Cost',
+    '3-zip x Channel Scenario Cost ',
+  ],
+  relocatableCost: ['3zip_scenario cost (exclu_dist_cost_spd_fxd)', '3zip Scenario Cost (Exclu Dist Cost Spd Fxd)', '3zip_scenario_cost_excluding_distribution_fixed', 'RelocatableCost', 'relocatableCost'],
   costRank: ['CostRank', 'costRank'],
   workingCapacity: ['WorkingCapacity', 'workingCapacity', 'Lane_Space', 'Lane Space', 'lane_space', 'laneSpace'],
   squareFootage: ['total_dc_sqft', 'total dc sqft', 'Square Footage', 'SquareFootage', 'squareFootage'],
-  distributionCost: [
+  distributionVariableCost: [
     '3zip_Distribution Spend Variable',
     '3zip Distribution Spend Variable',
     '3zip_Distribution_Spend_Variable',
     '3zip_distribution_spend_variable',
-    'DistributionCost',
-    'distributionCost',
-    'Distribution Spend',
+    '3-zip x Channel Distribution Cost Variable',
+    '3-zip x Channel Distribution Spend Variable',
     'Distribution Spend Variable',
-    'Distribution Spend Fixed',
+    'distributionVariableCost',
+    'distribution_variable_cost',
+  ],
+  distributionFixedCost: [
     '3zip_Distribution Spend Fixed',
     '3zip Distribution Spend Fixed',
     '3zip_Distribution_Spend_Fixed',
+    '3zip_distribution_spend_fixed',
+    '3-zip x Channel Distribution Cost Fixed',
+    '3-zip x Channel Distribution Spend Fixed',
+    'Distribution Spend Fixed',
+    'distributionFixedCost',
+    'distribution_fixed_cost',
+  ],
+  distributionCost: [
+    'DistributionCost',
+    'distributionCost',
+    'Distribution Spend',
     '3zip_Distribution Spend',
     '3zip Distribution Spend',
     '3zip_Distribution_Spend',
@@ -257,12 +303,15 @@ const LANE_NORMALIZED_SCHEMA = {
     { name: 'AssignedDC', type: 'STRING' },
     { name: 'RankedOption1DC', type: 'STRING' },
     { name: 'RankedOption1Cost', type: 'DOUBLE' },
+    { name: 'RankedOption1RelocatableCost', type: 'DOUBLE' },
     { name: 'RankedOption1Days', type: 'DOUBLE' },
     { name: 'RankedOption2DC', type: 'STRING' },
     { name: 'RankedOption2Cost', type: 'DOUBLE' },
+    { name: 'RankedOption2RelocatableCost', type: 'DOUBLE' },
     { name: 'RankedOption2Days', type: 'DOUBLE' },
     { name: 'RankedOption3DC', type: 'STRING' },
     { name: 'RankedOption3Cost', type: 'DOUBLE' },
+    { name: 'RankedOption3RelocatableCost', type: 'DOUBLE' },
     { name: 'RankedOption3Days', type: 'DOUBLE' },
     { name: 'ChosenRank', type: 'LONG' },
     { name: 'LaneCost', type: 'DOUBLE' },
@@ -289,6 +338,9 @@ const LANE_NORMALIZED_SCHEMA = {
     { name: 'WorkingCapacity', type: 'DOUBLE' },
     { name: 'SquareFootage', type: 'DOUBLE' },
     { name: 'DistributionCost', type: 'DOUBLE' },
+    { name: 'DistributionVariableCost', type: 'DOUBLE' },
+    { name: 'DistributionFixedCost', type: 'DOUBLE' },
+    { name: 'RelocatableCost', type: 'DOUBLE' },
     { name: 'TlSpend', type: 'DOUBLE' },
     { name: 'BreachFlag', type: 'STRING' },
     { name: 'OrderToDeliverCalendarDays', type: 'DOUBLE' },
@@ -370,7 +422,7 @@ const getNormalizedRowField = (row: Record<string, any>, key: string): string | 
   return undefined;
 };
 
-const readRegistryField = (row: ScenarioDatasetRegistryCsvRow, keys: string[]): string => {
+const readRegistryField = (row: ScenarioDatasetRegistryCsvRow, keys: readonly string[]): string => {
   for (const key of keys) {
     const val = getNormalizedRowField(row as any, key);
     if (val !== undefined && val !== '') {
@@ -380,7 +432,7 @@ const readRegistryField = (row: ScenarioDatasetRegistryCsvRow, keys: string[]): 
   return '';
 };
 
-const readRegistryFieldRaw = (row: ScenarioDatasetRegistryCsvRow, keys: string[]): string | null => {
+const readRegistryFieldRaw = (row: ScenarioDatasetRegistryCsvRow, keys: readonly string[]): string | null => {
   for (const key of keys) {
     const val = getNormalizedRowField(row as any, key);
     if (val !== undefined) {
@@ -390,7 +442,37 @@ const readRegistryFieldRaw = (row: ScenarioDatasetRegistryCsvRow, keys: string[]
   return null;
 };
 
-const hasRegistryField = (row: ScenarioDatasetRegistryCsvRow, keys: string[]): boolean => {
+/**
+ * Distribution spend is published by some lane datasets as two separate
+ * columns (variable and fixed), while older datasets expose one combined
+ * distribution column.  Reading the first matching alias is not sufficient:
+ * when both split columns are present it silently drops the fixed portion.
+ * Prefer the split columns whenever either has a value, and only fall back to
+ * the combined column when the split representation is unavailable.
+ */
+const readDistributionCost = (
+  row: ScenarioDatasetRegistryCsvRow,
+  variableAliases: readonly string[],
+  fixedAliases: readonly string[],
+  combinedAliases: readonly string[],
+  fallback = 0,
+): number => {
+  const variableRaw = readRegistryFieldRaw(row, [...variableAliases]);
+  const fixedRaw = readRegistryFieldRaw(row, [...fixedAliases]);
+  const combinedRaw = readRegistryFieldRaw(row, [...combinedAliases]);
+  const hasVariable = variableRaw !== null && variableRaw.trim() !== '';
+  const hasFixed = fixedRaw !== null && fixedRaw.trim() !== '';
+
+  if (hasVariable || hasFixed) {
+    return asNumber(variableRaw ?? '') + asNumber(fixedRaw ?? '');
+  }
+  if (combinedRaw !== null && combinedRaw.trim() !== '') {
+    return asNumber(combinedRaw, fallback);
+  }
+  return fallback;
+};
+
+const hasRegistryField = (row: ScenarioDatasetRegistryCsvRow, keys: readonly string[]): boolean => {
   for (const key of keys) {
     const val = getNormalizedRowField(row as any, key);
     if (val !== undefined) return true;
@@ -506,7 +588,18 @@ const normalizeRawLaneRow = (
   const costingWarehouse = readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.costingWarehouse]);
   const defaultShipFrom = readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.defaultShipFrom]);
   const freightTerms = readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.terms]);
-  const distributionCost = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.distributionCost]));
+  const distributionVariableRaw = readRegistryFieldRaw(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.distributionVariableCost]);
+  const distributionFixedRaw = readRegistryFieldRaw(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.distributionFixedCost]);
+  const hasDistributionVariable = distributionVariableRaw !== null && distributionVariableRaw.trim() !== '';
+  const hasDistributionFixed = distributionFixedRaw !== null && distributionFixedRaw.trim() !== '';
+  const distributionVariableCost = hasDistributionVariable ? asNumber(distributionVariableRaw ?? '') : 0;
+  const distributionFixedCost = hasDistributionFixed ? asNumber(distributionFixedRaw ?? '') : 0;
+  const distributionCost = readDistributionCost(
+    row as ScenarioDatasetRegistryCsvRow,
+    RAW_LANE_FIELD_ALIASES.distributionVariableCost,
+    RAW_LANE_FIELD_ALIASES.distributionFixedCost,
+    RAW_LANE_FIELD_ALIASES.distributionCost,
+  );
   const tlSpend = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.tlSpend]));
   const ltlSpend = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.ltlSpend]));
   // Use readRegistryFieldRaw so that an empty laneSpaceSqFt cell is honoured as 0
@@ -535,12 +628,22 @@ const normalizeRawLaneRow = (
   const threshold = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.threshold]));
   const squareFootage = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.squareFootage]));
   const scenarioType = readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.scenarioType]);
-  const rawTotalCost = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.totalCost]));
+  const rawTotalCostText = readRegistryFieldRaw(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.totalCost]);
+  const rawTotalCost = asNumber(rawTotalCostText ?? '');
+  const hasRawTotalCost = rawTotalCostText !== null && rawTotalCostText.trim() !== '' && Number.isFinite(rawTotalCost);
+  const rawRelocatableCostText = readRegistryFieldRaw(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.relocatableCost]);
+  const rawRelocatableCost = asNumber(rawRelocatableCostText ?? '');
+  const hasRawRelocatableCost = rawRelocatableCostText !== null && rawRelocatableCostText.trim() !== '' && Number.isFinite(rawRelocatableCost);
   const breachFlag = normalizeLaneBreachFlag(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.breachFlag]));
   const assignedDc = costingWarehouse || defaultShipFrom || '';
-  // Rebuild totals from the component spends; spreadsheet totals can be stale.
+  // The lane dataset's 3zip_scenario cost is the authoritative total used for
+  // ranking and allocation.  Component spends remain available for reporting
+  // and are only a fallback when the source total is genuinely missing.
   const componentTotalCost = Math.max(0, distributionCost + inboundSpend + parcelSpend + ltlSpend + tlSpend);
-  const laneCost = componentTotalCost > 0 ? componentTotalCost : rawTotalCost;
+  const laneCost = hasRawTotalCost ? rawTotalCost : componentTotalCost;
+  const relocatableCost = hasRawRelocatableCost
+    ? rawRelocatableCost
+    : Math.max(0, laneCost - distributionFixedCost);
   const deliveryDays = rawDeliveryDays > 0
     ? rawDeliveryDays
     : avgDeliveryDays > 0
@@ -626,6 +729,11 @@ const normalizeRawLaneRow = (
     CostPerUnit: costPerUnit > 0 ? costPerUnit : undefined,
     WorkingCapacity: hasWorkingCapacityColumn ? workingCapacity : (workingCapacity || undefined),
     DistributionCost: distributionCost || undefined,
+    DistributionVariableCost: (hasDistributionVariable ? distributionVariableCost : Math.max(0, distributionCost - distributionFixedCost)) || undefined,
+    DistributionFixedCost: distributionFixedCost || undefined,
+    RelocatableCost: relocatableCost,
+    CostBasis: 'FULL',
+    MovedDueToSuppression: 'N',
     TlSpend: tlSpend,
     BreachFlag: breachFlag,
     OrderToDeliverCalendarDays: orderToDeliverDays || undefined,
@@ -660,7 +768,17 @@ const normalizeNormalizedLaneRow = (row: DomoLaneRow): ScenarioRunResultsLane | 
     readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.costPerUnit]),
     normalized.CostPerUnit || 0,
   );
-  const sourceLaneCost = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.laneCost]), normalized.LaneCost);
+  const normalizedTotalCostText = readRegistryFieldRaw(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.totalCost]);
+  const normalizedLaneCostText = readRegistryFieldRaw(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.laneCost]);
+  const normalizedTotalCost = asNumber(normalizedTotalCostText ?? '');
+  const normalizedLaneCost = asNumber(normalizedLaneCostText ?? '');
+  const hasNormalizedTotalCost = normalizedTotalCostText !== null && normalizedTotalCostText.trim() !== '' && Number.isFinite(normalizedTotalCost);
+  const hasNormalizedLaneCost = normalizedLaneCostText !== null && normalizedLaneCostText.trim() !== '' && Number.isFinite(normalizedLaneCost);
+  const sourceLaneCost = hasNormalizedTotalCost
+    ? normalizedTotalCost
+    : hasNormalizedLaneCost
+      ? normalizedLaneCost
+      : normalized.LaneCost;
   const deliveryDays = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.deliveryDays]), normalized.DeliveryDays);
   const avgDeliveryDays = asNumber(
     readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.avgDeliveryDays]),
@@ -684,12 +802,32 @@ const normalizeNormalizedLaneRow = (row: DomoLaneRow): ScenarioRunResultsLane | 
   const entityScope = readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.entityScope]) || normalized.EntityScope || normalized.Entity || '';
   const squareFootage = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.squareFootage]), normalized.SquareFootage || 0);
   const inboundSpend = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.inboundSpend]), normalized.InboundSpend || 0);
-  const distributionCost = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.distributionCost]), normalized.DistributionCost || 0);
+  const distributionCost = readDistributionCost(
+    row as ScenarioDatasetRegistryCsvRow,
+    NORMALIZED_LANE_FIELD_ALIASES.distributionVariableCost,
+    NORMALIZED_LANE_FIELD_ALIASES.distributionFixedCost,
+    NORMALIZED_LANE_FIELD_ALIASES.distributionCost,
+    normalized.DistributionCost || 0,
+  );
+  const normalizedDistributionVariableRaw = readRegistryFieldRaw(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.distributionVariableCost]);
+  const normalizedDistributionFixedRaw = readRegistryFieldRaw(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.distributionFixedCost]);
+  const hasNormalizedDistributionVariable = normalizedDistributionVariableRaw !== null && normalizedDistributionVariableRaw.trim() !== '';
+  const hasNormalizedDistributionFixed = normalizedDistributionFixedRaw !== null && normalizedDistributionFixedRaw.trim() !== '';
+  const distributionVariableCost = hasNormalizedDistributionVariable
+    ? asNumber(normalizedDistributionVariableRaw ?? '')
+    : Math.max(0, distributionCost - (hasNormalizedDistributionFixed ? asNumber(normalizedDistributionFixedRaw ?? '') : 0));
+  const distributionFixedCost = hasNormalizedDistributionFixed ? asNumber(normalizedDistributionFixedRaw ?? '') : (normalized.DistributionFixedCost || 0);
+  const normalizedRelocatableRaw = readRegistryFieldRaw(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.relocatableCost]);
+  const normalizedRelocatable = asNumber(normalizedRelocatableRaw ?? '');
+  const hasNormalizedRelocatable = normalizedRelocatableRaw !== null && normalizedRelocatableRaw.trim() !== '' && Number.isFinite(normalizedRelocatable);
   const parcelSpend = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.parcelSpend]), normalized.ParcelSpend || 0);
   const ltlSpend = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.ltlSpend]), normalized.LtlSpend || 0);
   const tlSpend = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.tlSpend]), normalized.TlSpend || 0);
   const componentTotalCost = Math.max(0, distributionCost + inboundSpend + parcelSpend + ltlSpend + tlSpend);
-  const laneCost = componentTotalCost > 0 ? componentTotalCost : sourceLaneCost;
+  const laneCost = hasNormalizedTotalCost || hasNormalizedLaneCost ? sourceLaneCost : componentTotalCost > 0 ? componentTotalCost : sourceLaneCost;
+  const relocatableCost = hasNormalizedRelocatable
+    ? normalizedRelocatable
+    : Math.max(0, laneCost - distributionFixedCost);
 
   return {
     ...normalized,
@@ -753,6 +891,11 @@ const normalizeNormalizedLaneRow = (row: DomoLaneRow): ScenarioRunResultsLane | 
       return normalized.WorkingCapacity;
     })(),
     DistributionCost: distributionCost || undefined,
+    DistributionVariableCost: distributionVariableCost || undefined,
+    DistributionFixedCost: distributionFixedCost || undefined,
+    RelocatableCost: relocatableCost,
+    CostBasis: 'FULL',
+    MovedDueToSuppression: 'N',
     TlSpend: tlSpend,
     BreachFlag: readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.breachFlag]) || normalized.BreachFlag,
     OrderToDeliverCalendarDays: asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.orderToDeliverDays]), normalized.OrderToDeliverCalendarDays || 0) || undefined,
@@ -785,7 +928,11 @@ const laneCostPerUnit = (row: ScenarioRunResultsLane): number =>
   Number(((row.CostPerUnit ?? row.LaneCost ?? row.TotalCost ?? 0)).toFixed(2));
 
 const laneTotalCost = (row: ScenarioRunResultsLane): number =>
-  Number((row.TotalCost ?? row.LaneCost ?? row.RankedOption1Cost ?? 0).toFixed(2));
+  Number((Number.isFinite(row.TotalCost == null || String(row.TotalCost).trim() === '' ? Number.NaN : Number(row.TotalCost))
+    ? Number(row.TotalCost)
+    : Number.isFinite(row.LaneCost == null || String(row.LaneCost).trim() === '' ? Number.NaN : Number(row.LaneCost))
+      ? Number(row.LaneCost)
+      : Number(row.RankedOption1Cost ?? 0)).toFixed(2));
 
 const laneOptionDc = (row: ScenarioRunResultsLane | null | undefined): string =>
   row?.AssignedDC || row?.CostingWarehouse || row?.DefaultShipFrom || '';
@@ -1094,22 +1241,23 @@ export const enrichRankedOptionsForLanes = (
     keyPart(row.PartyName || row.CustomerGroup),
   ].join('|');
   const laneTotalCost = (row: ScenarioRunResultsLane): number => {
+    const directTotalCost = row.TotalCost == null || String(row.TotalCost).trim() === '' ? Number.NaN : Number(row.TotalCost);
+    if (Number.isFinite(directTotalCost)) return directTotalCost;
+    const directLaneCost = row.LaneCost == null || String(row.LaneCost).trim() === '' ? Number.NaN : Number(row.LaneCost);
+    if (Number.isFinite(directLaneCost)) return directLaneCost;
     const componentTotal = [row.InboundSpend, row.DistributionCost, row.ParcelSpend, row.LtlSpend, row.TlSpend]
       .map(Number)
       .filter(Number.isFinite)
       .reduce((sum, value) => sum + value, 0);
     if (componentTotal > 0) return componentTotal;
-    const totalCost = Number(row.TotalCost);
-    if (Number.isFinite(totalCost) && totalCost > 0) return totalCost;
-    const laneCost = Number(row.LaneCost);
-    return Number.isFinite(laneCost) && laneCost > 0 ? laneCost : 0;
+    return 0;
   };
   const laneDays = (row: ScenarioRunResultsLane): number =>
     Number(row.DeliveryDays ?? row.AvgDeliveryDays ?? 0) || 0;
   const synchronizeSelectedOption = (row: ScenarioRunResultsLane): void => {
     const selectedDc = String(row.CostingWarehouse || row.AssignedDC || row.DefaultShipFrom || '').trim();
     const selectedCost = laneTotalCost(row);
-    if (!selectedDc || selectedCost <= 0) return;
+    if (!selectedDc || !Number.isFinite(selectedCost)) return;
 
     ([1, 2, 3, 4] as const).forEach((rank) => {
       const dcField = `RankedOption${rank}DC` as const;
@@ -1140,7 +1288,7 @@ export const enrichRankedOptionsForLanes = (
     const sortedRows = [...rows].sort((a, b) => {
       const costA = laneTotalCost(a);
       const costB = laneTotalCost(b);
-      if (costA !== costB && costA > 0 && costB > 0) return costA - costB;
+      if (costA !== costB) return costA - costB;
       const cpuA = Number(a.CostPerUnit ?? 0);
       const cpuB = Number(b.CostPerUnit ?? 0);
       return cpuA - cpuB;
@@ -1185,7 +1333,7 @@ export const enrichRankedOptionsForLanes = (
     const selectedIndex = candidates.findIndex(
       (candidate) => keyPart(candidate.dc) === keyPart(selectedDc),
     );
-    if (selectedIndex >= 0 && selectedCost > 0) {
+    if (selectedIndex >= 0 && Number.isFinite(selectedCost)) {
       candidates[selectedIndex].cost = selectedCost;
       candidates[selectedIndex].days = selectedDays;
       candidates.sort((a, b) => a.cost - b.cost || a.dc.localeCompare(b.dc));
@@ -1197,7 +1345,7 @@ export const enrichRankedOptionsForLanes = (
     const opt4 = candidates[3];
 
     row.RankedOption1DC = opt1 ? opt1.dc : row.RankedOption1DC || '';
-    row.RankedOption1Cost = opt1 ? (opt1.cost > 0 ? opt1.cost : row.RankedOption1Cost || 0) : (row.RankedOption1Cost || 0);
+    row.RankedOption1Cost = opt1 ? opt1.cost : (row.RankedOption1Cost || 0);
     row.RankedOption1Days = opt1 ? opt1.days : row.RankedOption1Days || 0;
 
     row.RankedOption2DC = opt2 ? opt2.dc : '';
@@ -1931,32 +2079,40 @@ const COST_COMPONENTS_FIELD_ALIASES = {
     '3zip Inbound Spend',
     '3zip_Inbound_Spend',
   ],
-  distributionCost: [
+  distributionVariableCost: [
     '3zip_Distribution Spend Variable',
     '3zip Distribution Spend Variable',
     '3zip_Distribution_Spend_Variable',
     '3zip_distribution_spend_variable',
+    '3-zip x Channel Distribution Cost Variable',
+    '3-zip x Channel Distribution Spend Variable',
+    'Distribution Spend Variable',
+    'distributionVariableCost',
+    'distribution_variable_cost',
+  ],
+  distributionFixedCost: [
     '3zip_Distribution Spend Fixed',
     '3zip Distribution Spend Fixed',
     '3zip_Distribution_Spend_Fixed',
     '3zip_distribution_spend_fixed',
-    '3-zip x Channel Distribution Cost',
-    '3-zip x Channel Distribution Cost ',
     '3-zip x Channel Distribution Cost Fixed',
-    '3-zip x Channel Distribution Cost Fixed ',
     '3-zip x Channel Distribution Spend Fixed',
-    '3-zip x Channel Distribution Spend Fixed ',
+    'Distribution Spend Fixed',
+    'distributionFixedCost',
+    'distribution_fixed_cost',
+  ],
+  distributionCost: [
+    '3-zip x Channel Distribution Cost',
     'distributionCost',
     'distribution_cost',
     'DistributionCost',
     'Distribution Spend',
-    'Distribution Spend Variable',
-    'Distribution Spend Fixed',
   ],
   parcelSpend: ['Parcel Spend', 'ParcelSpend', 'parcelSpend'],
   ltlSpend: ['LTL Spend x 3-zip x Channel', 'LTL Spend x 3-zip x Channel ', 'LtlSpend', 'ltlSpend'],
   tlSpend: ['3-zip x Channel TL Spend', '3-zip x Channel TL Spend ', 'tlSpend', 'tlspend', 'TlSpend'],
   totalCost: ['totalCost', 'TotalCost', 'total_cost'],
+  relocatableCost: ['3zip_scenario cost (exclu_dist_cost_spd_fxd)', 'RelocatableCost', 'relocatableCost'],
 };
 
 export const loadCostComponentsDataset = async (datasetId: string): Promise<DomoCostComponentRow[]> => {
@@ -1966,16 +2122,34 @@ export const loadCostComponentsDataset = async (datasetId: string): Promise<Domo
     const rawCsv = await DatasetApi.getDatasetDataCsv(datasetId, token, 100000, 0);
     const rawRows = csvToObjects(rawCsv);
     return rawRows.map((row: any) => {
+      const distributionVariableRaw = getField(row, COST_COMPONENTS_FIELD_ALIASES.distributionVariableCost);
+      const distributionFixedRaw = getField(row, COST_COMPONENTS_FIELD_ALIASES.distributionFixedCost);
+      const distributionVariableCost = asNumber(distributionVariableRaw);
+      const distributionFixedCost = asNumber(distributionFixedRaw);
+      const distributionCost = readDistributionCost(
+        row as ScenarioDatasetRegistryCsvRow,
+        COST_COMPONENTS_FIELD_ALIASES.distributionVariableCost,
+        COST_COMPONENTS_FIELD_ALIASES.distributionFixedCost,
+        COST_COMPONENTS_FIELD_ALIASES.distributionCost,
+      );
+      const totalCost = asNumber(getField(row, COST_COMPONENTS_FIELD_ALIASES.totalCost));
+      const sourceRelocatableCost = asNumber(getField(row, COST_COMPONENTS_FIELD_ALIASES.relocatableCost));
+      const hasSourceRelocatableCost = getField(row, COST_COMPONENTS_FIELD_ALIASES.relocatableCost) !== undefined && String(getField(row, COST_COMPONENTS_FIELD_ALIASES.relocatableCost) ?? '').trim() !== '';
       return {
         CostingWarehouse: asText(getField(row, COST_COMPONENTS_FIELD_ALIASES.costingWarehouse)),
         Zip3: asText(getField(row, COST_COMPONENTS_FIELD_ALIASES.zip3)),
         Channel: asText(getField(row, COST_COMPONENTS_FIELD_ALIASES.channel)),
         InboundSpend: asNumber(getField(row, COST_COMPONENTS_FIELD_ALIASES.inboundSpend)),
-        DistributionCost: asNumber(getField(row, COST_COMPONENTS_FIELD_ALIASES.distributionCost)),
+        DistributionCost: distributionCost,
+        DistributionVariableCost: distributionVariableRaw === null || distributionVariableRaw === undefined || String(distributionVariableRaw).trim() === ''
+          ? Math.max(0, distributionCost - distributionFixedCost)
+          : distributionVariableCost,
+        DistributionFixedCost: distributionFixedCost,
         ParcelSpend: asNumber(getField(row, COST_COMPONENTS_FIELD_ALIASES.parcelSpend)),
         LtlSpend: asNumber(getField(row, COST_COMPONENTS_FIELD_ALIASES.ltlSpend)),
         TlSpend: asNumber(getField(row, COST_COMPONENTS_FIELD_ALIASES.tlSpend)),
-        TotalCost: asNumber(getField(row, COST_COMPONENTS_FIELD_ALIASES.totalCost)),
+        TotalCost: totalCost,
+        RelocatableCost: hasSourceRelocatableCost ? sourceRelocatableCost : Math.max(0, totalCost - distributionFixedCost),
       };
     });
   } catch (error) {

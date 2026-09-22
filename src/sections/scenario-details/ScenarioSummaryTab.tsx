@@ -82,6 +82,17 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
   const utilCapPct = Number.isFinite(scenarioConfig?.UtilCapPct)
     ? Number(scenarioConfig?.UtilCapPct)
     : (Number.isFinite(parsedUtilCap) ? parsedUtilCap : 100);
+  const isUsBaseline = (() => {
+    const region = String(scenario.Region || '').trim().toLowerCase();
+    if (region !== 'us' && region !== 'canada') return false;
+    const type = String(scenario.ScenarioType || '').toLowerCase();
+    const name = String(scenario.RunName || '').toLowerCase();
+    return scenario.ScenarioRunID === 'SR001' ||
+      scenario.ScenarioRunID === 'SR005' ||
+      scenario.ScenarioRunID === 'SR_ETL_11_CANADA_CANADA_BASELINE_NA' ||
+      type.includes('baseline') ||
+      name.includes('baseline');
+  })();
   const getUtilSpace = (dc: ScenarioRunResultsDC): number => {
     if (dc.IsSuppressed === 'Y') return 0;
     const capacity = Number(dc.ActualSpace ?? 0);
@@ -121,13 +132,25 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
     (max, dc) => (Number(dc.UtilPct) > (max ? Number(max.UtilPct) : -1) ? dc : max),
     null as ScenarioRunResultsDC | null,
   );
-  const additionalCost = dcResults.reduce((sum, dc) => {
-        if (dc.IsSuppressed === 'Y') return sum;
-        const costs = getAdditionalCostsForDc(dc.DCName);
-        return sum + (dc.Rent ?? costs.Rent) + (dc.ManagementFee ?? costs.ManagementFee);
-      }, 0);
+  const fixedCostComponents = dcResults.reduce((acc, dc) => {
+    if (dc.IsSuppressed === 'Y') return acc;
+    const costs = getAdditionalCostsForDc(dc.DCName);
+    acc.rent += dc.Rent ?? costs.Rent;
+    acc.managementFee += dc.ManagementFee ?? costs.ManagementFee;
+    return acc;
+  }, { rent: 0, managementFee: 0 });
+  const additionalCost = fixedCostComponents.rent + fixedCostComponents.managementFee;
 
-  const baseCost = Math.max(0, scenario.TotalCost - additionalCost);
+  // Lane-level scenario cost is the variable lane-data cost. Fixed rent and
+  // management costs are shown separately; do not subtract them from the
+  // actual Prepaid/Collect lane totals.
+  const laneDataCostTotal = isUsBaseline
+    ? dcResults.reduce((sum, dc) => sum + (dc.InboundSpend ?? 0) + (dc.DistributionCost ?? 0) + (dc.ParcelSpend ?? 0) + (dc.LtlSpend ?? 0) + (dc.TlSpend ?? 0), 0)
+    : laneResults.reduce((sum, lane) => {
+      const laneCost = Number(lane.TotalCost ?? lane.LaneCost ?? lane.RelocatableCost ?? 0);
+      return sum + (Number.isFinite(laneCost) ? laneCost : 0);
+    }, 0);
+  const baseCost = laneDataCostTotal > 0 ? laneDataCostTotal : Math.max(0, Number(scenario.TotalCost) || 0);
 
   const inboundCostTotal = dcResults.reduce((sum, dc) => sum + (dc.InboundSpend ?? 0), 0);
   const distributionCostTotal = dcResults.reduce((sum, dc) => sum + (dc.DistributionCost ?? 0), 0);
@@ -135,6 +158,172 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
   const ltlCostTotal = dcResults.reduce((sum, dc) => sum + (dc.LtlSpend ?? 0), 0);
   const tlCostTotal = dcResults.reduce((sum, dc) => sum + (dc.TlSpend ?? 0), 0);
   const outboundCostTotal = parcelCostTotal + ltlCostTotal + tlCostTotal;
+  const contractLaborTotal = dcResults.reduce((sum, dc) => {
+    if (dc.IsSuppressed === 'Y') return sum;
+    const costs = getAdditionalCostsForDc(dc.DCName);
+    return sum + (dc.ContractLabor ?? costs.ContractLabor);
+  }, 0);
+
+  const variableCostTotal = baseCost + contractLaborTotal;
+  const baselineDatasetTotalCost = isUsBaseline
+    ? dcResults.reduce((sum, dc) => sum + Number(dc.TotalCost ?? 0), 0)
+    : 0;
+  const totalCostDisplay = isUsBaseline && baselineDatasetTotalCost > 0
+    ? baselineDatasetTotalCost
+    : variableCostTotal + additionalCost > 0
+      ? variableCostTotal + additionalCost
+      : Math.max(0, Number(scenario.TotalCost) || 0);
+
+  const termCostBreakdown = useMemo(() => {
+    const laneTotals = { prepaid: 0, collect: 0, other: 0 };
+    const termUnits = { prepaid: 0, collect: 0, other: 0 };
+    const componentTotals = {
+      inbound: { prepaid: 0, collect: 0, other: 0 },
+      distribution: { prepaid: 0, collect: 0, other: 0 },
+      parcel: { prepaid: 0, collect: 0, other: 0 },
+      ltl: { prepaid: 0, collect: 0, other: 0 },
+      tl: { prepaid: 0, collect: 0, other: 0 },
+    };
+
+    laneResults.forEach((lane) => {
+      const laneCost = Number(lane.TotalCost ?? lane.LaneCost ?? lane.RelocatableCost ?? 0);
+      if (!Number.isFinite(laneCost)) return;
+
+      const terms = String(lane.Terms || lane.FreightTerms || '').trim().toLowerCase();
+      const bucket = terms.includes('collect') && !terms.includes('prepaid')
+        ? 'collect'
+        : terms.includes('prepaid') && !terms.includes('collect')
+          ? 'prepaid'
+          : 'other';
+      const units = Number(lane.TotalCount ?? lane.TotalUnits ?? lane.VolumeUnits ?? 0);
+      laneTotals[bucket] += laneCost;
+      componentTotals.inbound[bucket] += Number(lane.InboundSpend ?? 0) || 0;
+      componentTotals.distribution[bucket] += Number(lane.DistributionCost ?? 0) || 0;
+      componentTotals.parcel[bucket] += Number(lane.ParcelSpend ?? 0) || 0;
+      componentTotals.ltl[bucket] += Number(lane.LtlSpend ?? 0) || 0;
+      componentTotals.tl[bucket] += Number(lane.TlSpend ?? 0) || 0;
+      if (Number.isFinite(units) && units > 0) termUnits[bucket] += units;
+    });
+
+    const laneTotal = laneTotals.prepaid + laneTotals.collect + laneTotals.other;
+    const total = {
+      prepaid: laneTotals.prepaid,
+      collect: laneTotals.collect,
+      other: laneTotals.other,
+    };
+    const fixedTotal = Math.max(0, additionalCost);
+    const fixed = {
+      prepaid: laneTotal > 0 ? fixedTotal * (laneTotals.prepaid / laneTotal) : 0,
+      collect: laneTotal > 0 ? fixedTotal * (laneTotals.collect / laneTotal) : 0,
+      other: laneTotal > 0 ? fixedTotal * (laneTotals.other / laneTotal) : fixedTotal,
+    };
+    const costPerUnit = {
+      prepaid: termUnits.prepaid > 0 ? total.prepaid / termUnits.prepaid : 0,
+      collect: termUnits.collect > 0 ? total.collect / termUnits.collect : 0,
+      other: termUnits.other > 0 ? total.other / termUnits.other : 0,
+    };
+    const contractLabor = {
+      prepaid: laneTotal > 0 ? contractLaborTotal * (laneTotals.prepaid / laneTotal) : 0,
+      collect: laneTotal > 0 ? contractLaborTotal * (laneTotals.collect / laneTotal) : 0,
+      other: laneTotal > 0 ? contractLaborTotal * (laneTotals.other / laneTotal) : contractLaborTotal,
+    };
+
+    const scaleComponentByDisplayedTotal = (
+      rawValues: { prepaid: number; collect: number; other: number },
+      displayedTotal: number,
+    ) => {
+      const rawTotal = rawValues.prepaid + rawValues.collect + rawValues.other;
+      if (rawTotal <= 0 || displayedTotal <= 0) return { prepaid: 0, collect: 0, other: 0 };
+      const componentScale = displayedTotal / rawTotal;
+      return {
+        prepaid: rawValues.prepaid * componentScale,
+        collect: rawValues.collect * componentScale,
+        other: rawValues.other * componentScale,
+      };
+    };
+
+    const components = {
+      inbound: scaleComponentByDisplayedTotal(componentTotals.inbound, inboundCostTotal),
+      distribution: scaleComponentByDisplayedTotal(componentTotals.distribution, distributionCostTotal),
+      parcel: scaleComponentByDisplayedTotal(componentTotals.parcel, parcelCostTotal),
+      ltl: scaleComponentByDisplayedTotal(componentTotals.ltl, ltlCostTotal),
+      tl: scaleComponentByDisplayedTotal(componentTotals.tl, tlCostTotal),
+    };
+
+    return { total, fixed, costPerUnit, contractLabor, components };
+  }, [additionalCost, contractLaborTotal, distributionCostTotal, inboundCostTotal, laneResults, ltlCostTotal, parcelCostTotal, tlCostTotal]);
+
+  const termBreakdownContent = (values: { prepaid: number; collect: number; other: number }, decimals = 0) => {
+    const formatValue = (value: number) => `$${value.toLocaleString('en-US', {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
+    })}`;
+    return (
+      <div className="space-y-1">
+        <div className="flex justify-between"><span>Prepaid:</span><span className="font-medium text-slate-700">{formatValue(values.prepaid)}</span></div>
+        <div className="flex justify-between"><span>Collect:</span><span className="font-medium text-slate-700">{formatValue(values.collect)}</span></div>
+        {values.other > 0 && (
+          <div className="flex justify-between"><span>Other:</span><span className="font-medium text-slate-700">{formatValue(values.other)}</span></div>
+        )}
+      </div>
+    );
+  };
+
+  const variableCostBreakdownContent = () => (
+    <div className="space-y-2">
+      <div className="flex justify-between font-semibold text-slate-600">
+        <span>Lane Data Cost:</span>
+        <span>{formatCurrencyOrNA(baseCost, 0)}</span>
+      </div>
+      <div className="pl-2 space-y-1 text-xs text-slate-500">
+        <div className="flex justify-between"><span>Prepaid:</span><span>{formatCurrencyOrNA(termCostBreakdown.total.prepaid, 0)}</span></div>
+        <div className="flex justify-between"><span>Collect:</span><span>{formatCurrencyOrNA(termCostBreakdown.total.collect, 0)}</span></div>
+        {termCostBreakdown.total.other > 0 && (
+          <div className="flex justify-between"><span>Other:</span><span>{formatCurrencyOrNA(termCostBreakdown.total.other, 0)}</span></div>
+        )}
+      </div>
+      <div className="flex justify-between font-semibold text-slate-600 pt-2">
+        <span>Contract Labor:</span>
+        <span>{formatCurrencyOrNA(contractLaborTotal, 0)}</span>
+      </div>
+    </div>
+  );
+
+  const fixedCostBreakdownContent = () => (
+    <div className="space-y-1">
+      <div className="flex justify-between"><span>Rent:</span><span className="font-medium text-slate-700">{formatCurrencyOrNA(fixedCostComponents.rent, 0)}</span></div>
+      <div className="flex justify-between"><span>Management Fee:</span><span className="font-medium text-slate-700">{formatCurrencyOrNA(fixedCostComponents.managementFee, 0)}</span></div>
+    </div>
+  );
+
+  const totalCostBreakdownContent = () => (
+    <div className="space-y-1">
+      <div className="flex justify-between"><span>Lane Data Cost:</span><span className="font-medium text-slate-700">{formatCurrencyOrNA(baseCost, 0)}</span></div>
+      <div className="flex justify-between"><span>Contract Labor:</span><span className="font-medium text-slate-700">{formatCurrencyOrNA(contractLaborTotal, 0)}</span></div>
+      <div className="flex justify-between"><span>Rent:</span><span className="font-medium text-slate-700">{formatCurrencyOrNA(fixedCostComponents.rent, 0)}</span></div>
+      <div className="flex justify-between"><span>Management Fee:</span><span className="font-medium text-slate-700">{formatCurrencyOrNA(fixedCostComponents.managementFee, 0)}</span></div>
+    </div>
+  );
+
+  const termCostPctBreakdown = (values: { prepaid: number; collect: number; other: number }) => {
+    const formatValue = (value: number) => `$${value.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
+    const formatPct = (value: number) => hasRevenueDenominator
+      ? `${((value / totalExtendedRevenue) * 100).toFixed(2)}%`
+      : 'NA';
+    const row = (label: string, value: number) => (
+      <div className="flex justify-between gap-2">
+        <span>{label}:</span>
+        <span className="font-medium text-slate-700">{formatValue(value)} <span className="text-slate-400">| {formatPct(value)}</span></span>
+      </div>
+    );
+    return (
+      <div className="space-y-1">
+        {row('Prepaid', values.prepaid)}
+        {row('Collect', values.collect)}
+        {values.other > 0 && row('Other', values.other)}
+      </div>
+    );
+  };
 
   const hasRevenueDenominator = Number.isFinite(totalExtendedRevenue) && totalExtendedRevenue > 0;
   const revenuePct = (cost: number): string => hasRevenueDenominator
@@ -188,11 +377,11 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
             <span className="h-1.5 w-1.5 rounded-full bg-blue-500"></span> Cost Metrics
           </h4>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <KPICard label="Total Cost" value={scenario.TotalCost} format="currency" />
+            <KPICard label="Total Cost" value={totalCostDisplay} format="currency" expandableContent={isUsBaseline ? undefined : totalCostBreakdownContent()} />
             <KPICard label="Total Extended Revenue" value={hasRevenueDenominator ? totalExtendedRevenue : 'NA'} format={hasRevenueDenominator ? 'currency' : undefined} />
-            <KPICard label="Variable Cost" value={baseCost} format="currency" />
-            <KPICard label="Fixed Cost" value={additionalCost} format="currency" />
-            <KPICard label="Cost per Unit" value={formatCurrencyOrNA(scenario.CostPerUnit, 2)} />
+            <KPICard label="Variable Cost" value={variableCostTotal} format="currency" expandableContent={isUsBaseline ? undefined : variableCostBreakdownContent()} />
+            <KPICard label="Fixed Cost" value={additionalCost} format="currency" expandableContent={isUsBaseline ? undefined : fixedCostBreakdownContent()} />
+            <KPICard label="Cost per Unit" value={formatCurrencyOrNA(scenario.CostPerUnit, 2)} expandableContent={isUsBaseline ? undefined : termBreakdownContent(termCostBreakdown.costPerUnit, 2)} />
           </div>
         </div>
 
@@ -203,14 +392,19 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
               <span className="h-1.5 w-1.5 rounded-full bg-indigo-500"></span> Cost % Sales
             </h4>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <KPICard label="Inbound % Revenue" value={formatCostPct(inboundCostTotal, inboundPct)} />
-              <KPICard label="DST % Revenue" value={formatCostPct(distributionCostTotal, dstPct)} />
-              <KPICard label="OB Parcel % Revenue" value={formatCostPct(parcelCostTotal, parcelPct)} />
-              <KPICard label="OB LTL % Revenue" value={formatCostPct(ltlCostTotal, ltlPct)} />
-              <KPICard label="OB TL % Revenue" value={formatCostPct(tlCostTotal, tlPct)} />
+              <KPICard label="Inbound % Revenue" value={formatCostPct(inboundCostTotal, inboundPct)} expandableContent={isUsBaseline ? undefined : termCostPctBreakdown(termCostBreakdown.components.inbound)} />
+              <KPICard label="DST % Revenue" value={formatCostPct(distributionCostTotal, dstPct)} expandableContent={isUsBaseline ? undefined : termCostPctBreakdown(termCostBreakdown.components.distribution)} />
+              <KPICard label="OB Parcel % Revenue" value={formatCostPct(parcelCostTotal, parcelPct)} expandableContent={isUsBaseline ? undefined : termCostPctBreakdown(termCostBreakdown.components.parcel)} />
+              <KPICard label="OB LTL % Revenue" value={formatCostPct(ltlCostTotal, ltlPct)} expandableContent={isUsBaseline ? undefined : termCostPctBreakdown(termCostBreakdown.components.ltl)} />
+              <KPICard label="OB TL % Revenue" value={formatCostPct(tlCostTotal, tlPct)} expandableContent={isUsBaseline ? undefined : termCostPctBreakdown(termCostBreakdown.components.tl)} />
               <KPICard 
                 label="OB Total % Revenue" 
                 value={formatCostPct(outboundCostTotal, outboundPct)} 
+                expandableContent={isUsBaseline ? undefined : termCostPctBreakdown({
+                  prepaid: termCostBreakdown.components.parcel.prepaid + termCostBreakdown.components.ltl.prepaid + termCostBreakdown.components.tl.prepaid,
+                  collect: termCostBreakdown.components.parcel.collect + termCostBreakdown.components.ltl.collect + termCostBreakdown.components.tl.collect,
+                  other: termCostBreakdown.components.parcel.other + termCostBreakdown.components.ltl.other + termCostBreakdown.components.tl.other,
+                })}
                 tooltip={`Parcel: $${parcelCostTotal.toLocaleString()}\nLTL: $${ltlCostTotal.toLocaleString()}\nTL: $${tlCostTotal.toLocaleString()}`}
               />
             </div>
@@ -283,7 +477,7 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
             const feeVal = dc.ManagementFee ?? dcCosts.ManagementFee;
             const addCost = rentVal + laborVal + feeVal;
 
-            // Fixed cost is Rent + Management Fee (Contract Labor is variable cost)
+            // Distribution fixed is part of Distribution Cost. Fixed Cost is Rent + Management Fee.
             const fixedCostVal = rentVal + feeVal;
 
             const baseCostDisplay = isBaseline 
@@ -422,7 +616,7 @@ const DcScorecardCard: React.FC<DcScorecardCardProps> = ({
               </div>
             </div>
             <div className="flex justify-between font-medium text-slate-600">
-              <span>Distribution Cost:</span>
+              <span>Distribution Cost (incl. fixed):</span>
               <span>${distributionVal.toLocaleString('en-US', { maximumFractionDigits: 0 })}</span>
             </div>
             <div className="flex justify-between font-medium text-slate-600">

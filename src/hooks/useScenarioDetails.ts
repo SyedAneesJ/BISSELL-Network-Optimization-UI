@@ -78,13 +78,16 @@ export const useScenarioDetails = ({
 
   const isUsBaseline = useMemo(() => {
     if (!rawScenario) return false;
-    const isCustom = !String(rawScenario.DataflowID || '').trim() ||
-      !['3267'].includes(String(rawScenario.DataflowID || '').trim());
-    if (isCustom) return false;
-
+    const region = String(rawScenario.Region || '').trim().toLowerCase();
+    if (region !== 'us' && region !== 'canada') return false;
+    const scenarioType = String(rawScenario.ScenarioType || '').trim().toLowerCase();
+    const runName = String(rawScenario.RunName || '').trim().toLowerCase();
     return (
-      (rawScenario.Region === 'US' && (String(rawScenario.DataflowID || '') === '3267' || rawScenario.ScenarioRunID === 'SR001')) ||
-      (rawScenario.Region === 'Canada' && (rawScenario.ScenarioRunID === 'SR005' || rawScenario.ScenarioRunID === 'SR_ETL_11_CANADA_CANADA_BASELINE_NA'))
+      rawScenario.ScenarioRunID === 'SR001' ||
+      rawScenario.ScenarioRunID === 'SR005' ||
+      rawScenario.ScenarioRunID === 'SR_ETL_11_CANADA_CANADA_BASELINE_NA' ||
+      scenarioType.includes('baseline') ||
+      runName.includes('baseline')
     );
   }, [rawScenario]);
 
@@ -247,6 +250,9 @@ export const useScenarioDetails = ({
           ...lane,
           InboundSpend: match.InboundSpend,
           DistributionCost: match.DistributionCost,
+          DistributionVariableCost: match.DistributionVariableCost,
+          DistributionFixedCost: match.DistributionFixedCost,
+          RelocatableCost: match.RelocatableCost,
           ParcelSpend: match.ParcelSpend,
           LtlSpend: match.LtlSpend,
           TlSpend: match.TlSpend,
@@ -292,6 +298,8 @@ export const useScenarioDetails = ({
       ltl: number;
       tl: number;
       dist: number;
+      distVariable: number;
+      distFixed: number;
     }>();
 
     if (isUsBaseline && costComponentRows && costComponentRows.length > 0) {
@@ -325,12 +333,14 @@ export const useScenarioDetails = ({
           dcName = 'Los Angeles';
         }
         
-        const existing = compTotalsByDc.get(dcName) || { inbound: 0, parcel: 0, ltl: 0, tl: 0, dist: 0 };
+        const existing = compTotalsByDc.get(dcName) || { inbound: 0, parcel: 0, ltl: 0, tl: 0, dist: 0, distVariable: 0, distFixed: 0 };
         existing.inbound += Number(row.InboundSpend ?? 0);
         existing.parcel += Number(row.ParcelSpend ?? 0);
         existing.ltl += Number(row.LtlSpend ?? 0);
         existing.tl += Number(row.TlSpend ?? 0);
         existing.dist += Number(row.DistributionCost ?? 0);
+        existing.distVariable += Number(row.DistributionVariableCost ?? Math.max(0, Number(row.DistributionCost ?? 0) - Number(row.DistributionFixedCost ?? 0)));
+        existing.distFixed += Number(row.DistributionFixedCost ?? 0);
         compTotalsByDc.set(dcName, existing);
       });
     } else {
@@ -338,12 +348,14 @@ export const useScenarioDetails = ({
       overriddenLaneResults.forEach((lane) => {
         const dcName = formatDcDisplayName(lane.AssignedDC || lane.CostingWarehouse || lane.DefaultShipFrom);
         if (!dcName) return;
-        const existing = compTotalsByDc.get(dcName) || { inbound: 0, parcel: 0, ltl: 0, tl: 0, dist: 0 };
+        const existing = compTotalsByDc.get(dcName) || { inbound: 0, parcel: 0, ltl: 0, tl: 0, dist: 0, distVariable: 0, distFixed: 0 };
         existing.inbound += Number(lane.InboundSpend ?? 0);
         existing.parcel += Number(lane.ParcelSpend ?? 0);
         existing.ltl += Number(lane.LtlSpend ?? 0);
         existing.tl += Number(lane.TlSpend ?? 0);
         existing.dist += Number(lane.DistributionCost ?? 0);
+        existing.distVariable += Number(lane.DistributionVariableCost ?? Math.max(0, Number(lane.DistributionCost ?? 0) - Number(lane.DistributionFixedCost ?? 0)));
+        existing.distFixed += Number(lane.DistributionFixedCost ?? 0);
         compTotalsByDc.set(dcName, existing);
       });
     }
@@ -393,6 +405,8 @@ export const useScenarioDetails = ({
           LtlSpend: ltl,
           TlSpend: tl,
           DistributionCost: dst,
+          DistributionVariableCost: spaceOverride.DistributionVariableCost ?? Math.max(0, dst - Number(spaceOverride.DistributionFixedCost ?? 0)),
+          DistributionFixedCost: spaceOverride.DistributionFixedCost ?? 0,
           Rent: spaceOverride.Rent ?? 0,
           ContractLabor: spaceOverride.ContractLabor ?? 0,
           ManagementFee: spaceOverride.ManagementFee ?? 0,
@@ -423,6 +437,8 @@ export const useScenarioDetails = ({
           LtlSpend: Number(totals.ltl.toFixed(2)),
           TlSpend: Number(totals.tl.toFixed(2)),
           DistributionCost: Number(totals.dist.toFixed(2)),
+          DistributionVariableCost: Number(totals.distVariable.toFixed(2)),
+          DistributionFixedCost: Number(totals.distFixed.toFixed(2)),
           ...spaceFields,
         };
       }
@@ -433,6 +449,8 @@ export const useScenarioDetails = ({
         LtlSpend: 0,
         TlSpend: 0,
         DistributionCost: 0,
+        DistributionVariableCost: 0,
+        DistributionFixedCost: 0,
         ...spaceFields,
       };
     });
@@ -505,7 +523,7 @@ export const useScenarioDetails = ({
   const laneOptionSort = useCallback((a: ScenarioRunResultsLane, b: ScenarioRunResultsLane) => {
     const costA = Number(a.TotalCost ?? a.LaneCost ?? 0);
     const costB = Number(b.TotalCost ?? b.LaneCost ?? 0);
-    if (costA !== costB && costA > 0 && costB > 0) return costA - costB;
+    if (costA !== costB) return costA - costB;
     const cpuA = a.CostPerUnit ?? 0;
     const cpuB = b.CostPerUnit ?? 0;
     if (cpuA !== cpuB) return cpuA - cpuB;
@@ -816,6 +834,8 @@ export const useScenarioDetails = ({
           sqft: dc.SpaceCore,
           inboundCost: dc.InboundSpend ?? 0,
           distributionCost: dc.DistributionCost ?? 0,
+          distributionVariableCost: dc.DistributionVariableCost ?? Math.max(0, Number(dc.DistributionCost ?? 0) - Number(dc.DistributionFixedCost ?? 0)),
+          distributionFixedCost: dc.DistributionFixedCost ?? 0,
           parcelCost: dc.ParcelSpend ?? 0,
           ltlCost: dc.LtlSpend ?? 0,
           tlCost: dc.TlSpend ?? 0,
@@ -846,9 +866,22 @@ export const useScenarioDetails = ({
         // AssignedDC/CostingWarehouse = Elwood.
         'Default Warehouse': lane.DefaultShipFrom || lane.AssignedDC || '',
         'Costing Warehouse': lane.CostingWarehouse || lane.AssignedDC || lane.DefaultShipFrom || '',
-        'Cheapest to Serve': lane.RankedOption1DC || '',
+          'Cheapest to Serve': lane.RankedOption1DC || '',
+          'Ranked Option 1 Full Cost': lane.RankedOption1Cost ?? 0,
+          'Ranked Option 1 Relocatable Cost': lane.RankedOption1RelocatableCost ?? 0,
+          'Ranked Option 2 Full Cost': lane.RankedOption2Cost ?? 0,
+          'Ranked Option 2 Relocatable Cost': lane.RankedOption2RelocatableCost ?? 0,
+          'Ranked Option 3 Full Cost': lane.RankedOption3Cost ?? 0,
+          'Ranked Option 3 Relocatable Cost': lane.RankedOption3RelocatableCost ?? 0,
+          'Ranked Option 4 Full Cost': lane.RankedOption4Cost ?? 0,
+          'Ranked Option 4 Relocatable Cost': lane.RankedOption4RelocatableCost ?? 0,
         'Inbound Spend': lane.InboundSpend ?? 0,
-        'Distribution Spend': lane.DistributionCost ?? 0,
+          'Distribution Spend': lane.DistributionCost ?? 0,
+          'Distribution Variable Spend': lane.DistributionVariableCost ?? Math.max(0, Number(lane.DistributionCost ?? 0) - Number(lane.DistributionFixedCost ?? 0)),
+          'Distribution Fixed Spend': lane.DistributionFixedCost ?? 0,
+          'Relocatable Lane Cost': lane.RelocatableCost ?? lane.TotalCost ?? lane.LaneCost ?? 0,
+          'Selected Cost Basis': lane.CostBasis ?? 'FULL',
+          'Moved Due To Suppression': lane.MovedDueToSuppression ?? 'N',
         'Parcel Spend': lane.ParcelSpend ?? 0,
         'Service Days': lane.DeliveryDays ?? lane.AvgDeliveryDays ?? 0,
         'TL Spend': lane.TlSpend ?? 0,
@@ -912,6 +945,11 @@ export const useScenarioDetails = ({
           TotalCost: lane.TotalCost ?? lane.LaneCost,
           WorkingCapacity: lane.WorkingCapacity ?? '',
           DistributionCost: lane.DistributionCost ?? '',
+          DistributionVariableCost: lane.DistributionVariableCost ?? '',
+          DistributionFixedCost: lane.DistributionFixedCost ?? '',
+          RelocatableCost: lane.RelocatableCost ?? '',
+          CostBasis: lane.CostBasis ?? 'FULL',
+          MovedDueToSuppression: lane.MovedDueToSuppression ?? 'N',
           TlSpend: lane.TlSpend ?? '',
           BreachFlag: lane.BreachFlag || '',
           OrderToDeliverCalendarDays: lane.OrderToDeliverCalendarDays ?? '',
