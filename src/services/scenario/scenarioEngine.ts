@@ -139,7 +139,7 @@ const resolveSuppressedDcs = (
   activeDcs: string[],
   planSuppressed: string[],
 ): string[] => {
-  const explicit = payload.input.suppressedDcs.map((dc) => String(dc || '').trim()).filter(Boolean);
+  const explicit = payload.input.suppressedDCs.map((dc) => String(dc || '').trim()).filter(Boolean);
   const activeSet = new Set(activeDcs.map((dc) => String(dc || '').trim()).filter(Boolean));
   const activeCapacity = new Set(getActiveCapacityDcs(context));
   const familyCapacity = new Set(getScenarioFamilyAllowedDcs(payload.input.scenarioType, payload.input.region, context));
@@ -174,10 +174,15 @@ const laneCostPerUnit = (lane: ScenarioRunResultsLane): number =>
       0).toFixed(2)
   );
 
-const laneCostToDisplay = (lane: ScenarioRunResultsLane): number =>
-  Number(
+const laneCostToDisplay = (lane: ScenarioRunResultsLane): number => {
+  const exclusionCost = Number(lane.RelocatableCost);
+  if (lane.CostBasis === 'EXCLUDING_DISTRIBUTION_FIXED' && Number.isFinite(exclusionCost)) {
+    return Number(exclusionCost.toFixed(2));
+  }
+  return Number(
     (lane.TotalCost ?? lane.LaneCost ?? lane.RankedOption1Cost ?? 0).toFixed(2)
   );
+};
 
 const laneDaysToDisplay = (lane: ScenarioRunResultsLane): number =>
   Number((lane.DeliveryDays ?? lane.RankedOption1Days ?? 0).toFixed(1));
@@ -416,7 +421,7 @@ export const buildScenarioArtifactsWithLogic = async (
       baselineScenarioId: resolvedBaselineScenarioId ?? normalizedPayload.input.baselineScenarioId,
       baselineDataflowId: resolvedBaselineDataflowId ?? normalizedPayload.input.baselineDataflowId,
       activeDCs: activeDcs,
-      suppressedDCs,
+      suppressedDCs: suppressedDcs,
     },
   };
 

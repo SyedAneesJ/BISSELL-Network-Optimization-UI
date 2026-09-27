@@ -2,7 +2,7 @@ export interface ScenarioRunHeader {
   ScenarioRunID: string;
   RunName: string;
   Region: 'US' | 'Canada';
-  ScenarioType: 'Baseline' | 'Tactical Fixed Footprint' | 'Strategic Unconstrained Footprint' | 'Consolidation Tactical' | 'Consolidation Strategic' | 'BCV Ingestion Only' | 'BCV Ingestion' | 'Tactical Consolidation';
+  ScenarioType: 'Baseline' | 'Tactical Fixed Footprint' | 'Strategic Unconstrained Footprint' | 'Consolidation Tactical' | 'Consolidation Strategic' | 'BCV Ingestion Only' | 'BCV Ingestion' | 'Tactical Consolidation' | 'Strategic Pro Forma (Suppressed Lanes Only)' | string;
   EntityScope: string;
   ChannelScope: string;
   TermsScope: 'Collect' | 'Prepaid' | 'Collect+Prepaid';
@@ -132,6 +132,7 @@ export interface DomoSpaceOverrideRow {
   WorkingCapacitySqFt: number;
   PalletUtilization: number; // decimal e.g. 0.92 → 92%
   TotalCost?: number;
+  FullCost?: number;
   InboundSpend?: number;
   DistributionCost?: number;
   DistributionVariableCost?: number;
@@ -211,14 +212,18 @@ export interface ScenarioRunResultsLane {
   ParcelSpend?: number;
   LtlSpend?: number;
   TotalCost?: number;
+  /** Baseline lane cost supplied by the lane dataset for the baseline DC row. */
+  BaselineCostToServe?: number;
   CostRank?: number;
   CostPerUnit?: number;
   WorkingCapacity?: number;
+  /** Original 3zip_scenario cost before the lane-cost exclusion rule. */
+  FullCost?: number;
   DistributionCost?: number;
   DistributionVariableCost?: number;
   DistributionFixedCost?: number;
   RelocatableCost?: number;
-  CostBasis?: 'FULL' | 'EXCLUDING_DISTRIBUTION_FIXED';
+  CostBasis?: 'FULL' | 'EXCLUDING_DISTRIBUTION_FIXED' | 'BASELINE_COST_TO_SERVE';
   MovedDueToSuppression?: 'Y' | 'N';
   TlSpend?: number;
   BreachFlag?: string;

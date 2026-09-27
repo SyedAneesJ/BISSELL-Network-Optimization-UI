@@ -141,14 +141,31 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
   }, { rent: 0, managementFee: 0 });
   const additionalCost = fixedCostComponents.rent + fixedCostComponents.managementFee;
 
+  // Lane rows can use different cost authorities.  The exclusion-based lane
+  // cost does not contain Distribution Fixed, while BASELINE_COST_TO_SERVE
+  // and FULL do.  Normalize every row to the exclusion basis before showing
+  // Lane Data Cost so Distribution Fixed can be displayed exactly once.
+  const laneDataCostExcludingDistributionFixed = (lane: (typeof laneResults)[number]): number => {
+    const laneCost = Number(lane.TotalCost ?? lane.LaneCost ?? lane.RelocatableCost ?? 0);
+    if (!Number.isFinite(laneCost)) return 0;
+
+    const costBasis = String(lane.CostBasis ?? '').trim().toUpperCase();
+    const includesDistributionFixed = costBasis === 'BASELINE_COST_TO_SERVE' || costBasis === 'FULL';
+    if (!includesDistributionFixed) return laneCost;
+
+    const distributionFixed = Number(lane.DistributionFixedCost ?? 0);
+    return Number.isFinite(distributionFixed)
+      ? Math.max(0, laneCost - distributionFixed)
+      : laneCost;
+  };
+
   // Lane-level scenario cost is the variable lane-data cost. Fixed rent and
   // management costs are shown separately; do not subtract them from the
   // actual Prepaid/Collect lane totals.
   const laneDataCostTotal = isUsBaseline
     ? dcResults.reduce((sum, dc) => sum + (dc.InboundSpend ?? 0) + (dc.DistributionCost ?? 0) + (dc.ParcelSpend ?? 0) + (dc.LtlSpend ?? 0) + (dc.TlSpend ?? 0), 0)
     : laneResults.reduce((sum, lane) => {
-      const laneCost = Number(lane.TotalCost ?? lane.LaneCost ?? lane.RelocatableCost ?? 0);
-      return sum + (Number.isFinite(laneCost) ? laneCost : 0);
+      return sum + laneDataCostExcludingDistributionFixed(lane);
     }, 0);
   const baseCost = laneDataCostTotal > 0 ? laneDataCostTotal : Math.max(0, Number(scenario.TotalCost) || 0);
 
@@ -164,7 +181,17 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
     return sum + (dc.ContractLabor ?? costs.ContractLabor);
   }, 0);
 
-  const variableCostTotal = baseCost + contractLaborTotal;
+  // Distribution fixed is part of distribution/variable scenario cost, not
+  // the separate rent + management fixed-cost KPI. Lane Data Cost above is
+  // normalized to exclude it, so it is added back exactly once here.
+  const distributionFixedCostTotal = isUsBaseline
+    ? 0
+    : laneResults.reduce((sum, lane) => {
+      const value = Number(lane.DistributionFixedCost ?? 0);
+      return sum + (Number.isFinite(value) ? value : 0);
+    }, 0);
+
+  const variableCostTotal = baseCost + distributionFixedCostTotal + contractLaborTotal;
   const baselineDatasetTotalCost = isUsBaseline
     ? dcResults.reduce((sum, dc) => sum + Number(dc.TotalCost ?? 0), 0)
     : 0;
@@ -180,13 +207,14 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
     const componentTotals = {
       inbound: { prepaid: 0, collect: 0, other: 0 },
       distribution: { prepaid: 0, collect: 0, other: 0 },
+      distributionFixed: { prepaid: 0, collect: 0, other: 0 },
       parcel: { prepaid: 0, collect: 0, other: 0 },
       ltl: { prepaid: 0, collect: 0, other: 0 },
       tl: { prepaid: 0, collect: 0, other: 0 },
     };
 
     laneResults.forEach((lane) => {
-      const laneCost = Number(lane.TotalCost ?? lane.LaneCost ?? lane.RelocatableCost ?? 0);
+      const laneCost = laneDataCostExcludingDistributionFixed(lane);
       if (!Number.isFinite(laneCost)) return;
 
       const terms = String(lane.Terms || lane.FreightTerms || '').trim().toLowerCase();
@@ -199,6 +227,7 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
       laneTotals[bucket] += laneCost;
       componentTotals.inbound[bucket] += Number(lane.InboundSpend ?? 0) || 0;
       componentTotals.distribution[bucket] += Number(lane.DistributionCost ?? 0) || 0;
+      componentTotals.distributionFixed[bucket] += Number(lane.DistributionFixedCost ?? 0) || 0;
       componentTotals.parcel[bucket] += Number(lane.ParcelSpend ?? 0) || 0;
       componentTotals.ltl[bucket] += Number(lane.LtlSpend ?? 0) || 0;
       componentTotals.tl[bucket] += Number(lane.TlSpend ?? 0) || 0;
@@ -245,6 +274,7 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
     const components = {
       inbound: scaleComponentByDisplayedTotal(componentTotals.inbound, inboundCostTotal),
       distribution: scaleComponentByDisplayedTotal(componentTotals.distribution, distributionCostTotal),
+      distributionFixed: componentTotals.distributionFixed,
       parcel: scaleComponentByDisplayedTotal(componentTotals.parcel, parcelCostTotal),
       ltl: scaleComponentByDisplayedTotal(componentTotals.ltl, ltlCostTotal),
       tl: scaleComponentByDisplayedTotal(componentTotals.tl, tlCostTotal),
@@ -272,7 +302,7 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
   const variableCostBreakdownContent = () => (
     <div className="space-y-2">
       <div className="flex justify-between font-semibold text-slate-600">
-        <span>Lane Data Cost:</span>
+        <span>Lane Data Cost (excl. Distribution Fixed):</span>
         <span>{formatCurrencyOrNA(baseCost, 0)}</span>
       </div>
       <div className="pl-2 space-y-1 text-xs text-slate-500">
@@ -280,6 +310,17 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
         <div className="flex justify-between"><span>Collect:</span><span>{formatCurrencyOrNA(termCostBreakdown.total.collect, 0)}</span></div>
         {termCostBreakdown.total.other > 0 && (
           <div className="flex justify-between"><span>Other:</span><span>{formatCurrencyOrNA(termCostBreakdown.total.other, 0)}</span></div>
+        )}
+      </div>
+      <div className="flex justify-between font-semibold text-slate-600 pt-2">
+        <span>Distribution Fixed:</span>
+        <span>{formatCurrencyOrNA(distributionFixedCostTotal, 0)}</span>
+      </div>
+      <div className="pl-2 space-y-1 text-xs text-slate-500">
+        <div className="flex justify-between"><span>Prepaid:</span><span>{formatCurrencyOrNA(termCostBreakdown.components.distributionFixed.prepaid, 0)}</span></div>
+        <div className="flex justify-between"><span>Collect:</span><span>{formatCurrencyOrNA(termCostBreakdown.components.distributionFixed.collect, 0)}</span></div>
+        {termCostBreakdown.components.distributionFixed.other > 0 && (
+          <div className="flex justify-between"><span>Other:</span><span>{formatCurrencyOrNA(termCostBreakdown.components.distributionFixed.other, 0)}</span></div>
         )}
       </div>
       <div className="flex justify-between font-semibold text-slate-600 pt-2">
@@ -298,7 +339,8 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
 
   const totalCostBreakdownContent = () => (
     <div className="space-y-1">
-      <div className="flex justify-between"><span>Lane Data Cost:</span><span className="font-medium text-slate-700">{formatCurrencyOrNA(baseCost, 0)}</span></div>
+      <div className="flex justify-between"><span>Lane Data Cost (excl. Distribution Fixed):</span><span className="font-medium text-slate-700">{formatCurrencyOrNA(baseCost, 0)}</span></div>
+      <div className="flex justify-between"><span>Distribution Fixed:</span><span className="font-medium text-slate-700">{formatCurrencyOrNA(distributionFixedCostTotal, 0)}</span></div>
       <div className="flex justify-between"><span>Contract Labor:</span><span className="font-medium text-slate-700">{formatCurrencyOrNA(contractLaborTotal, 0)}</span></div>
       <div className="flex justify-between"><span>Rent:</span><span className="font-medium text-slate-700">{formatCurrencyOrNA(fixedCostComponents.rent, 0)}</span></div>
       <div className="flex justify-between"><span>Management Fee:</span><span className="font-medium text-slate-700">{formatCurrencyOrNA(fixedCostComponents.managementFee, 0)}</span></div>

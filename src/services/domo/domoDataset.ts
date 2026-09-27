@@ -172,6 +172,7 @@ const RAW_LANE_FIELD_ALIASES = {
   threshold: ['threshold', 'Threshold'],
   totalCost: ['3zip_scenario cost', '3zip Scenario Cost', '3zip_scenario_cost', 'totalCost', 'TotalCost', '3-zip x Channel Scenario Cost', '3-zip x Channel Scenario Cost '],
   relocatableCost: ['3zip_scenario cost (exclu_dist_cost_spd_fxd)', '3zip Scenario Cost (Exclu Dist Cost Spd Fxd)', '3zip_scenario_cost_excluding_distribution_fixed', 'RelocatableCost', 'relocatableCost'],
+  baselineCostToServe: [' Baseline Cost to Serve', 'Baseline Cost to Serve', 'baseline_cost_to_serve', 'BaselineCostToServe', 'baselineCostToServe'],
 } as const;
 
 const NORMALIZED_LANE_FIELD_ALIASES = {
@@ -207,6 +208,8 @@ const NORMALIZED_LANE_FIELD_ALIASES = {
     '3-zip x Channel Scenario Cost',
     '3-zip x Channel Scenario Cost ',
   ],
+  fullCost: ['FullCost', 'fullCost', '3zip_scenario cost', '3zip Scenario Cost', '3zip_scenario_cost'],
+  baselineCostToServe: [' Baseline Cost to Serve', 'Baseline Cost to Serve', 'baseline_cost_to_serve', 'BaselineCostToServe', 'baselineCostToServe'],
   costDeltaVsBest: ['CostDeltaVsBest', 'costDeltaVsBest'],
   deliveryDays: ['DeliveryDays', 'deliveryDays', 'servicedays_us&can_combnd', 'servicedays_us&can_combined', 'servicedays_us_can_combined'],
   slaBreachFlag: ['SLABreachFlag', 'slaBreachFlag'],
@@ -334,6 +337,8 @@ const LANE_NORMALIZED_SCHEMA = {
     { name: 'ParcelSpend', type: 'DOUBLE' },
     { name: 'LtlSpend', type: 'DOUBLE' },
     { name: 'TotalCost', type: 'DOUBLE' },
+    { name: 'FullCost', type: 'DOUBLE' },
+    { name: 'BaselineCostToServe', type: 'DOUBLE' },
     { name: 'CostRank', type: 'LONG' },
     { name: 'WorkingCapacity', type: 'DOUBLE' },
     { name: 'SquareFootage', type: 'DOUBLE' },
@@ -634,16 +639,20 @@ const normalizeRawLaneRow = (
   const rawRelocatableCostText = readRegistryFieldRaw(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.relocatableCost]);
   const rawRelocatableCost = asNumber(rawRelocatableCostText ?? '');
   const hasRawRelocatableCost = rawRelocatableCostText !== null && rawRelocatableCostText.trim() !== '' && Number.isFinite(rawRelocatableCost);
+  const baselineCostToServeText = readRegistryFieldRaw(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.baselineCostToServe]);
+  const baselineCostToServe = asNumber(baselineCostToServeText ?? '');
+  const hasBaselineCostToServe = baselineCostToServeText !== null && baselineCostToServeText.trim() !== '' && Number.isFinite(baselineCostToServe);
   const breachFlag = normalizeLaneBreachFlag(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...RAW_LANE_FIELD_ALIASES.breachFlag]));
   const assignedDc = costingWarehouse || defaultShipFrom || '';
-  // The lane dataset's 3zip_scenario cost is the authoritative total used for
-  // ranking and allocation.  Component spends remain available for reporting
-  // and are only a fallback when the source total is genuinely missing.
+  // The exclusion metric is the authoritative lane total used for ranking,
+  // allocation, scenario totals, and exports. Keep the original full metric
+  // separately so the difference remains auditable.
   const componentTotalCost = Math.max(0, distributionCost + inboundSpend + parcelSpend + ltlSpend + tlSpend);
-  const laneCost = hasRawTotalCost ? rawTotalCost : componentTotalCost;
+  const fullCost = hasRawTotalCost ? rawTotalCost : componentTotalCost;
+  const laneCost = hasRawRelocatableCost ? rawRelocatableCost : fullCost;
   const relocatableCost = hasRawRelocatableCost
     ? rawRelocatableCost
-    : Math.max(0, laneCost - distributionFixedCost);
+    : Math.max(0, fullCost - distributionFixedCost);
   const deliveryDays = rawDeliveryDays > 0
     ? rawDeliveryDays
     : avgDeliveryDays > 0
@@ -731,8 +740,10 @@ const normalizeRawLaneRow = (
     DistributionCost: distributionCost || undefined,
     DistributionVariableCost: (hasDistributionVariable ? distributionVariableCost : Math.max(0, distributionCost - distributionFixedCost)) || undefined,
     DistributionFixedCost: distributionFixedCost || undefined,
+    FullCost: fullCost,
+    BaselineCostToServe: hasBaselineCostToServe ? baselineCostToServe : undefined,
     RelocatableCost: relocatableCost,
-    CostBasis: 'FULL',
+    CostBasis: hasRawRelocatableCost ? 'EXCLUDING_DISTRIBUTION_FIXED' : 'FULL',
     MovedDueToSuppression: 'N',
     TlSpend: tlSpend,
     BreachFlag: breachFlag,
@@ -770,10 +781,23 @@ const normalizeNormalizedLaneRow = (row: DomoLaneRow): ScenarioRunResultsLane | 
   );
   const normalizedTotalCostText = readRegistryFieldRaw(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.totalCost]);
   const normalizedLaneCostText = readRegistryFieldRaw(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.laneCost]);
+  const normalizedFullCostText = readRegistryFieldRaw(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.fullCost]);
   const normalizedTotalCost = asNumber(normalizedTotalCostText ?? '');
   const normalizedLaneCost = asNumber(normalizedLaneCostText ?? '');
+  const normalizedFullCost = asNumber(normalizedFullCostText ?? '');
+  const normalizedBaselineCostText = readRegistryFieldRaw(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.baselineCostToServe]);
+  const normalizedBaselineCost = asNumber(normalizedBaselineCostText ?? '');
   const hasNormalizedTotalCost = normalizedTotalCostText !== null && normalizedTotalCostText.trim() !== '' && Number.isFinite(normalizedTotalCost);
   const hasNormalizedLaneCost = normalizedLaneCostText !== null && normalizedLaneCostText.trim() !== '' && Number.isFinite(normalizedLaneCost);
+  const hasNormalizedFullCost = normalizedFullCostText !== null && normalizedFullCostText.trim() !== '' && Number.isFinite(normalizedFullCost);
+  const hasNormalizedBaselineCost = normalizedBaselineCostText !== null && normalizedBaselineCostText.trim() !== '' && Number.isFinite(normalizedBaselineCost);
+  const fullLaneCost = hasNormalizedFullCost
+    ? normalizedFullCost
+    : hasNormalizedTotalCost
+      ? normalizedTotalCost
+      : hasNormalizedLaneCost
+        ? normalizedLaneCost
+        : Number(normalized.FullCost ?? normalized.LaneCost ?? 0);
   const sourceLaneCost = hasNormalizedTotalCost
     ? normalizedTotalCost
     : hasNormalizedLaneCost
@@ -824,7 +848,11 @@ const normalizeNormalizedLaneRow = (row: DomoLaneRow): ScenarioRunResultsLane | 
   const ltlSpend = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.ltlSpend]), normalized.LtlSpend || 0);
   const tlSpend = asNumber(readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.tlSpend]), normalized.TlSpend || 0);
   const componentTotalCost = Math.max(0, distributionCost + inboundSpend + parcelSpend + ltlSpend + tlSpend);
-  const laneCost = hasNormalizedTotalCost || hasNormalizedLaneCost ? sourceLaneCost : componentTotalCost > 0 ? componentTotalCost : sourceLaneCost;
+  const laneCost = hasNormalizedRelocatable
+    ? normalizedRelocatable
+    : hasNormalizedTotalCost || hasNormalizedLaneCost
+      ? sourceLaneCost
+      : componentTotalCost > 0 ? componentTotalCost : sourceLaneCost;
   const relocatableCost = hasNormalizedRelocatable
     ? normalizedRelocatable
     : Math.max(0, laneCost - distributionFixedCost);
@@ -882,6 +910,8 @@ const normalizeNormalizedLaneRow = (row: DomoLaneRow): ScenarioRunResultsLane | 
     ParcelSpend: parcelSpend,
     LtlSpend: ltlSpend,
     TotalCost: laneCost,
+    FullCost: fullLaneCost,
+    BaselineCostToServe: hasNormalizedBaselineCost ? normalizedBaselineCost : normalized.BaselineCostToServe,
     CostRank: costRank,
     WorkingCapacity: (() => {
       const hasCol = hasRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.workingCapacity]);
@@ -894,7 +924,7 @@ const normalizeNormalizedLaneRow = (row: DomoLaneRow): ScenarioRunResultsLane | 
     DistributionVariableCost: distributionVariableCost || undefined,
     DistributionFixedCost: distributionFixedCost || undefined,
     RelocatableCost: relocatableCost,
-    CostBasis: 'FULL',
+    CostBasis: hasNormalizedRelocatable ? 'EXCLUDING_DISTRIBUTION_FIXED' : 'FULL',
     MovedDueToSuppression: 'N',
     TlSpend: tlSpend,
     BreachFlag: readRegistryField(row as ScenarioDatasetRegistryCsvRow, [...NORMALIZED_LANE_FIELD_ALIASES.breachFlag]) || normalized.BreachFlag,

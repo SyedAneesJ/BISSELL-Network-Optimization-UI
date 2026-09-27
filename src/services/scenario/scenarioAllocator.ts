@@ -11,6 +11,8 @@ type LaneCandidate = {
   dc: string;
   costPerUnit: number;
   days: number;
+  /** Raw `3zip_scenario cost`, retained for suppression-only ranking. */
+  fullCost: number;
   totalCost: number;
   relocatableCost: number;
   sourceIndex: 1 | 2 | 3 | 4;
@@ -101,6 +103,11 @@ const laneTotalCost = (lane: ScenarioRunResultsLane): number => {
   return componentTotal > 0 ? componentTotal : 0;
 };
 
+const laneFullCost = (lane: ScenarioRunResultsLane): number => {
+  const direct = Number(lane.FullCost);
+  return Number.isFinite(direct) ? direct : laneTotalCost(lane);
+};
+
 const laneRelocatableCost = (lane: ScenarioRunResultsLane): number => {
   const direct = Number(lane.RelocatableCost);
   if (Number.isFinite(direct)) return direct;
@@ -108,6 +115,14 @@ const laneRelocatableCost = (lane: ScenarioRunResultsLane): number => {
   const fixed = Number(lane.DistributionFixedCost ?? 0);
   return Math.max(0, total - (Number.isFinite(fixed) ? fixed : 0));
 };
+
+const laneBaselineCostToServe = (lane: ScenarioRunResultsLane): number => {
+  const direct = Number(lane.BaselineCostToServe);
+  return Number.isFinite(direct) && direct >= 0 ? direct : Number.NaN;
+};
+
+const isSuppressedLanesOnlyScenario = (scenarioType: string): boolean =>
+  resolveScenarioTypePolicy(scenarioType).relocationScope === 'SUPPRESSED_LANES_ONLY';
 
 const formatDcDisplayName = (value: unknown): string => {
   const text = normalizeText(canonicalizeDcName(value));
@@ -238,12 +253,21 @@ const buildRawCandidates = (lane: ScenarioRunResultsLane): LaneCandidate[] => {
     if (!dcName) return;
     const parsedTotalCost = Number(totalCost);
     const parsedDays = Number(days);
+    const parsedRelocatableCost = Number(relocatableCost);
+    const hasRelocatableCost = Number.isFinite(parsedRelocatableCost);
     candidates.push({
       dc: dcName,
       costPerUnit: 0,
       days: Number.isFinite(parsedDays) ? parsedDays : 0,
-      totalCost: Number.isFinite(parsedTotalCost) ? parsedTotalCost : 0,
-      relocatableCost: Number.isFinite(Number(relocatableCost)) ? Number(relocatableCost) : (Number.isFinite(parsedTotalCost) ? parsedTotalCost : 0),
+      fullCost: laneFullCost(lane),
+      // The exclusion metric is the lane total whenever the source provides
+      // it. FullCost remains on the source lane for audit/export purposes.
+      totalCost: hasRelocatableCost
+        ? parsedRelocatableCost
+        : (Number.isFinite(parsedTotalCost) ? parsedTotalCost : 0),
+      relocatableCost: hasRelocatableCost
+        ? parsedRelocatableCost
+        : (Number.isFinite(parsedTotalCost) ? parsedTotalCost : 0),
       sourceIndex,
     });
   };
@@ -266,6 +290,7 @@ const buildRawCandidates = (lane: ScenarioRunResultsLane): LaneCandidate[] => {
         dc: fallbackDc,
         costPerUnit: Number.isFinite(fallbackCpu) ? fallbackCpu : 0,
         days: Number(lane.DeliveryDays ?? 0) || 0,
+        fullCost: laneFullCost(lane),
         totalCost: laneTotalCost(lane),
         relocatableCost: laneRelocatableCost(lane),
         sourceIndex: 1,
@@ -361,7 +386,10 @@ const buildLaneGroups = (rows: ScenarioRunResultsLane[]): LaneGroup[] => {
     const sourceRowCandidate = originalDcKey
       ? sortedGroupRows.find((row) => normalizeDcKey(row.CostingWarehouse || row.AssignedDC || row.DefaultShipFrom) === originalDcKey)
       : undefined;
-    const sourceRow = { ...(sourceRowCandidate || sortedGroupRows[0]) };
+    const baselineCostRow = originalDcKey
+      ? sortedGroupRows.find((row) => normalizeDcKey(row.CostingWarehouse || row.AssignedDC || row.DefaultShipFrom) === originalDcKey && Number.isFinite(laneBaselineCostToServe(row)))
+      : sortedGroupRows.find((row) => Number.isFinite(laneBaselineCostToServe(row)));
+    const sourceRow = { ...(baselineCostRow || sourceRowCandidate || sortedGroupRows[0]) };
     const laneUnits = inferLaneUnits(sourceRow);
     const spaceReq = laneSpaceRequired(sourceRow);
 
@@ -380,6 +408,7 @@ const buildLaneGroups = (rows: ScenarioRunResultsLane[]): LaneGroup[] => {
         dc: dcName,
         costPerUnit: Number.isFinite(cpu) ? cpu : 0,
         days: Number.isFinite(days) ? days : 0,
+        fullCost: laneFullCost(row),
         totalCost: Number.isFinite(totalCost) ? totalCost : 0,
         relocatableCost: laneRelocatableCost(row),
         sourceIndex: (candidatesFromGroupRows.length + 1) as 1 | 2 | 3 | 4,
@@ -503,6 +532,17 @@ const restrictCandidatesForLane = (
   input: AllocationInput,
   suppressedSet: Set<string>,
 ): LaneCandidate[] => {
+  if (isSuppressedLanesOnlyScenario(input.scenarioType)) {
+    const sourceDc = normalizeDcKey(laneSourceDc(lane));
+    if (!sourceDc || !suppressedSet.has(sourceDc)) {
+      const fixedCandidate = candidates.find((candidate) => normalizeDcKey(candidate.dc) === sourceDc);
+      // A baseline lane must remain on its baseline DC. If the source row is
+      // absent from the candidate pool, retain the existing candidate list as
+      // a safe data-quality fallback rather than inventing a new assignment.
+      return fixedCandidate ? [fixedCandidate] : candidates;
+    }
+    return candidates;
+  }
   const terms = laneTerms(lane);
   if (terms.includes('collect')) {
     if (laneCollectPolicy(input) === 'relocatable') return candidates;
@@ -530,19 +570,34 @@ const candidateCostForGroup = (
   group: LaneGroup,
   candidate: LaneCandidate,
   suppressedSet: Set<string>,
+  scenarioType?: string,
 ): number => {
   const sourceKey = normalizeDcKey(laneSourceDc(group.sourceRow));
   const movedFromSuppressed = Boolean(sourceKey && suppressedSet.has(sourceKey));
   const isMove = normalizeDcKey(candidate.dc) !== sourceKey;
-  return movedFromSuppressed && isMove ? candidate.relocatableCost : candidate.totalCost;
+  if (!movedFromSuppressed || !isMove) return candidate.totalCost;
+
+  // Suppressed-lane-only strategic runs use the raw full scenario cost only
+  // to choose the replacement DC. The selected row's displayed cost remains
+  // the exclusion-based relocatable cost in buildSelectedLaneRow.
+  if (scenarioType && isSuppressedLanesOnlyScenario(scenarioType) && Number.isFinite(candidate.fullCost)) {
+    return candidate.fullCost;
+  }
+
+  // Replacement DC selection must use the same lane-cost authority as the
+  // rest of the scenario pipeline: `3zip_scenario cost
+  // (exclu_dist_cost_spd_fxd)`. `candidate.totalCost` is normalized from that
+  // source column (with a safe fallback when the column is absent).
+  return candidate.relocatableCost;
 };
 
 const sortCandidatesForGroup = (
   group: LaneGroup,
   candidates: LaneCandidate[],
   suppressedSet: Set<string>,
+  scenarioType?: string,
 ): LaneCandidate[] => [...candidates].sort((a, b) => {
-  const costDelta = candidateCostForGroup(group, a, suppressedSet) - candidateCostForGroup(group, b, suppressedSet);
+  const costDelta = candidateCostForGroup(group, a, suppressedSet, scenarioType) - candidateCostForGroup(group, b, suppressedSet, scenarioType);
   if (costDelta !== 0) return costDelta;
   if (a.days !== b.days) return a.days - b.days;
   return a.sourceIndex - b.sourceIndex;
@@ -563,6 +618,7 @@ const buildSelectedLaneRow = (
   selected: LaneCandidate,
   selectedCapacity: number,
   suppressedSet: Set<string>,
+  useBaselineCostForRetainedLane = false,
 ): ScenarioRunResultsLane => {
   const selectedCpu = Number(selected.costPerUnit.toFixed(2));
   const bestCpu = Number(
@@ -592,7 +648,21 @@ const buildSelectedLaneRow = (
   const candidateRow = selected.sourceRow;
   const movedDueToSuppression = suppressedSet.has(normalizeDcKey(laneSourceDc(sourceRow))) &&
     normalizeDcKey(selected.dc) !== normalizeDcKey(laneSourceDc(sourceRow));
-  const selectedDirectTotal = Number(movedDueToSuppression ? selected.relocatableCost : selected.totalCost);
+  const retainedBaselineCost = laneBaselineCostToServe(sourceRow);
+  const useRetainedBaselineCost = useBaselineCostForRetainedLane &&
+    !suppressedSet.has(normalizeDcKey(laneSourceDc(sourceRow))) &&
+    Number.isFinite(retainedBaselineCost);
+  const selectedDirectTotal = Number(
+    useRetainedBaselineCost
+      ? retainedBaselineCost
+      : movedDueToSuppression
+        ? selected.relocatableCost
+        : selected.totalCost,
+  );
+  const selectedSourceRow = candidateRow || sourceRow;
+  const selectedUsesExclusionCost = !useRetainedBaselineCost && (selectedSourceRow.CostBasis === 'EXCLUDING_DISTRIBUTION_FIXED' ||
+    Number.isFinite(Number(selectedSourceRow.RelocatableCost)) ||
+    movedDueToSuppression);
   if (Number.isFinite(selectedDirectTotal)) {
     selectedTotal = selectedDirectTotal;
     if (candidateRow) {
@@ -640,6 +710,7 @@ const buildSelectedLaneRow = (
     CostRank: selectedRank,
     LaneCost: selectedTotal,
     TotalCost: selectedTotal,
+    FullCost: selectedSourceRow.FullCost ?? sourceRow.FullCost,
     CostPerUnit: selectedCpu,
     CostDeltaVsBest: Number(Math.max(0, selectedCpu - bestCpu).toFixed(2)),
     DeliveryDays: Number(selected.days.toFixed(2)),
@@ -661,7 +732,10 @@ const buildSelectedLaneRow = (
       : distributionVariableCost,
     DistributionFixedCost: movedDueToSuppression ? 0 : distributionFixedCost,
     RelocatableCost: movedDueToSuppression ? selectedTotal : laneRelocatableCost(candidateRow || sourceRow),
-    CostBasis: movedDueToSuppression ? 'EXCLUDING_DISTRIBUTION_FIXED' : 'FULL',
+    BaselineCostToServe: sourceRow.BaselineCostToServe,
+    CostBasis: useRetainedBaselineCost
+      ? 'BASELINE_COST_TO_SERVE'
+      : selectedUsesExclusionCost ? 'EXCLUDING_DISTRIBUTION_FIXED' : 'FULL',
     MovedDueToSuppression: movedDueToSuppression ? 'Y' : 'N',
     ParcelSpend: parcelSpend,
     LtlSpend: ltlSpend,
@@ -1022,15 +1096,22 @@ const selectUnconstrainedRows = (
   input: AllocationInput,
 ): ScenarioRunResultsLane[] => {
   const selectedRows: ScenarioRunResultsLane[] = [];
+  const useBaselineCostForRetainedLane = isSuppressedLanesOnlyScenario(input.scenarioType);
 
   laneGroups.forEach((group) => {
     const eligibleCandidates = restrictCandidatesForLane(group.sourceRow, group.candidates, input, suppressedSet);
     const activeCandidates = eligibleCandidates.filter((candidate) => isCandidateActive(candidate.dc, activeSet, suppressedSet));
-    const eligible = sortCandidatesForGroup(group, activeCandidates.length > 0 ? activeCandidates : eligibleCandidates, suppressedSet);
+    const candidatePool = activeCandidates.length > 0 ? activeCandidates : eligibleCandidates;
+    const eligible = sortCandidatesForGroup(
+      group,
+      candidatePool,
+      suppressedSet,
+      activeCandidates.length > 0 ? input.scenarioType : undefined,
+    );
     const selected = eligible[0] || group.candidates[0];
     if (!selected) return;
     const selectedCapacity = capacityMap.get(normalizeDcKey(selected.dc)) || Number.POSITIVE_INFINITY;
-    selectedRows.push(buildSelectedLaneRow(scenarioId, group.sourceRow, group.laneSpaceRequired, group.laneUnits, selected, selectedCapacity, suppressedSet));
+    selectedRows.push(buildSelectedLaneRow(scenarioId, group.sourceRow, group.laneSpaceRequired, group.laneUnits, selected, selectedCapacity, suppressedSet, useBaselineCostForRetainedLane));
   });
 
   return selectedRows;

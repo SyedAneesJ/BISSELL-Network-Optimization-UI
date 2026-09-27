@@ -201,6 +201,13 @@ export const createScenarioLaneColumns = (): Column<ScenarioRunResultsLane>[] =>
     sortable: true,
     render: (row) => formatCurrencyOrNA(row.TotalCost ?? row.LaneCost, 2),
   },
+  {
+    key: 'BaselineCostToServe',
+    header: 'Baseline Cost To Serve',
+    width: '160px',
+    sortable: true,
+    render: (row) => formatCurrencyOrNA(row.BaselineCostToServe ?? null, 2),
+  },
 ];
 
 export const createScenarioRankedOptionsColumns = (): Column<ScenarioRunResultsLane>[] => [

@@ -17,6 +17,8 @@ export interface ScenarioTypePolicy {
   allocationMode: ScenarioAllocationPreset;
   collectPolicy: 'fixed' | 'relocatable';
   collectTreatmentLabel: string;
+  /** Controls whether eligible lanes may relocate or only suppressed-source lanes. */
+  relocationScope?: 'ALL_LANES' | 'SUPPRESSED_LANES_ONLY';
   defaults: {
     footprintMode: string;
     utilCap: number;
@@ -277,6 +279,7 @@ const scenarioTypeRules: ScenarioTypePolicy[] = [
     ],
     allowedDcs: BASE_US_DCS,
     allocationMode: 'unconstrained',
+    relocationScope: 'ALL_LANES',
     collectPolicy: 'relocatable',
     collectTreatmentLabel: 'Collect Relocatable',
     defaults: {
@@ -311,6 +314,55 @@ const scenarioTypeRules: ScenarioTypePolicy[] = [
     },
     sortOrder: 8,
     helpText: ['Collect relocatable strategic pro forma chooses each lane\'s cheapest eligible DC across the same 4-DC family with unconstrained footprint.'],
+  },
+  {
+    scenarioType: 'Strategic Pro Forma (Suppressed Lanes Only)',
+    familyKey: 'base-us',
+    familyLabel: 'Base US Family',
+    aliases: [
+      'strategic pro forma suppressed lanes only',
+      'strategic suppressed lanes only',
+      'strategic suppression only',
+      'strategic pro forma suppression only',
+      'canada strategic suppressed lanes only',
+    ],
+    allowedDcs: BASE_US_DCS,
+    allocationMode: 'unconstrained',
+    relocationScope: 'SUPPRESSED_LANES_ONLY',
+    collectPolicy: 'relocatable',
+    collectTreatmentLabel: 'Suppressed Lanes Only',
+    defaults: {
+      footprintMode: 'Unconstrained',
+      utilCap: 100,
+      levelLoad: false,
+      allowRelocationPrepaid: true,
+      allowRelocationCollect: true,
+      bcvRuleSet: 'NA',
+      allowManualOverride: false,
+    },
+    locks: {
+      activeDcs: false,
+      suppressedDcs: false,
+      footprintMode: true,
+      utilCap: true,
+      levelLoad: false,
+      allowRelocationPrepaid: false,
+      allowRelocationCollect: false,
+      bcvRuleSet: true,
+      allowManualOverride: true,
+    },
+    supports: {
+      dcSuppression: true,
+      footprintMode: false,
+      utilCap: false,
+      levelLoad: false,
+      relocationPrepaid: true,
+      relocationCollect: true,
+      bcvMapping: false,
+      overrides: false,
+    },
+    sortOrder: 12,
+    helpText: ['Strategic suppression-only keeps every unsuppressed lane at its baseline DC and moves only lanes sourced from suppressed DCs to the cheapest active eligible DC.'],
   },
   {
     scenarioType: 'Strategic Pro Forma',
@@ -670,6 +722,7 @@ export const getScenarioTypeSortRank = (scenarioType: unknown): number => {
   if (normalized.includes('baseline')) return 1;
   if (normalized.includes('tactical pro forma') && normalized.includes('collect') && normalized.includes('relo')) return 7;
   if (normalized.includes('strategic pro forma') && normalized.includes('collect') && normalized.includes('relo')) return 8;
+  if (normalized.includes('strategic') && normalized.includes('suppressed') && normalized.includes('lane')) return 12;
   if (normalized.includes('bcv ingestion') && normalized.includes('collect') && normalized.includes('relo')) return 9;
   if (normalized.includes('consolidation tactical') && normalized.includes('relo')) return 10;
   if (normalized.includes('consolidation strategic') && normalized.includes('relo')) return 11;
@@ -844,6 +897,12 @@ const STEP1_DEFAULTS_BY_SCENARIO_TYPE: Record<string, Step1ScenarioDefaults> = {
     termsScope: 'Prepaid',
   },
   'Strategic Pro Forma (Collect Relocatable)': {
+    region: 'US',
+    entityScope: 'Core',
+    channelScope: ['B2C Home Delivery + B2B Retailer + D2C/eCom'],
+    termsScope: 'Collect+Prepaid',
+  },
+  'Strategic Pro Forma (Suppressed Lanes Only)': {
     region: 'US',
     entityScope: 'Core',
     channelScope: ['B2C Home Delivery + B2B Retailer + D2C/eCom'],

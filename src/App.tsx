@@ -1439,6 +1439,7 @@ function App() {
 
     const tacticalBase = exactTemplateByType(grouped.US, 'Tactical Pro Forma');
     const strategicBase = exactTemplateByType(grouped.US, 'Strategic Pro Forma');
+    const strategicSuppressedOnlyBase = exactTemplateByType(grouped.US, 'Strategic Pro Forma (Suppressed Lanes Only)') || strategicBase;
     const bcvBase = grouped.US.find((template) => {
       const policy = resolveScenarioTypePolicy(template.scenarioType);
       return policy.scenarioType === 'BCV Ingestion Only' && !isCollectRelocatableTemplate(template);
@@ -1447,6 +1448,7 @@ function App() {
     const consolidationStrategicBase = exactTemplateByType(grouped.US, 'Consolidation Strategic Unconstrained');
     const canadaTacticalBase = exactTemplateByType(grouped.Canada, 'Tactical Pro Forma') || tacticalBase;
     const canadaStrategicBase = exactTemplateByType(grouped.Canada, 'Strategic Pro Forma') || strategicBase;
+    const canadaStrategicSuppressedOnlyBase = exactTemplateByType(grouped.Canada, 'Strategic Pro Forma (Suppressed Lanes Only)') || canadaStrategicBase;
     const canadaBcvBase = grouped.Canada.find((template) => {
       const policy = resolveScenarioTypePolicy(template.scenarioType);
       return policy.scenarioType === 'BCV Ingestion Only' && !isCollectRelocatableTemplate(template);
@@ -1476,6 +1478,20 @@ function App() {
             region: 'US',
             scenarioName: 'Scenario 8 - Strategic Collect Relo',
             scenarioType: 'Strategic Pro Forma (Collect Relocatable)',
+            footprintMode: 'Unconstrained',
+            utilCap: 100,
+            levelLoad: false,
+            allowRelocationPrepaid: true,
+            allowRelocationCollect: true,
+          })
+        : null,
+      strategicSuppressedOnlyBase
+        ? cloneTemplateWithOverrides(strategicSuppressedOnlyBase, {
+            scenarioId: 'SYNTH_SCENARIO_12_STRATEGIC_SUPPRESSED_LANES_ONLY_US',
+            cloneFromScenarioId: strategicSuppressedOnlyBase.scenarioId,
+            region: 'US',
+            scenarioName: 'Scenario 12 - Strategic Suppressed Lanes Only',
+            scenarioType: 'Strategic Pro Forma (Suppressed Lanes Only)',
             footprintMode: 'Unconstrained',
             utilCap: 100,
             levelLoad: false,
@@ -1551,6 +1567,20 @@ function App() {
             region: 'Canada',
             scenarioName: 'Canada Strategic Relo',
             scenarioType: 'Strategic Pro Forma (Collect Relocatable)',
+            footprintMode: 'Unconstrained',
+            utilCap: 100,
+            levelLoad: false,
+            allowRelocationPrepaid: true,
+            allowRelocationCollect: true,
+          })
+        : null,
+      canadaStrategicSuppressedOnlyBase
+        ? cloneTemplateWithOverrides(canadaStrategicSuppressedOnlyBase, {
+            scenarioId: 'SYNTH_SCENARIO_12_STRATEGIC_SUPPRESSED_LANES_ONLY_CA',
+            cloneFromScenarioId: canadaStrategicSuppressedOnlyBase.scenarioId,
+            region: 'Canada',
+            scenarioName: 'Canada Strategic Suppressed Lanes Only',
+            scenarioType: 'Strategic Pro Forma (Suppressed Lanes Only)',
             footprintMode: 'Unconstrained',
             utilCap: 100,
             levelLoad: false,

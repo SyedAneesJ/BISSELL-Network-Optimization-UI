@@ -138,8 +138,12 @@ const canonicalizeLaneRows = (rows: ScenarioRunResultsLane[]): ScenarioRunResult
       const cpuA = Number(a.CostPerUnit ?? a.LaneCost ?? a.TotalCost ?? 0);
       const cpuB = Number(b.CostPerUnit ?? b.LaneCost ?? b.TotalCost ?? 0);
       if (cpuA !== cpuB) return cpuA - cpuB;
-      const costA = Number(a.TotalCost ?? a.LaneCost ?? 0);
-      const costB = Number(b.TotalCost ?? b.LaneCost ?? 0);
+      const costA = a.CostBasis === 'EXCLUDING_DISTRIBUTION_FIXED'
+        ? Number(a.RelocatableCost ?? a.TotalCost ?? a.LaneCost ?? 0)
+        : Number(a.TotalCost ?? a.LaneCost ?? 0);
+      const costB = b.CostBasis === 'EXCLUDING_DISTRIBUTION_FIXED'
+        ? Number(b.RelocatableCost ?? b.TotalCost ?? b.LaneCost ?? 0)
+        : Number(b.TotalCost ?? b.LaneCost ?? 0);
       if (costA !== costB) return costA - costB;
       return String(a.AssignedDC || a.CostingWarehouse || a.DefaultShipFrom || '').localeCompare(
         String(b.AssignedDC || b.CostingWarehouse || b.DefaultShipFrom || ''),
