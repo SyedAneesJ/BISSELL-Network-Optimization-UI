@@ -91,6 +91,12 @@ export const useScenarioDetails = ({
     );
   }, [rawScenario]);
 
+  const isSuppressedLanesOnly = useMemo(() => {
+    if (!rawScenario) return false;
+    const scenarioText = `${String(rawScenario.ScenarioType || '')} ${String(rawScenario.RunName || '')}`.toLowerCase();
+    return scenarioText.includes('suppressed lanes') || scenarioText.includes('suppression only');
+  }, [rawScenario]);
+
   // Broader flag: these scenarios compare generated demand to the current contracted footprint.
   const isUsSpaceOverrideScenario = useMemo(() => {
     if (!rawScenario) return false;
@@ -391,7 +397,11 @@ export const useScenarioDetails = ({
         const extPrice = spaceOverride.TotalExtendedPrice || 0;
         const totCost = spaceOverride.TotalCost ?? dc.TotalCost;
         const ibf = spaceOverride.InboundSpend ?? 0;
-        const dst = spaceOverride.DistributionCost ?? 0;
+        // Baseline distribution cost must come from the dedicated
+        // totalDistributionSpend field. DistributionCost is the legacy
+        // distributionSpend_Inc_(rent,mgmtfee,cnrctlbr) value and includes
+        // non-lane costs that are not part of the baseline variable KPI.
+        const dst = spaceOverride.TotalDistributionSpend ?? spaceOverride.DistributionCost ?? 0;
         const parcel = spaceOverride.ParcelSpend ?? 0;
         const tl = spaceOverride.TlSpend ?? 0;
         const ltl = spaceOverride.LtlSpend ?? 0;
@@ -405,6 +415,7 @@ export const useScenarioDetails = ({
           LtlSpend: ltl,
           TlSpend: tl,
           DistributionCost: dst,
+          DistributionSpendIncAll: spaceOverride.DistributionSpendIncAll ?? spaceOverride.DistributionCost ?? 0,
           DistributionVariableCost: spaceOverride.DistributionVariableCost ?? Math.max(0, dst - Number(spaceOverride.DistributionFixedCost ?? 0)),
           DistributionFixedCost: spaceOverride.DistributionFixedCost ?? 0,
           Rent: spaceOverride.Rent ?? 0,
@@ -1079,12 +1090,13 @@ export const useScenarioDetails = ({
       triggerAction('scenario_archive');
     },
     dcColumns: createScenarioDcColumns(
-      scenarioId === 'SR001' || String(scenario?.ScenarioType || '').toLowerCase().includes('baseline'),
-      (scenarioId === 'SR001' || String(scenario?.ScenarioType || '').toLowerCase().includes('baseline'))
+      isUsBaseline,
+      isUsBaseline
         ? 100
         : (typeof scenario?.UtilizationCap === 'number'
             ? scenario.UtilizationCap
-            : Number(String(scenario?.UtilizationCap || '').replace(/[^0-9.-]/g, '')) || 85)
+            : Number(String(scenario?.UtilizationCap || '').replace(/[^0-9.-]/g, '')) || 85),
+      isSuppressedLanesOnly
     ),
     laneColumns: createScenarioLaneColumns(),
     rankedOptionsColumns: createScenarioRankedOptionsColumns(),

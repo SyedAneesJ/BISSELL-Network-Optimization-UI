@@ -931,10 +931,14 @@ function App() {
     return scenarioState.headers.map((header) => {
       const dcs = scenarioState.resultsDC.filter((dc) => dc.ScenarioRunID === header.ScenarioRunID);
       const isBaseline = header.ScenarioRunID === 'SR001' || String(header.ScenarioType || '').toLowerCase().includes('baseline');
+      const scenarioTypeText = `${String(header.ScenarioType || '')} ${String(header.RunName || '')}`.toLowerCase();
+      const isSuppressedLanesOnly = scenarioTypeText.includes('suppressed lanes') || scenarioTypeText.includes('suppression only');
       const additionalCost = dcs.reduce((sum, dc) => {
         if (dc.IsSuppressed === 'Y') return sum;
         const costs = getAdditionalCostsForDc(dc.DCName);
-        return sum + (dc.Rent ?? costs.Rent) + (dc.ContractLabor ?? costs.ContractLabor) + (dc.ManagementFee ?? costs.ManagementFee);
+        return sum + (dc.Rent ?? costs.Rent)
+          + (isSuppressedLanesOnly ? 0 : (dc.ContractLabor ?? costs.ContractLabor))
+          + (dc.ManagementFee ?? costs.ManagementFee);
       }, 0);
 
       const isUsBaselineHeader = (header.Region === 'US' || header.Region === 'Canada') && (
@@ -2192,7 +2196,7 @@ function App() {
                 const extPrice = spaceOverride.TotalExtendedPrice || 0;
                 const totCost = spaceOverride.TotalCost ?? dc.TotalCost;
                 const ibf = spaceOverride.InboundSpend ?? dc.InboundSpend ?? 0;
-                const dst = spaceOverride.DistributionCost ?? dc.DistributionCost ?? 0;
+                const dst = spaceOverride.TotalDistributionSpend ?? spaceOverride.DistributionCost ?? dc.DistributionCost ?? 0;
                 const parcel = spaceOverride.ParcelSpend ?? dc.ParcelSpend ?? 0;
                 const tl = spaceOverride.TlSpend ?? dc.TlSpend ?? 0;
                 const ltl = spaceOverride.LtlSpend ?? dc.LtlSpend ?? 0;
@@ -2206,6 +2210,7 @@ function App() {
                   LtlSpend: ltl,
                   TlSpend: tl,
                   DistributionCost: dst,
+                  DistributionSpendIncAll: spaceOverride.DistributionSpendIncAll ?? spaceOverride.DistributionCost ?? 0,
                   Rent: spaceOverride.Rent ?? dc.Rent ?? 0,
                   ContractLabor: spaceOverride.ContractLabor ?? dc.ContractLabor ?? 0,
                   ManagementFee: spaceOverride.ManagementFee ?? dc.ManagementFee ?? 0,

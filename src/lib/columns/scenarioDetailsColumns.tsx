@@ -2,7 +2,7 @@ import { Column } from '@/components/ui';
 import { ScenarioRunResultsDC, ScenarioRunResultsLane, getAdditionalCostsForDc } from '@/data';
 import { formatCurrencyOrNA, formatDecimalOrNA, formatNumberOrNA, formatPercentOrNA, formatTextOrNA } from '@/utils';
 
-export const createScenarioDcColumns = (isBaseline = false, utilCap = 85): Column<ScenarioRunResultsDC>[] => [
+export const createScenarioDcColumns = (isBaseline = false, utilCap = 85, isSuppressedLanesOnly = false): Column<ScenarioRunResultsDC>[] => [
   { key: 'DCName', header: 'DC Name', sortable: true },
   {
     key: 'TotalCost',
@@ -10,14 +10,18 @@ export const createScenarioDcColumns = (isBaseline = false, utilCap = 85): Colum
     sortable: true,
     render: (row) => {
       if (isBaseline) {
-        const dcCosts = getAdditionalCostsForDc(row.DCName);
-        const rentVal = row.Rent ?? dcCosts.Rent;
-        const laborVal = row.ContractLabor ?? dcCosts.ContractLabor;
-        const feeVal = row.ManagementFee ?? dcCosts.ManagementFee;
-        const addCost = rentVal + laborVal + feeVal;
-        return formatCurrencyOrNA(Math.max(0, row.TotalCost - addCost));
+        const variableCost = (row.InboundSpend ?? 0)
+          + (row.DistributionCost ?? 0)
+          + (row.ParcelSpend ?? 0)
+          + (row.LtlSpend ?? 0)
+          + (row.TlSpend ?? 0);
+        return formatCurrencyOrNA(variableCost);
       }
-      return formatCurrencyOrNA(row.TotalCost);
+      // Suppressed-lanes-only allocator rows already use RelocatableCost,
+      // which excludes distribution fixed spend. Do not subtract the fixed
+      // component a second time in the capacity/DC table.
+      const variableCost = row.TotalCost;
+      return formatCurrencyOrNA(variableCost);
     },
   },
   {
@@ -61,7 +65,11 @@ export const createScenarioDcColumns = (isBaseline = false, utilCap = 85): Colum
       const feeVal = row.ManagementFee ?? dcCosts.ManagementFee;
       const addCost = rentVal + laborVal + feeVal;
       
-      const totalCostDisplay = isBaseline ? row.TotalCost : row.TotalCost + (row.IsSuppressed === 'N' ? addCost : 0);
+      const totalCostDisplay = isBaseline
+        ? row.TotalCost
+        : row.TotalCost + (row.IsSuppressed === 'N'
+          ? (isSuppressedLanesOnly ? rentVal + feeVal : addCost)
+          : 0);
       return formatCurrencyOrNA(totalCostDisplay);
     },
   },

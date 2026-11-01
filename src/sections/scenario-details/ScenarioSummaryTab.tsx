@@ -93,6 +93,8 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
       type.includes('baseline') ||
       name.includes('baseline');
   })();
+  const scenarioTypeText = `${String(scenario.ScenarioType || '')} ${String(scenario.RunName || '')}`.toLowerCase();
+  const isSuppressedLanesOnly = scenarioTypeText.includes('suppressed lanes') || scenarioTypeText.includes('suppression only');
   const getUtilSpace = (dc: ScenarioRunResultsDC): number => {
     if (dc.IsSuppressed === 'Y') return 0;
     const capacity = Number(dc.ActualSpace ?? 0);
@@ -170,26 +172,44 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
   const baseCost = laneDataCostTotal > 0 ? laneDataCostTotal : Math.max(0, Number(scenario.TotalCost) || 0);
 
   const inboundCostTotal = dcResults.reduce((sum, dc) => sum + (dc.InboundSpend ?? 0), 0);
-  const distributionCostTotal = dcResults.reduce((sum, dc) => sum + (dc.DistributionCost ?? 0), 0);
+  // DST % Revenue always uses all-in distribution spend. Suppressed-Lanes-Only
+  // scorecards intentionally expose variable distribution only, so reconstruct
+  // the all-in KPI value from DistributionVariableCost + DistributionFixedCost.
+  const distributionCostTotal = dcResults.reduce((sum, dc) => {
+    if (isUsBaseline) return sum + (dc.DistributionSpendIncAll ?? dc.DistributionCost ?? 0);
+    if (!isSuppressedLanesOnly) return sum + (dc.DistributionCost ?? 0);
+    const variable = Number(dc.DistributionVariableCost);
+    const fixed = Number(dc.DistributionFixedCost ?? 0);
+    if (Number.isFinite(variable)) return sum + variable + (Number.isFinite(fixed) ? fixed : 0);
+    return sum + (dc.DistributionCost ?? 0);
+  }, 0);
   const parcelCostTotal = dcResults.reduce((sum, dc) => sum + (dc.ParcelSpend ?? 0), 0);
   const ltlCostTotal = dcResults.reduce((sum, dc) => sum + (dc.LtlSpend ?? 0), 0);
   const tlCostTotal = dcResults.reduce((sum, dc) => sum + (dc.TlSpend ?? 0), 0);
   const outboundCostTotal = parcelCostTotal + ltlCostTotal + tlCostTotal;
-  const contractLaborTotal = dcResults.reduce((sum, dc) => {
-    if (dc.IsSuppressed === 'Y') return sum;
-    const costs = getAdditionalCostsForDc(dc.DCName);
-    return sum + (dc.ContractLabor ?? costs.ContractLabor);
-  }, 0);
+  const contractLaborCostTotal = isUsBaseline
+    ? 0
+    : dcResults.reduce((sum, dc) => {
+      if (dc.IsSuppressed === 'Y') return sum;
+      const costs = getAdditionalCostsForDc(dc.DCName);
+      return sum + (dc.ContractLabor ?? costs.ContractLabor);
+    }, 0);
+  const contractLaborTotal = isUsBaseline || isSuppressedLanesOnly ? 0 : contractLaborCostTotal;
 
-  // Distribution fixed is part of distribution/variable scenario cost, not
-  // the separate rent + management fixed-cost KPI. Lane Data Cost above is
-  // normalized to exclude it, so it is added back exactly once here.
-  const distributionFixedCostTotal = isUsBaseline
+  // Distribution fixed is part of total distribution cost, not the separate
+  // rent + management fixed-cost KPI. Normal scenarios add it back to the
+  // displayed Variable Cost. Suppressed-Lanes-Only intentionally keeps both
+  // distribution fixed and contract labor out of Variable Cost and Total
+  // Cost. The scenario's persisted summary is based on this same basis.
+  const distributionFixedCostCostTotal = isUsBaseline
     ? 0
     : laneResults.reduce((sum, lane) => {
       const value = Number(lane.DistributionFixedCost ?? 0);
       return sum + (Number.isFinite(value) ? value : 0);
     }, 0);
+  const distributionFixedCostTotal = isUsBaseline || isSuppressedLanesOnly
+    ? 0
+    : distributionFixedCostCostTotal;
 
   const variableCostTotal = baseCost + distributionFixedCostTotal + contractLaborTotal;
   const baselineDatasetTotalCost = isUsBaseline
@@ -226,8 +246,15 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
       const units = Number(lane.TotalCount ?? lane.TotalUnits ?? lane.VolumeUnits ?? 0);
       laneTotals[bucket] += laneCost;
       componentTotals.inbound[bucket] += Number(lane.InboundSpend ?? 0) || 0;
-      componentTotals.distribution[bucket] += Number(lane.DistributionCost ?? 0) || 0;
-      componentTotals.distributionFixed[bucket] += Number(lane.DistributionFixedCost ?? 0) || 0;
+      const laneDistributionVariable = Number(lane.DistributionVariableCost);
+      const laneDistributionFixed = Number(lane.DistributionFixedCost ?? 0);
+      const laneDistributionAllIn = isSuppressedLanesOnly && Number.isFinite(laneDistributionVariable)
+        ? laneDistributionVariable + (Number.isFinite(laneDistributionFixed) ? laneDistributionFixed : 0)
+        : Number(lane.DistributionCost ?? 0);
+      componentTotals.distribution[bucket] += Number.isFinite(laneDistributionAllIn) ? laneDistributionAllIn : 0;
+      if (!isSuppressedLanesOnly) {
+        componentTotals.distributionFixed[bucket] += Number(lane.DistributionFixedCost ?? 0) || 0;
+      }
       componentTotals.parcel[bucket] += Number(lane.ParcelSpend ?? 0) || 0;
       componentTotals.ltl[bucket] += Number(lane.LtlSpend ?? 0) || 0;
       componentTotals.tl[bucket] += Number(lane.TlSpend ?? 0) || 0;
@@ -281,7 +308,7 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
     };
 
     return { total, fixed, costPerUnit, contractLabor, components };
-  }, [additionalCost, contractLaborTotal, distributionCostTotal, inboundCostTotal, laneResults, ltlCostTotal, parcelCostTotal, tlCostTotal]);
+  }, [additionalCost, contractLaborTotal, distributionCostTotal, inboundCostTotal, isSuppressedLanesOnly, laneResults, ltlCostTotal, parcelCostTotal, tlCostTotal]);
 
   const termBreakdownContent = (values: { prepaid: number; collect: number; other: number }, decimals = 0) => {
     const formatValue = (value: number) => `$${value.toLocaleString('en-US', {
@@ -312,21 +339,25 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
           <div className="flex justify-between"><span>Other:</span><span>{formatCurrencyOrNA(termCostBreakdown.total.other, 0)}</span></div>
         )}
       </div>
-      <div className="flex justify-between font-semibold text-slate-600 pt-2">
-        <span>Distribution Fixed:</span>
-        <span>{formatCurrencyOrNA(distributionFixedCostTotal, 0)}</span>
-      </div>
-      <div className="pl-2 space-y-1 text-xs text-slate-500">
-        <div className="flex justify-between"><span>Prepaid:</span><span>{formatCurrencyOrNA(termCostBreakdown.components.distributionFixed.prepaid, 0)}</span></div>
-        <div className="flex justify-between"><span>Collect:</span><span>{formatCurrencyOrNA(termCostBreakdown.components.distributionFixed.collect, 0)}</span></div>
-        {termCostBreakdown.components.distributionFixed.other > 0 && (
-          <div className="flex justify-between"><span>Other:</span><span>{formatCurrencyOrNA(termCostBreakdown.components.distributionFixed.other, 0)}</span></div>
-        )}
-      </div>
-      <div className="flex justify-between font-semibold text-slate-600 pt-2">
-        <span>Contract Labor:</span>
-        <span>{formatCurrencyOrNA(contractLaborTotal, 0)}</span>
-      </div>
+      {!isSuppressedLanesOnly && (
+        <>
+          <div className="flex justify-between font-semibold text-slate-600 pt-2">
+            <span>Distribution Fixed:</span>
+            <span>{formatCurrencyOrNA(distributionFixedCostTotal, 0)}</span>
+          </div>
+          <div className="pl-2 space-y-1 text-xs text-slate-500">
+            <div className="flex justify-between"><span>Prepaid:</span><span>{formatCurrencyOrNA(termCostBreakdown.components.distributionFixed.prepaid, 0)}</span></div>
+            <div className="flex justify-between"><span>Collect:</span><span>{formatCurrencyOrNA(termCostBreakdown.components.distributionFixed.collect, 0)}</span></div>
+            {termCostBreakdown.components.distributionFixed.other > 0 && (
+              <div className="flex justify-between"><span>Other:</span><span>{formatCurrencyOrNA(termCostBreakdown.components.distributionFixed.other, 0)}</span></div>
+            )}
+          </div>
+          <div className="flex justify-between font-semibold text-slate-600 pt-2">
+            <span>Contract Labor:</span>
+            <span>{formatCurrencyOrNA(contractLaborTotal, 0)}</span>
+          </div>
+        </>
+      )}
     </div>
   );
 
@@ -340,8 +371,12 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
   const totalCostBreakdownContent = () => (
     <div className="space-y-1">
       <div className="flex justify-between"><span>Lane Data Cost (excl. Distribution Fixed):</span><span className="font-medium text-slate-700">{formatCurrencyOrNA(baseCost, 0)}</span></div>
-      <div className="flex justify-between"><span>Distribution Fixed:</span><span className="font-medium text-slate-700">{formatCurrencyOrNA(distributionFixedCostTotal, 0)}</span></div>
-      <div className="flex justify-between"><span>Contract Labor:</span><span className="font-medium text-slate-700">{formatCurrencyOrNA(contractLaborTotal, 0)}</span></div>
+      {!isSuppressedLanesOnly && (
+        <>
+          <div className="flex justify-between"><span>Distribution Fixed:</span><span className="font-medium text-slate-700">{formatCurrencyOrNA(distributionFixedCostCostTotal, 0)}</span></div>
+          <div className="flex justify-between"><span>Contract Labor:</span><span className="font-medium text-slate-700">{formatCurrencyOrNA(contractLaborCostTotal, 0)}</span></div>
+        </>
+      )}
       <div className="flex justify-between"><span>Rent:</span><span className="font-medium text-slate-700">{formatCurrencyOrNA(fixedCostComponents.rent, 0)}</span></div>
       <div className="flex justify-between"><span>Management Fee:</span><span className="font-medium text-slate-700">{formatCurrencyOrNA(fixedCostComponents.managementFee, 0)}</span></div>
     </div>
@@ -512,7 +547,7 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
         <h3 className="mb-4 text-lg font-semibold text-slate-900">DC Scorecard</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {dcResults.map((dc) => {
-            const isBaseline = scenario.ScenarioRunID === 'SR001' || String(scenario.ScenarioType || '').toLowerCase().includes('baseline');
+            const isBaseline = isUsBaseline;
             const dcCosts = getAdditionalCostsForDc(dc.DCName);
             const rentVal = dc.Rent ?? dcCosts.Rent;
             const laborVal = dc.ContractLabor ?? dcCosts.ContractLabor;
@@ -522,14 +557,22 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
             // Distribution fixed is part of Distribution Cost. Fixed Cost is Rent + Management Fee.
             const fixedCostVal = rentVal + feeVal;
 
-            const baseCostDisplay = isBaseline 
-              ? Math.max(0, dc.TotalCost - fixedCostVal) 
-              : dc.TotalCost + (dc.IsSuppressed === 'N' ? laborVal : 0);
-            const totalCostDisplay = isBaseline ? dc.TotalCost : dc.TotalCost + (dc.IsSuppressed === 'N' ? addCost : 0);
+            const baseCostDisplay = isBaseline
+              ? (dc.InboundSpend ?? 0) + (dc.DistributionCost ?? 0) + (dc.ParcelSpend ?? 0) + (dc.LtlSpend ?? 0) + (dc.TlSpend ?? 0)
+              : isSuppressedLanesOnly
+                ? dc.TotalCost
+                : dc.TotalCost + (dc.IsSuppressed === 'N' ? laborVal : 0);
+            const totalCostDisplay = isBaseline
+              ? dc.TotalCost
+              : dc.TotalCost + (dc.IsSuppressed === 'N'
+                ? (isSuppressedLanesOnly ? fixedCostVal : addCost)
+                : 0);
 
             const inboundVal = dc.InboundSpend ?? 0;
             const outboundVal = (dc.ParcelSpend ?? 0) + (dc.LtlSpend ?? 0) + (dc.TlSpend ?? 0);
-            const distributionVal = dc.DistributionCost ?? 0;
+            const distributionVal = isSuppressedLanesOnly
+              ? (dc.DistributionVariableCost ?? Math.max(0, Number(dc.DistributionCost ?? 0) - Number(dc.DistributionFixedCost ?? 0)))
+              : (dc.DistributionCost ?? 0);
 
             return (
               <DcScorecardCard
@@ -545,6 +588,7 @@ export const ScenarioSummaryTab: React.FC<ScenarioSummaryTabProps> = ({
                 inboundVal={inboundVal}
                 outboundVal={outboundVal}
                 distributionVal={distributionVal}
+                distributionIsVariable={isSuppressedLanesOnly}
                 getUtilSpace={getUtilSpace}
                 clampBarWidth={clampBarWidth}
                 truePct={truePct}
@@ -570,6 +614,7 @@ interface DcScorecardCardProps {
   inboundVal: number;
   outboundVal: number;
   distributionVal: number;
+  distributionIsVariable: boolean;
   getUtilSpace: (dc: ScenarioRunResultsDC) => number;
   clampBarWidth: (numerator: number, denominator: number) => number;
   truePct: (numerator: number, dc: ScenarioRunResultsDC) => number;
@@ -588,6 +633,7 @@ const DcScorecardCard: React.FC<DcScorecardCardProps> = ({
   inboundVal,
   outboundVal,
   distributionVal,
+  distributionIsVariable,
   getUtilSpace,
   clampBarWidth,
   truePct,
@@ -596,7 +642,12 @@ const DcScorecardCard: React.FC<DcScorecardCardProps> = ({
   const [varExpanded, setVarExpanded] = useState(false);
   const [fixedExpanded, setFixedExpanded] = useState(false);
 
-  const hasVarDetails = dc.IsSuppressed === 'N' && (inboundVal > 0 || outboundVal > 0 || distributionVal > 0 || laborVal > 0);
+  const hasVarDetails = dc.IsSuppressed === 'N' && (
+    inboundVal > 0 ||
+    outboundVal > 0 ||
+    distributionVal > 0 ||
+    (!isBaseline && !distributionIsVariable && laborVal > 0)
+  );
   const hasFixedDetails = dc.IsSuppressed === 'N' && (rentVal > 0 || feeVal > 0);
 
   return (
@@ -658,13 +709,15 @@ const DcScorecardCard: React.FC<DcScorecardCardProps> = ({
               </div>
             </div>
             <div className="flex justify-between font-medium text-slate-600">
-              <span>Distribution Cost (incl. fixed):</span>
+              <span>{distributionIsVariable ? 'Distribution Cost (variable):' : 'Distribution Cost (incl. fixed):'}</span>
               <span>${distributionVal.toLocaleString('en-US', { maximumFractionDigits: 0 })}</span>
             </div>
-            <div className="flex justify-between font-medium text-slate-600">
-              <span>Contract Labor:</span>
-              <span>${laborVal.toLocaleString('en-US')}</span>
-            </div>
+            {!isBaseline && !distributionIsVariable && (
+              <div className="flex justify-between font-medium text-slate-600">
+                <span>Contract Labor:</span>
+                <span>${laborVal.toLocaleString('en-US')}</span>
+              </div>
+            )}
           </div>
         )}
 

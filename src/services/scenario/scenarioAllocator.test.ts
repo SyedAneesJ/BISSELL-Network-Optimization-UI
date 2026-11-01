@@ -91,6 +91,26 @@ describe('suppressed-lane strategic ranking', () => {
     expect(result.resultsLanes[0].AssignedDC).toBe('Elwood');
   });
 
+  it('uses RelocatableCost for an unsuppressed retained lane instead of Baseline Cost to Serve', () => {
+    const retainedLanes = lanes.map((lane) => ({
+      ...lane,
+      DefaultShipFrom: 'Elwood',
+      AssignedDC: 'Elwood',
+      BaselineCostToServe: 100,
+      RelocatableCost: 80,
+      TotalCost: 80,
+      LaneCost: 80,
+      DistributionFixedCost: 20,
+      DistributionVariableCost: 5,
+    }));
+    const result = allocate('Strategic Pro Forma (Suppressed Lanes Only)', retainedLanes, ['Dallas']);
+    const selected = result.resultsLanes[0];
+
+    expect(selected.AssignedDC).toBe('Elwood');
+    expect(selected.TotalCost).toBe(80);
+    expect(selected.CostBasis).toBe('EXCLUDING_DISTRIBUTION_FIXED');
+  });
+
   it('retains exclusion-cost ranking for strategic collect-relocatable', () => {
     const result = allocate('Strategic Pro Forma (Collect Relocatable)', lanes, ['Dallas']);
 

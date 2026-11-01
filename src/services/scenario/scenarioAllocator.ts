@@ -648,21 +648,23 @@ const buildSelectedLaneRow = (
   const candidateRow = selected.sourceRow;
   const movedDueToSuppression = suppressedSet.has(normalizeDcKey(laneSourceDc(sourceRow))) &&
     normalizeDcKey(selected.dc) !== normalizeDcKey(laneSourceDc(sourceRow));
-  const retainedBaselineCost = laneBaselineCostToServe(sourceRow);
-  const useRetainedBaselineCost = useBaselineCostForRetainedLane &&
+  const retainedRelocatableCost = laneRelocatableCost(sourceRow);
+  const useRetainedExclusionCost = useBaselineCostForRetainedLane &&
     !suppressedSet.has(normalizeDcKey(laneSourceDc(sourceRow))) &&
-    Number.isFinite(retainedBaselineCost);
+    Number.isFinite(retainedRelocatableCost);
   const selectedDirectTotal = Number(
-    useRetainedBaselineCost
-      ? retainedBaselineCost
+    useRetainedExclusionCost
+      ? retainedRelocatableCost
       : movedDueToSuppression
         ? selected.relocatableCost
         : selected.totalCost,
   );
   const selectedSourceRow = candidateRow || sourceRow;
-  const selectedUsesExclusionCost = !useRetainedBaselineCost && (selectedSourceRow.CostBasis === 'EXCLUDING_DISTRIBUTION_FIXED' ||
+  const selectedUsesExclusionCost = !useRetainedExclusionCost && (selectedSourceRow.CostBasis === 'EXCLUDING_DISTRIBUTION_FIXED' ||
     Number.isFinite(Number(selectedSourceRow.RelocatableCost)) ||
     movedDueToSuppression);
+  const selectedDistributionVariableCost = candidateRow?.DistributionVariableCost ??
+    Math.max(0, Number(distributionCost ?? 0) - Number(distributionFixedCost ?? 0));
   if (Number.isFinite(selectedDirectTotal)) {
     selectedTotal = selectedDirectTotal;
     if (candidateRow) {
@@ -724,17 +726,20 @@ const buildSelectedLaneRow = (
     ).toFixed(2)),
     OvercapFlag: Number.isFinite(selectedCapacity) && selectedCapacity > 0 && demand > selectedCapacity ? 'Y' : 'N',
     InboundSpend: inboundSpend,
-    DistributionCost: movedDueToSuppression
-      ? (candidateRow?.DistributionVariableCost ?? Math.max(0, Number(distributionCost ?? 0) - Number(distributionFixedCost ?? 0)))
+    DistributionCost: useBaselineCostForRetainedLane || movedDueToSuppression
+      ? selectedDistributionVariableCost
       : distributionCost,
-    DistributionVariableCost: movedDueToSuppression
-      ? (candidateRow?.DistributionVariableCost ?? Math.max(0, Number(distributionCost ?? 0) - Number(distributionFixedCost ?? 0)))
+    DistributionVariableCost: useBaselineCostForRetainedLane || movedDueToSuppression
+      ? selectedDistributionVariableCost
       : distributionVariableCost,
+    // Keep retained DC fixed spend auditable, but never include it in the
+    // suppression-only variable-cost metric. Suppressed-source lanes have no
+    // retained distribution fixed cost after relocation.
     DistributionFixedCost: movedDueToSuppression ? 0 : distributionFixedCost,
     RelocatableCost: movedDueToSuppression ? selectedTotal : laneRelocatableCost(candidateRow || sourceRow),
     BaselineCostToServe: sourceRow.BaselineCostToServe,
-    CostBasis: useRetainedBaselineCost
-      ? 'BASELINE_COST_TO_SERVE'
+    CostBasis: useBaselineCostForRetainedLane
+      ? 'EXCLUDING_DISTRIBUTION_FIXED'
       : selectedUsesExclusionCost ? 'EXCLUDING_DISTRIBUTION_FIXED' : 'FULL',
     MovedDueToSuppression: movedDueToSuppression ? 'Y' : 'N',
     ParcelSpend: parcelSpend,
@@ -1046,6 +1051,7 @@ const selectOverloadRows = (
   input: AllocationInput,
 ): ScenarioRunResultsLane[] => {
   const activeDcScores = new Map<string, number>();
+  const useSuppressedLanesOnlyCost = isSuppressedLanesOnlyScenario(input.scenarioType);
 
   laneGroups.forEach((group) => {
     const eligibleCandidates = restrictCandidatesForLane(group.sourceRow, group.candidates, input, suppressedSet);
@@ -1081,7 +1087,16 @@ const selectOverloadRows = (
     const selected = buildForcedCandidate(group);
     if (!selected) return;
     const selectedCapacity = capacityMap.get(normalizeDcKey(selected.dc)) || Number.POSITIVE_INFINITY;
-    selectedRows.push(buildSelectedLaneRow(scenarioId, group.sourceRow, group.laneSpaceRequired, group.laneUnits, selected, selectedCapacity, suppressedSet));
+    selectedRows.push(buildSelectedLaneRow(
+      scenarioId,
+      group.sourceRow,
+      group.laneSpaceRequired,
+      group.laneUnits,
+      selected,
+      selectedCapacity,
+      suppressedSet,
+      useSuppressedLanesOnlyCost,
+    ));
   });
 
   return selectedRows;
@@ -1126,6 +1141,7 @@ const selectConstrainedRows = (
   input: AllocationInput,
 ): ScenarioRunResultsLane[] => {
   const remainingCapacity = new Map<string, number>();
+  const useSuppressedLanesOnlyCost = isSuppressedLanesOnlyScenario(input.scenarioType);
   capacityMap.forEach((capacity, dcKey) => {
     remainingCapacity.set(dcKey, Number.isFinite(capacity) ? capacity : Number.POSITIVE_INFINITY);
   });
@@ -1216,7 +1232,16 @@ const selectConstrainedRows = (
       remainingCapacity.set(dcKey, currentRemaining - group.laneSpaceRequired);
     }
     const selectedCapacity = capacityMap.get(dcKey) || Number.POSITIVE_INFINITY;
-    selectedRows.push(buildSelectedLaneRow(scenarioId, group.sourceRow, group.laneSpaceRequired, group.laneUnits, fitting, selectedCapacity, suppressedSet));
+    selectedRows.push(buildSelectedLaneRow(
+      scenarioId,
+      group.sourceRow,
+      group.laneSpaceRequired,
+      group.laneUnits,
+      fitting,
+      selectedCapacity,
+      suppressedSet,
+      useSuppressedLanesOnlyCost,
+    ));
   });
 
   unallocated.forEach((group) => {
@@ -1259,7 +1284,16 @@ const selectConstrainedRows = (
       remainingCapacity.set(dcKey, currentRemaining - group.laneSpaceRequired);
     }
     const selectedCapacity = capacityMap.get(dcKey) || Number.POSITIVE_INFINITY;
-    selectedRows.push(buildSelectedLaneRow(scenarioId, group.sourceRow, group.laneSpaceRequired, group.laneUnits, selected, selectedCapacity, suppressedSet));
+    selectedRows.push(buildSelectedLaneRow(
+      scenarioId,
+      group.sourceRow,
+      group.laneSpaceRequired,
+      group.laneUnits,
+      selected,
+      selectedCapacity,
+      suppressedSet,
+      useSuppressedLanesOnlyCost,
+    ));
   });
 
   return selectedRows;

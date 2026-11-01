@@ -95,6 +95,8 @@ export interface ScenarioRunResultsDC {
   LtlSpend?: number;
   TlSpend?: number;
   DistributionCost?: number;
+  /** Legacy baseline-only distributionSpend_Inc_(rent,mgmtfee,cnrctlbr) value. */
+  DistributionSpendIncAll?: number;
   DistributionVariableCost?: number;
   DistributionFixedCost?: number;
   PctToTotalSales?: number;
@@ -134,7 +136,10 @@ export interface DomoSpaceOverrideRow {
   TotalCost?: number;
   FullCost?: number;
   InboundSpend?: number;
+  /** Baseline Space Override distribution spend (the totalDistributionSpend column). */
+  TotalDistributionSpend?: number;
   DistributionCost?: number;
+  DistributionSpendIncAll?: number;
   DistributionVariableCost?: number;
   DistributionFixedCost?: number;
   RelocatableCost?: number;
